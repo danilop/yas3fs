@@ -24,7 +24,7 @@ To mount an S3 bucket using SNS and listening to an HTTP endpoint:
 
 yas3fs.py /path/to/mount --url=s3://bucket/path --topic TOPIC-ARN --ec2-hostname --port N
 
-The security group must allow inbound traffic from SNS on the selected port.
+On EC2 the security group must allow inbound traffic from SNS on the selected port.
 
 To mount an S3 bucket using SNS and listening to an SQS endpoint:
 
