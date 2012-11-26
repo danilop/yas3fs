@@ -126,6 +126,7 @@ class FSCache():
             if path in self.entries:
                 self.delete(new_path)
                 self.entries[new_path] = self.entries[path]
+                self.delete(new_path, 'key') # cannot be renamed
                 self.lru.append(new_path)
                 del self.entries[path]
                 self.lru.delete(path)
@@ -540,12 +541,12 @@ class YAS3FS(LoggingMixIn, Operations):
 
     def add_to_parent_readdir(self, path):
         (parent_path, dir) = os.path.split(path)
-        if self.cache.has(parent_path, 'readdir'):
+        if self.cache.has(parent_path, 'readdir') and self.cache.get(parent_path, 'readdir').count(dir) == 0:
             self.cache.get(parent_path, 'readdir').append(dir)
 
     def remove_from_parent_readdir(self, path):
         (parent_path, dir) = os.path.split(path)
-        if self.cache.has(parent_path, 'readdir'):
+        if self.cache.has(parent_path, 'readdir') and self.cache.get(parent_path, 'readdir').count(dir) > 0:
             self.cache.get(parent_path, 'readdir').remove(dir)
 
     def reset_parent_readdir(self, path):
@@ -705,8 +706,8 @@ class YAS3FS(LoggingMixIn, Operations):
             self.publish('mkdir ' + path)
 	return 0
  
-    def symlink(self, link, path):
-	if self.cache.has(path) and not self.cache.is_emptyn(path):
+    def symlink(self, path, link):
+	if self.cache.has(path) and not self.cache.is_empty(path):
 	    return FuseOSError(errno.EEXIST)
 	k = self.get_key(path)
 	if k:
@@ -778,9 +779,14 @@ class YAS3FS(LoggingMixIn, Operations):
 	if self.cache.has(path) and self.cache.is_empty(path):
 	    raise FuseOSError(errno.ENOENT)
 	self.cache.add(path)
-	if stat.S_ISLNK(self.getattr(path).st_mode):
+	if stat.S_ISLNK(self.getattr(path)['st_mode']):
 	    if not self.check_data(path):
 		raise FuseOSError(errno.ENOENT)
+            while True:
+                range = self.cache.get(path, 'data-range')
+                if range == None:
+                    break
+                range[1].wait()
 	    return self.cache.get(path, 'data').getvalue()
 	return FuseOSError(errno.EINVAL)
  
@@ -1111,9 +1117,9 @@ In an EC2 instance a IAM role can be used to give access to S3/SNS/SQS resources
         errorAndExit("not more than one mountpoint must be provided")
 
     mountpoint = args[0]
-    volume_name = os.path.basename(mountpoint)
 
     if sys.platform == "darwin":
+        volume_name = os.path.basename(mountpoint)
         fuse = FUSE(YAS3FS(options), mountpoint, fsname="yas3fs",
                     foreground=options.foreground or options.debug,
                     default_permissions=True, allow_other=True,
