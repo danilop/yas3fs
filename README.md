@@ -43,63 +43,40 @@ If you want to do a quick test here's the installation procedure on EC2 dependin
 **On Amazon Linux 2012.09**
 
     sudo yum -y install fuse fuse-libs
-
     sudo easy_install pip
-
     sudo pip install fusepy
-
     wget http://danilopoccia.s3.amazonaws.com/yas3fs.py
-
     chmod u+x yas3fs.py
-
     ./yas3fs.py -h # See the usage
-
     sudo vi /etc/fuse.conf # uncomment user_allow_other
-
     mkdir LOCAL-PATH
-
     ./yas3fs.py LOCAL-PATH --url=s3://BUCKET/PATH --topic TOPIC-ARN --new-queue --region eu-west-1
 
 **On Ubuntu Server 12.04.1 LTS**
 
     sudo aptitude install fuse-utils libfuse2 python-pip
-
     sudo pip install --upgrade boto fusepy
-
     wget https://danilopoccia.s3.amazonaws.com/yas3fs.py
-
     chmod u+x yas3fs.py
-
     ./yas3fs.py -h # See the usage
-
     sudo vi /etc/fuse.conf  # uncomment user_allow_other
-
     sudo chmod a+r /etc/fuse.conf # make it readable by anybody, it is not the default on Ubuntu
-
     mkdir LOCAL-PATH
-
     ./yas3fs.py LOCAL-PATH --url=s3://BUCKET/PATH --topic TOPIC-ARN --new-queue --region eu-west-1
 
 **On a Mac (tested under Mountain Lion)**
 
-* Install FUSE for OS X from [http://osxfuse.github.com](http://osxfuse.github.com)
+Install FUSE for OS X from [http://osxfuse.github.com](http://osxfuse.github.com)
 
-* To install the Python M2Crypto module, download the most suitable "egg" from [http://chandlerproject.org/Projects/MeTooCrypto#Downloads](http://chandlerproject.org/Projects/MeTooCrypto#Downloads)
+To install the Python M2Crypto module, download the most suitable "egg" from [http://chandlerproject.org/Projects/MeTooCrypto#Downloads](http://chandlerproject.org/Projects/MeTooCrypto#Downloads)
 
     sudo easy_install M2Crypto-*.egg
-
     sudo easy_install boto
-
     sudo easy_install fusepy
-
     wget https://danilopoccia.s3.amazonaws.com/yas3fs.py
-
     chmod u+x yas3fs.py
-
     ./yas3fs.py -h # See the usage
-
     mkdir LOCAL-PATH
-
     ./yas3fs.py LOCAL-PATH --url=s3://BUCKET/PATH --topic TOPIC-ARN --new-queue --region eu-west-1
 
 If something does not work as expected you can use the "-d" option to run in foreground in debug mode.
@@ -116,7 +93,7 @@ To unmount the file system on a Mac you can use 'umount'.
 
     yas3fs.py -h
     
-    Usage: yas3fs.py &lt;mountpoint&gt; [options]
+    Usage: yas3fs.py <mountpoint> [options]
 
     YAS3FS (Yet Another S3-backed File System) is a Filesystem in Userspace (FUSE) interface to Amazon S3.
 
