@@ -82,7 +82,7 @@ mkdir LOCAL-PATH
 
 - Install FUSE for OS X from [http://osxfuse.github.com](http://osxfuse.github.com)
 
-- To install the Python M2Crypto module download the most suitable "egg" from [http://chandlerproject.org/Projects/MeTooCrypto#Downloads](http://chandlerproject.org/Projects/MeTooCrypto#Downloads)
+- To install the Python M2Crypto module, download the most suitable "egg" from [http://chandlerproject.org/Projects/MeTooCrypto#Downloads](http://chandlerproject.org/Projects/MeTooCrypto#Downloads)
 
 sudo easy_install M2Crypto-*.egg
 
