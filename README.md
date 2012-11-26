@@ -1,18 +1,15 @@
 # Yet Another S3-backed File System: yas3fs
 
-I decided to try to write my own S3-backed File System, using python, boto and python bindings for FUSE (fusepy).
+YAS3FS (Yet Another S3-backed File System) is a Filesystem in Userspace (FUSE) interface to Amazon S3.
 
-The main performance issue with s3fs is that, even if the local cache is in use, it will check for changes against S3 before serving any content. That is correct because an s3fs node does not know if its own cached copy of the file/object is updated or not.
-
-Unfortunately that check is done using an HTTP HEAD. That can be a good optimization for large files/objects, but not for small ones (i.e. less than 10KB) as it introduces a notable latency.
-
-That is the main reason s3fs is slow in some scenarios, e.g. when used to deploy shared code for multiple web servers: each requested URL often needs access to tens of source files to be served. I made some tests with PHP using the standard Wordpress distribution, and the performance impact of s3fs compared to a native file system was highly noticeable.
-
-My point was: what about using a distributed cache that you can trust (i.e. without checking for updates for any access) because you are notified if the content changes (and the corresponding cache entry is invalidated)?
-
-That is precisely how yas3fs works: I use an SNS topic to notify other nodes mounting the same file system if anything changes to invalidate their cache. SNS notifications can be delivered using either HTTP or SQS.
-
-The result is not a "global" concurrent file system that can be used for a "transactional" workload, but it can be effectively used to share content (i.e. a web app deployment o media files) between a group of servers.
+* It allows to mount an S3 bucket (or a part of it) as a local folder.
+* For maximum speed all data read from S3 is cached locally on the node.
+* SNS notifications are used to update other nodes that something has changed on S3 and they need to invalidate their cache.
+* Notifications can be listened using HTTP or SQS endpoints.
+* With buffering enabled (the default) files can be accessed during the download from S3.
+* If the cache grows to its maximum size the least accessed files are removed.
+* AWS credentials can be passed using AWS\_ACCESS\_KEY\_ID and AWS\_SECRET\_ACCESS\_KEY environmental variables.
+* In an EC2 instance a IAM role can be used to give access to S3/SNS/SQS resources.
 
 On EC2 the command line doesn't need any information on the actual server and can easily be used within an Auto Scaling group.
 
@@ -20,13 +17,13 @@ To mount an S3 bucket without using SNS (i.e. single node):
 
 yas3fs.py /path/to/mount --url=s3://bucket/path 
 
-To mount an S3 bucket using SNS listening to an HTTP endpoint:
+To mount an S3 bucket using SNS and listening to an HTTP endpoint:
 
 yas3fs.py /path/to/mount --url=s3://bucket/path --topic TOPIC-ARN --ec2-hostname --port N
 
 The security group must allow inbound traffic from SNS on the selected port.
 
-To mount an S3 bucket using SNS listening to an SQS endpoint:
+To mount an S3 bucket using SNS and listening to an SQS endpoint:
 
 yas3fs.py /path/to/mount --url=s3://bucket/path --topic TOPIC-ARN --new-queue
 
