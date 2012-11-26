@@ -2,7 +2,7 @@
 
 YAS3FS (Yet Another S3-backed File System) is a Filesystem in Userspace (FUSE) interface to Amazon S3.
 
-**This is a personal project. No relation whatsoever exists between this project and my employer.:**
+**This is a personal project. No relation whatsoever exists between this project and my employer.**
 
 * It allows to mount an S3 bucket (or a part of it) as a local folder.
 * For maximum speed all data read from S3 is cached locally on the node.
