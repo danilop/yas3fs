@@ -31,7 +31,7 @@ To mount an S3 bucket using SNS and listening to an SQS endpoint:
 
 I strongly suggest to start yas3fs for the first time with the "-d" (debug) option, to see if there is any error. When everything works it can be interrupted (with ^C) and restarted to run in background (it's the default with no "-d" / "-f" options).
 
-If you want to do a quick test here's the installation procedure on EC2 depending on the OS flavor (Linux or Mac):
+If you want to do a quick test here's the installation procedure depending on the OS flavor (Linux or Mac):
 
 * Create an S3 bucket in the region you work
 * You don't need to create anything in the bucket as the initial path (if any) is created by the tool on the first mount
@@ -40,7 +40,7 @@ If you want to do a quick test here's the installation procedure on EC2 dependin
 * Create a IAM Role that gives access to the S3 and SNS/SQS resources you need or pass the AWS credentials to the tool using environmental variables (see "-h")
 * I used the eu-west-1 region in my sample, but you can replace that with any region you want. If no region is specified it defaults to us-east-1.
 
-**On Amazon Linux 2012.09**
+**On EC2 with Amazon Linux 2012.09**
 
     sudo yum -y install fuse fuse-libs
     sudo easy_install pip
@@ -52,7 +52,7 @@ If you want to do a quick test here's the installation procedure on EC2 dependin
     mkdir LOCAL-PATH
     ./yas3fs.py LOCAL-PATH --url=s3://BUCKET/PATH --topic TOPIC-ARN --new-queue --region eu-west-1
 
-**On Ubuntu Server 12.04.1 LTS**
+**On EC2 with Ubuntu Server 12.04.1 LTS**
 
     sudo aptitude install fuse-utils libfuse2 python-pip
     sudo pip install --upgrade boto fusepy
@@ -73,7 +73,7 @@ To install the Python M2Crypto module, download the most suitable "egg" from [ht
     sudo easy_install M2Crypto-*.egg
     sudo easy_install boto
     sudo easy_install fusepy
-    wget https://danilopoccia.s3.amazonaws.com/yas3fs.py
+    curl -O https://danilopoccia.s3.amazonaws.com/yas3fs.py
     chmod u+x yas3fs.py
     ./yas3fs.py -h # See the usage
     mkdir LOCAL-PATH
