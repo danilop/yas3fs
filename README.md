@@ -68,9 +68,10 @@ If you want to do a quick test here's the installation procedure depending on th
 
 **On a Mac (tested under Mountain Lion)**
 
-Install FUSE for OS X from [http://osxfuse.github.com](http://osxfuse.github.com)
+Install FUSE for OS X from <http://osxfuse.github.com>
 
-To install the Python M2Crypto module, download the most suitable "egg" from [http://chandlerproject.org/Projects/MeTooCrypto#Downloads](http://chandlerproject.org/Projects/MeTooCrypto#Downloads)
+To install the Python M2Crypto module, download the most suitable "egg" from
+<http://chandlerproject.org/Projects/MeTooCrypto#Downloads>
 
     sudo easy_install M2Crypto-*.egg
     sudo easy_install boto
