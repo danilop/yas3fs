@@ -154,7 +154,7 @@ The SNS notification syntax is (with no spaces):
 
 node_id,action[,object1[,object2]]
 
-The *object1* and *object2* are optional and their meaning depend on the *action*.
+The *object1* and *object2* are optional and their meaning depends on the *action*.
 
 The following *actions* ar currently implemented:
 
