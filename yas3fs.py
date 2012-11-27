@@ -505,10 +505,10 @@ class YAS3FS(LoggingMixIn, Operations):
                         self.flush_all_cache()
                         self.cache.reset_all() # Completely reset the cache
                 elif c[0] == 'cache':
-                    if c[1] == 'max_num_entries':
+                    if c[1] == 'entries':
                         self.max_num_entries = int(c[2])
-                    elif c[1] == 'max_props_size':
-                        self.max_props_size = int(c[2])
+                    elif c[1] == 'size':
+                        self.max_props_size = int(c[2]) * (1024 * 1024)
 
     def publish_changes(self):
         while self.sns_topic_arn:
