@@ -156,7 +156,7 @@ The SNS notification syntax is (with no spaces):
 
 The `object1` and `object2` are optional and their meaning depends on the `action`.
 
-The following `action`s ar currently implemented:
+The following `action`(s) are currently implemented:
 
 * `mkdir` (new directory): `node_id,mkdir,path`
 * `rmdir` (remove directory): `node_id,rmdir,path`
@@ -180,7 +180,7 @@ you can invalidate all the caches of the nodes in the yas3fs cluster sending thi
 
     all,flush,path
 
-The `path` is the relative path of the file system ('/' corresponding to the mount point)
+The `path` is the relative path of the file system (`/` corresponding to the mount point)
 and doesn't include the S3 path if given in the `--url` option.
 
 **Happy file sharing!**
