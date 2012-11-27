@@ -152,35 +152,35 @@ You can use the SNS topic for other purposes than keeping the cache of the nodes
 
 The SNS notification syntax is (with no spaces):
 
-node_id,action[,object1[,object2]]
+    node_id,action[,object1[,object2]]
 
-The *object1* and *object2* are optional and their meaning depends on the *action*.
+The `object1` and `object2` are optional and their meaning depends on the `action`.
 
-The following *actions* ar currently implemented:
+The following `action`s ar currently implemented:
 
-* *mkdir* (new directory): node_id,mkdir,path
-* *rmdir* (remove directory): node_id,rmdir,path
-* *mknod* (new empty file): node_id,mknod,path
-* *unlink* (remove file): node_id,unlink,path
-* *symlink* (new symbolic link): node_id,symlink,path
-* *rename* (rename file or directory): node_id,rename,old_path,new_path
-* *flush* (updated file): node_id,flush,path
-* *md* (updated metadata for file, e.g. attr/xattr): node_id,md,path
-* *reset* (reset cache): node_id,reset
-* *cache* (change cache config): node_id,cache,(max_num_entries|max_props_size),new_value
+* `mkdir` (new directory): `node_id,mkdir,path`
+* `rmdir` (remove directory): `node_id,rmdir,path`
+* `mknod` (new empty file): `node_id,mknod,path`
+* `unlink` (remove file): `node_id,unlink,path`
+* `symlink` (new symbolic link): `node_id,symlink,path`
+* `rename` (rename file or directory): `node_id,rename,old_path,new_path`
+* `flush` (updated file): `node_id,flush,path`
+* `md` (updated metadata, e.g. attr/xattr): `node_id,md,path`
+* `reset` (reset cache): `node_id,reset`
+* `cache` (change cache config): `node_id,cache,(entries|size),new_value`
 
 Every node will listen to notification coming from a node_id different from its own.
 As an example, if you want to reset the cache of all the nodes in a yas3fs cluster,
-you can send the following notification to the SNS topic (assuming there is no node with id equal to 'all'):
+you can send the following notification to the SNS topic (assuming there is no node with id equal to `all`):
 
-all,reset
+    all,reset
 
 In the same way, if you uploaded a new file (or updated an old one) directly on S3 
 you can invalidate all the caches of the nodes in the yas3fs cluster sending this SNS notification:
 
-all,flush,path
+    all,flush,path
 
-The *path* is the relative path of the file system ('/' corresponding to the mount point)
-and doesn't include the S3 path if given in the '--url' option.
+The `path` is the relative path of the file system ('/' corresponding to the mount point)
+and doesn't include the S3 path if given in the `--url` option.
 
 **Happy file sharing!**
