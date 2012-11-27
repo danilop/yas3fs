@@ -169,18 +169,18 @@ The following `action`(s) are currently implemented:
 * `reset` (reset cache): `node_id,reset`
 * `cache` (change cache config): `node_id,cache,(entries|size),new_value`
 
-Every node will listen to notification coming from a node_id different from its own.
+Every node will listen to notifications coming from a `node_id` different from its own.
 As an example, if you want to reset the cache of all the nodes in a yas3fs cluster,
 you can send the following notification to the SNS topic (assuming there is no node with id equal to `all`):
 
     all,reset
 
 In the same way, if you uploaded a new file (or updated an old one) directly on S3 
-you can invalidate all the caches of the nodes in the yas3fs cluster sending this SNS notification:
+you can invalidate all the caches of the nodes in the yas3fs cluster for that `path` sending this SNS notification:
 
     all,flush,path
 
 The `path` is the relative path of the file system (`/` corresponding to the mount point)
-and doesn't include the S3 path if given in the `--url` option.
+and doesn't include any S3 path (i.e. prefix) as given in the `--url` option.
 
 **Happy file sharing!**
