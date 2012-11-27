@@ -45,7 +45,8 @@ If you want to do a quick test here's the installation procedure depending on th
     sudo yum -y install fuse fuse-libs
     sudo easy_install pip
     sudo pip install fusepy
-    wget http://danilopoccia.s3.amazonaws.com/yas3fs.py
+    git clone git://github.com/danilop/yas3fs.git
+    cd yas3fs
     chmod u+x yas3fs.py
     ./yas3fs.py -h # See the usage
     sudo vi /etc/fuse.conf # uncomment user_allow_other
@@ -56,7 +57,8 @@ If you want to do a quick test here's the installation procedure depending on th
 
     sudo aptitude install fuse-utils libfuse2 python-pip
     sudo pip install --upgrade boto fusepy
-    wget https://danilopoccia.s3.amazonaws.com/yas3fs.py
+    git clone git://github.com/danilop/yas3fs.git
+    cd yas3fs
     chmod u+x yas3fs.py
     ./yas3fs.py -h # See the usage
     sudo vi /etc/fuse.conf  # uncomment user_allow_other
@@ -73,7 +75,8 @@ To install the Python M2Crypto module, download the most suitable "egg" from [ht
     sudo easy_install M2Crypto-*.egg
     sudo easy_install boto
     sudo easy_install fusepy
-    curl -O https://danilopoccia.s3.amazonaws.com/yas3fs.py
+    git clone git://github.com/danilop/yas3fs.git
+    cd yas3fs
     chmod u+x yas3fs.py
     ./yas3fs.py -h # See the usage
     mkdir LOCAL-PATH
