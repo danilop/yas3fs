@@ -388,6 +388,8 @@ class YAS3FS(LoggingMixIn, Operations):
                 errorAndExit("The SNS topic must be provided when the hostname/port to listen to SNS HTTP notifications is given")            
 
         if self.sns_http_port:
+            if not self.hostname:
+                errorAndExit("The hostname must be provided with the port to listen to SNS HTTP notifications")
             ### self.http_listen_path = '/sns/' + base64.urlsafe_b64encode(os.urandom(self.http_listen_path_length))
             self.http_listen_path = '/sns'
             self.http_listen_url = "http://%s:%i%s" % (self.hostname, self.sns_http_port, self.http_listen_path)
@@ -493,13 +495,16 @@ class YAS3FS(LoggingMixIn, Operations):
                     if c[1]:
                         with self.cache.lock:
                             if self.cache.has(c[1], 'data') and not self.cache.has(c[1], 'change'):
-                                self.cache.set(c[1], 'olddata', True)
+                                self.cache.delete(c[1], 'key')
+                                self.cache.set(c[1], 'old-data', True)
                     else: # Invalidate all the cached data, it locks the file system for a while
                         with self.cache.lock:
                             for path in self.cache.entries:
                                 if self.cache.has(path, 'data') and not self.cache.has(path, 'change'):
-                                    self.cache.set(path, 'olddata', True)
+                                    self.cache.delete(path, 'key')
+                                    self.cache.set(path, 'old-data', True)
                 elif c[0] == 'md':
+                    self.cache.delete(c[1], 'key')
                     self.cache.delete(c[1], c[2])
                 elif c[0] == 'reset':
                     with self.cache.lock:
@@ -738,31 +743,33 @@ class YAS3FS(LoggingMixIn, Operations):
 	return 0
 
     def check_data(self, path): 
-	if not self.cache.has(path, 'data') or self.cache.has(path, 'olddata'):
+	if not self.cache.has(path, 'data') or self.cache.has(path, 'old-data'):
 	    k = self.get_key(path)
-	    if not k:
+            if not k:
 		return False
 	    if self.cache.has(path, 'data'):
-                self.cache.delete(path, 'olddata')
+                self.cache.delete(path, 'old-data')
 		md5 = '"' + hashlib.md5(self.cache.get(path, 'data').getvalue()).hexdigest() + '"'
 		if md5 == k.etag:
 		    return True
-            data = io.BytesIO()
-            self.cache.set(path, 'data', data)
             if self.buffer_size > 0:
                 with self.cache.lock:
                     if self.cache.has(path, 'data-range'):
                         return True
                     self.cache.set(path, 'data-range', (0, threading.Event()))
+                data = io.BytesIO()
+                self.cache.set(path, 'data', data)
                 t = threading.Thread(target=self.get_data, args=(path, data, k))
                 t.daemon = True
                 t.start()
             else:
+                data = io.BytesIO()
+                self.cache.set(path, 'data', data)
                 k.get_contents_to_file(data)
 	return True
 
     def get_data(self, path, data, key):
-        key.BufferSize = self.buffer_size
+        key.BufferSize = min(self.buffer_size, key.size) # Is this an optimization or not?
 
         for bytes in key:
             (total, event) = self.cache.get(path, 'data-range')
