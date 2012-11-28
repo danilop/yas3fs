@@ -20,19 +20,24 @@ interface to [Amazon S3](http://aws.amazon.com/s3/).
 On EC2 the command line doesn't need any information on the actual server and can easily be used
 within an [Auto Scaling](http://aws.amazon.com/autoscaling/) group.
 
-To mount an S3 bucket without using SNS (i.e. single node):
+To mount an S3 bucket without using SNS (i.e. for a single node):
 
     yas3fs.py /path/to/mount --url=s3://bucket/path 
+
+To persist file system metadata such as attr/xattr yas3fs is using S3 User Metadata.
+To mount an S3 bucket without actually writing metadata in it,
+e.g. because it is a bucket you mainly use as a repository and not as a file system,
+you can use the `--no-metadata` option.
+
+To mount an S3 bucket using SNS and listening to an SQS endpoint:
+
+    yas3fs.py /path/to/mount --url=s3://bucket/path --topic TOPIC-ARN --new-queue
 
 To mount an S3 bucket using SNS and listening to an HTTP endpoint:
 
     yas3fs.py /path/to/mount --url=s3://bucket/path --topic TOPIC-ARN --ec2-hostname --port N
 
 On EC2 the security group must allow inbound traffic from SNS on the selected port.
-
-To mount an S3 bucket using SNS and listening to an SQS endpoint:
-
-    yas3fs.py /path/to/mount --url=s3://bucket/path --topic TOPIC-ARN --new-queue
 
 I strongly suggest to start yas3fs for the first time with the `-d` (debug) option, to see if there is any error.
 When everything works it can be interrupted (with `^C`) and restarted to run in background
@@ -192,5 +197,10 @@ you can invalidate the caches of all the nodes in the yas3fs cluster for that `p
 
 The `path` is the relative path of the file system (`/` corresponding to the mount point)
 and doesn't include any S3 path (i.e. prefix) as given in the `--url` option.
+
+To change the size of the cache on all nodes, e.g. to bring it from 1GB (the current default) to 10GB,
+you can publish (the size is in MB):
+
+    all,cache,size,10240
 
 **Happy file sharing!**
