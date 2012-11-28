@@ -1,19 +1,24 @@
 # Yet Another S3-backed File System: yas3fs
 
-YAS3FS (Yet Another S3-backed File System) is a Filesystem in Userspace (FUSE) interface to Amazon S3.
+YAS3FS (Yet Another S3-backed File System) is a [Filesystem in Userspace (FUSE)](http://fuse.sourceforge.net)
+interface to [Amazon S3](http://aws.amazon.com/s3/).
 
 **This is a personal project. No relation whatsoever exists between this project and my employer.**
 
-* It allows to mount an S3 bucket (or a part of it, if you specify a path) as a local folder.
+* It allows to mount an S3 bucket (or a part of it, if you specify a path) as a local folder
+* It works on Linux and Mac
 * For maximum speed all data read from S3 is cached in memory locally on the node.
-* SNS notifications are used to update other nodes that something has changed on S3 and they need to invalidate their cache.
-* Notifications can be listened using HTTP or SQS endpoints.
+* It can be used on more than one node  (i.e. a yas3fs "cluster")
+* [SNS](http://aws.amazon.com/sns/) notifications are used to update other nodes in the cluster that something has changed on S3 and they need to invalidate their cache.
+* Notifications can be listened using HTTP or [SQS](http://aws.amazon.com/sqs/) endpoints.
 * With buffering enabled (the default) files can be accessed during the download from S3.
 * If the cache grows to its maximum size, the least accessed files are removed.
 * AWS credentials can be passed using AWS\_ACCESS\_KEY\_ID and AWS\_SECRET\_ACCESS\_KEY environmental variables.
-* In an EC2 instance a IAM role can be used to give access to S3/SNS/SQS resources.
+* In an [EC2](http://aws.amazon.com/ec2/) instance a [IAM](http://aws.amazon.com/iam/) role can be used to give access to S3/SNS/SQS resources.
+* It is written in Python using [boto](https://github.com/boto/boto) and [fusepy](https://github.com/terencehonles/fusepy)
 
-On EC2 the command line doesn't need any information on the actual server and can easily be used within an Auto Scaling group.
+On EC2 the command line doesn't need any information on the actual server and can easily be used
+within an [Auto Scaling](http://aws.amazon.com/autoscaling/) group.
 
 To mount an S3 bucket without using SNS (i.e. single node):
 
@@ -29,16 +34,18 @@ To mount an S3 bucket using SNS and listening to an SQS endpoint:
 
     yas3fs.py /path/to/mount --url=s3://bucket/path --topic TOPIC-ARN --new-queue
 
-I strongly suggest to start yas3fs for the first time with the "-d" (debug) option, to see if there is any error. When everything works it can be interrupted (with ^C) and restarted to run in background (it's the default with no "-d" / "-f" options).
+I strongly suggest to start yas3fs for the first time with the `-d` (debug) option, to see if there is any error.
+When everything works it can be interrupted (with `^C`) and restarted to run in background
+(it's the default with no `-d` / `-f` options).
 
 If you want to do a quick test here's the installation procedure depending on the OS flavor (Linux or Mac):
 
 * Create an S3 bucket in the region you work
 * You don't need to create anything in the bucket as the initial path (if any) is created by the tool on the first mount
-* If you want to use an existing S3 bucket you can use the "--no-metadata" option to not use user metadata to persist file system attr/xattr
+* If you want to use an existing S3 bucket you can use the `--no-metadata` option to not use user metadata to persist file system attr/xattr
 * Create an SNS topic in the same region as the S3 bucket and write down the full topic ARN (you need it to run the tool if more than one client is connected to the same bucket/path)
-* Create a IAM Role that gives access to the S3 and SNS/SQS resources you need or pass the AWS credentials to the tool using environmental variables (see "-h")
-* I used the eu-west-1 region in my sample, but you can replace that with any region you want. If no region is specified it defaults to us-east-1.
+* Create a IAM Role that gives access to the S3 and SNS/SQS resources you need or pass the AWS credentials to the tool using environmental variables (see `-h`)
+* I used the `eu-west-1` region in my sample, but you can replace that with any region you want. If no region is specified it defaults to `us-east-1`.
 
 **On EC2 with Amazon Linux 2012.09**
 
@@ -83,7 +90,7 @@ To install the Python M2Crypto module, download the most suitable "egg" from
     mkdir LOCAL-PATH
     ./yas3fs.py LOCAL-PATH --url=s3://BUCKET/PATH --topic TOPIC-ARN --new-queue --region eu-west-1
 
-If something does not work as expected you can use the "-d" option to run in foreground in debug mode.
+If something does not work as expected you can use the `-d` option to run in foreground in debug mode.
 
 **Unmount**
 
@@ -91,7 +98,7 @@ To unmount the file system on Linux:
 
     fusermount -u LOCAL-PATH
 
-To unmount the file system on a Mac you can use 'umount'.
+To unmount the file system on a Mac you can use `umount`.
 
 **Full Usage**
 
@@ -146,7 +153,8 @@ To unmount the file system on a Mac you can use 'umount'.
 
 **Notification Use & Syntax**
 
-You can use the SNS topic for other purposes than keeping the cache of the nodes in sync. Those are some sample use cases:
+You can use the SNS topic for other purposes than keeping the cache of the nodes in sync.
+Those are some sample use cases:
 
 * You can listen to the SNS topic to be updated on changes on S3 (if their are done through yas3fs)
 * You can publish on the SNS topic to manage the overall "cluster" of yas3fs nodes
@@ -177,7 +185,7 @@ you can send the following notification to the SNS topic (assuming there is no n
     all,reset
 
 In the same way, if you uploaded a new file (or updated an old one) directly on S3 
-you can invalidate all the caches of the nodes in the yas3fs cluster for that `path` sending this SNS notification:
+you can invalidate the caches of all the nodes in the yas3fs cluster for that `path` sending this SNS notification:
 
     all,flush,path
 
