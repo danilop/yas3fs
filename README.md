@@ -15,7 +15,7 @@ interface to [Amazon S3](http://aws.amazon.com/s3/).
 * If the cache grows to its maximum size, the least accessed files are removed.
 * AWS credentials can be passed using AWS\_ACCESS\_KEY\_ID and AWS\_SECRET\_ACCESS\_KEY environmental variables.
 * In an [EC2](http://aws.amazon.com/ec2/) instance a [IAM](http://aws.amazon.com/iam/) role can be used to give access to S3/SNS/SQS resources.
-* It is written in Python using [boto](https://github.com/boto/boto) and [fusepy](https://github.com/terencehonles/fusepy)
+* It is written in Python (2.6) using [boto](https://github.com/boto/boto) and [fusepy](https://github.com/terencehonles/fusepy)
 
 On EC2 the command line doesn't need any information on the actual server and can easily be used
 within an [Auto Scaling](http://aws.amazon.com/autoscaling/) group.
