@@ -1,5 +1,4 @@
-:q
-:#!/usr/bin/python
+#!/usr/bin/python
 
 """
 Yet Another S3-backed File System, or yas3fs
