@@ -1063,14 +1063,14 @@ In an EC2 instance a IAM role can be used to give access to S3/SNS/SQS resources
 
     parser = OptionParser(usage=usage)
 
-    parser.add_option("--url", dest="url",
+    parser.add_option("-u", "--url", dest="url",
                       help="the S3 path to mount in s3://BUCKET/PATH format, "
                       + "PATH can be empty, can contain subfolders and is created on first mount if not found in the BUCKET",
                       metavar="URL")
-    parser.add_option("--region", dest="region",
+    parser.add_option("-r", "--region", dest="region",
                       help="AWS region to use for SNS/SQS (default is %default)",
                       metavar="REGION", default="us-east-1")
-    parser.add_option("--topic", dest="topic",
+    parser.add_option("-t", "--topic", dest="topic",
                       help="SNS topic ARN", metavar="ARN")
     parser.add_option("--hostname", dest="hostname",
                       help="hostname to listen to SNS HTTP notifications", metavar="HOST")
@@ -1098,7 +1098,7 @@ In an EC2 instance a IAM role can be used to give access to S3/SNS/SQS resources
                       help="don't write user metadata on S3 to persist file system attr/xattr")
     parser.add_option("--id", dest="id",
                       help="a unique ID identifying this node in a cluster, hostname or queue name are used if not provided", metavar="ID")
-    parser.add_option("--log", dest="logfile",
+    parser.add_option("-l", "--log", dest="logfile",
                       help="the filename to use for logs", metavar="FILE", default="")
     parser.add_option("-f", "--foreground", action="store_true", dest="foreground", default=False,
                       help="run in foreground")

@@ -154,7 +154,6 @@ To unmount the file system on a Mac you can use `umount`.
                          attr/xattr
       --id=ID            a unique ID identifying this node in a cluster, hostname
                          or queue name are used if not provided
-      --log=FILE         the filename to use for logs
       -f, --foreground   run in foreground
       -d, --debug        print debug information (implies '-f')
 
