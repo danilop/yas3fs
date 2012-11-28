@@ -184,7 +184,6 @@ The following `action`(s) are currently implemented:
 * `md` (updated metadata, e.g. attr/xattr): `node_id,md,path`
 * `reset` (reset cache): `node_id,reset`
 * `cache` (change cache config): `node_id,cache,(entries|size),new_value`
-* `buffer` (change buffer config): `node_id,buffer,size,new_value`
 
 Every node will listen to notifications coming from a `node_id` different from its own.
 As an example, if you want to reset the cache of all the nodes in a yas3fs cluster,
@@ -201,12 +200,8 @@ The `path` is the relative path of the file system (`/` corresponding to the mou
 and doesn't include any S3 path (i.e. prefix) as given in the `--url` option.
 
 To change the size of the cache on all nodes, e.g. to bring it from 1GB (the current default) to 10GB,
-you can publish (the size is in MB as in the corresponding command line option):
+you can publish (the size is in MB):
 
     all,cache,size,10240
-
-To change the buffer size used to download the content (and make it available for reads) from the default of 10MB (optimized for a full download speed) to 256KB (optimized for a streaming service) you can use (the size is in KB, as in the corresponding command line option):
-
-    all,buffer,size,256
 
 **Happy file sharing!**
