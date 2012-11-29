@@ -51,9 +51,7 @@ interface to <a href="http://aws.amazon.com/s3/">Amazon S3</a>.</p>
 <li>AWS credentials can be passed using AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY environmental variables.</li>
 <li>In an <a href="http://aws.amazon.com/ec2/">EC2</a> instance a <a href="http://aws.amazon.com/iam/">IAM</a> role can be used to give access to S3/SNS/SQS resources.</li>
 <li>It is written in Python (2.6) using <a href="https://github.com/boto/boto">boto</a> and <a href="https://github.com/terencehonles/fusepy">fusepy</a>.</li>
-</ul><p><img src="https://github.com/downloads/danilop/yas3fs/yas3fs.png" alt="yas3fs logical architecture"></p>
-
-<p>On EC2 the command line doesn't need any information on the actual server and can easily be used
+</ul><p>On EC2 the command line doesn't need any information on the actual server and can easily be used
 within an <a href="http://aws.amazon.com/autoscaling/">Auto Scaling</a> group.</p>
 
 <p>To mount an S3 bucket without using SNS (i.e. for a single node):</p>
