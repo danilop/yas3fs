@@ -1,4 +1,4 @@
-# Yet Another S3-backed File System: yas3fs
+### Yet Another S3-backed File System: yas3fs
 
 YAS3FS (Yet Another S3-backed File System) is a [Filesystem in Userspace (FUSE)](http://fuse.sourceforge.net)
 interface to [Amazon S3](http://aws.amazon.com/s3/).
@@ -42,6 +42,8 @@ On EC2 the security group must allow inbound traffic from SNS on the selected po
 I strongly suggest to start yas3fs for the first time with the `-d` (debug) option, to see if there is any error.
 When everything works it can be interrupted (with `^C`) and restarted to run in background
 (it's the default with no `-d` / `-f` options).
+
+### Quick Installation
 
 If you want to do a quick test here's the installation procedure depending on the OS flavor (Linux or Mac):
 
@@ -106,7 +108,7 @@ To unmount the file system on Linux:
 
 To unmount the file system on a Mac you can use `umount`.
 
-**Full Usage**
+### Full Usage
 
     yas3fs.py -h
     
@@ -158,7 +160,7 @@ To unmount the file system on a Mac you can use `umount`.
       -f, --foreground   run in foreground
       -d, --debug        print debug information (implies '-f')
 
-**Notification Use & Syntax**
+### Notification Syntax & Use
 
 You can use the SNS topic for other purposes than keeping the cache of the nodes in sync.
 Those are some sample use cases:
@@ -209,4 +211,3 @@ To change the buffer size used to download the content (and make it available fo
 
     all,buffer,size,256
 
-**Happy file sharing!**
