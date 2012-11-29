@@ -154,8 +154,6 @@ To unmount the file system on a Mac you can use `umount`.
                          default is 10240 KB)
       --no-metadata      don't write user metadata on S3 to persist file system
                          attr/xattr
-      --prefetch         start downloading file content as soon as the file is
-                         discovered
       --id=ID            a unique ID identifying this node in a cluster, hostname
                          or queue name are used if not provided
       --log=FILE         the filename to use for logs
