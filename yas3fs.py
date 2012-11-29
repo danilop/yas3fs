@@ -477,54 +477,73 @@ class YAS3FS(LoggingMixIn, Operations):
             else:
                 time.sleep(self.queue_polling_interval)
 
+    def invalidate_cache(self, path, md5=None):
+        self.cache.delete(path, 'key')
+        if self.cache.is_empty(path):
+            self.cache.delete(path)
+        elif self.cache.has(path, 'data') and not self.cache.has(path, 'change'):
+            self.cache.set(path, 'new-data', md5)
+        if self.prefetch:
+            t = threading.Thread(target=self.getattr, args=(path, None, False))
+            t.daemon = True
+            t.start()
+
+    def delete_cache(self, path, tryPrefetch):
+        self.cache.delete(path)
+        self.reset_parent_readdir(path)
+        if tryPrefetch and self.prefetch:
+            t = threading.Thread(target=self.getattr, args=(path, None, False))
+            t.daemon = True
+            t.start()
+
     def sync_cache(self, changes):
-        changes_list = changes.split(',')
-        sender = changes_list[0]
-        if not sender == self.unique_id: # discard message coming from itself
-            for change in changes_list[1:]:
-                c = change.split(' ')
-                if c[0] in ( 'mkdir', 'rmdir', 'mknod', 'unlink', 'symlink' ):
+        c = json.loads(changes)
+        if not c[0] == self.unique_id: # discard message coming from itself
+            if c[1] in ( 'mkdir', 'mknod', 'symlink', 'rename-to' ):
+                with self.cache.lock:
+                    if not self.cache.has(c[2], 'change'):
+                        self.delete_cache(c[2], True)
+            elif c[1] in ( 'rmdir', 'unlink', 'rename-from' ):
+                with self.cache.lock:
+                    if not self.cache.has(c[2], 'change'):
+                        self.delete_cache(c[2], False)
+            elif c[1] == 'truncate':
+                with self.cache.lock:
+                    self.invalidate_cache(c[2])
+            elif c[1] == 'flush':
+                if c[2] and c[3]:
                     with self.cache.lock:
-                        if not self.cache.has(c[1], 'change'):
-                            self.cache.delete(c[1])
-                            self.reset_parent_readdir(c[1])
-                elif c[0] == 'rename':
-                    self.cache.delete(c[1])
-                    self.reset_parent_readdir(c[1])
-                    self.cache.delete(c[2])
-                    self.reset_parent_readdir(c[2])
-                elif c[0] == 'flush':
-                    if c[1]:
-                        with self.cache.lock:
-                            if self.cache.has(c[1], 'data') and not self.cache.has(c[1], 'change'):
-                                self.cache.delete(c[1], 'key')
-                                self.cache.set(c[1], 'old-data', True)
-                    else: # Invalidate all the cached data, it locks the file system for a while
-                        with self.cache.lock:
-                            for path in self.cache.entries:
-                                if self.cache.has(path, 'data') and not self.cache.has(path, 'change'):
-                                    self.cache.delete(path, 'key')
-                                    self.cache.set(path, 'old-data', True)
-                elif c[0] == 'md':
-                    self.cache.delete(c[1], 'key')
-                    self.cache.delete(c[1], c[2])
-                elif c[0] == 'reset':
+                        self.invalidate_cache(c[3], c[2])
+                else: # Invalidate all the cached data, it locks the file system for a while
                     with self.cache.lock:
-                        self.flush_all_cache()
-                        self.cache.reset_all() # Completely reset the cache
-                elif c[0] == 'cache':
-                    if c[1] == 'entries':
-                        self.max_num_entries = int(c[2])
-                    elif c[1] == 'size':
-                        self.max_props_size = int(c[2]) * (1024 * 1024) # MB
-                elif c[0] == 'buffer':
-                    if c[1] == 'size':
-                        self.buffer_size = int(c[2]) * 1024 # KB
+                        for path in self.cache.entries:
+                            self.invalidate_cache(path)
+            elif c[1] == 'md':
+                self.cache.delete(c[3], 'key')
+                self.cache.delete(c[3], c[2])
+            elif c[1] == 'reset':
+                with self.cache.lock:
+                    self.flush_all_cache()
+                    self.cache.reset_all() # Completely reset the cache
+            elif c[1] == 'cache':
+                if c[2] == 'entries':
+                    self.max_num_entries = int(c[3])
+            elif c[2] == 'size':
+                self.max_props_size = int(c[3]) * (1024 * 1024) # MB
+            elif c[1] == 'buffer':
+                if c[2] == 'size':
+                    self.buffer_size = int(c[3]) * 1024 # KB
+            elif c[1] == 'prefetch':
+                if c[2] == 'on':
+                    self.prefetch = True
+                elif c[2] == 'off':
+                    self.prefetch = False
 
     def publish_changes(self):
         while self.sns_topic_arn:
             message = self.publish_queue.get()
-            full_message = self.unique_id + ',' + message
+            message.insert(0, self.unique_id)
+            full_message = json.dumps(message)
             self.sns.publish(self.sns_topic_arn, full_message.encode('ascii'))
             self.publish_queue.task_done()
                 
@@ -580,7 +599,7 @@ class YAS3FS(LoggingMixIn, Operations):
         self.cache.set(path, 'key', key)
         return key
 
-    def get_metadata(self, path, metadata_name, key=None):
+    def get_metadata(self, path, metadata_name, key=None, raiseError=True):
         if not self.cache.has(path, metadata_name):
             if not key:
                 key = self.get_key(path)
@@ -595,15 +614,20 @@ class YAS3FS(LoggingMixIn, Operations):
                     key_list = self.s3_bucket.list(full_path) # Don't need to set a delimeter here
                     if len(list(key_list)) == 0:
                         self.cache.add(path) # It is empty to cache further checks
-                        raise FuseOSError(errno.ENOENT)
+                        if raiseError:
+                            raise FuseOSError(errno.ENOENT)
+                        else:
+                            return None
             metadata_values = {}
             if key:
                 s = key.get_metadata(metadata_name)
-                metadata_values['st_size'] = str(key.size)
             else:
                 s = None
-                metadata_values['st_size'] = '0'
             if metadata_name == 'attr': # Custom exception(s)
+                if key:
+                    metadata_values['st_size'] = str(key.size)
+                else:
+                    metadata_values['st_size'] = '0'                
                 if not s: # Set default attr to browse any S3 bucket TODO directories
 		    uid, gid, pid = fuse_get_context()
  		    metadata_values['st_uid'] = str(int(uid))
@@ -643,12 +667,14 @@ class YAS3FS(LoggingMixIn, Operations):
                     md = key.metadata
                     md['Content-Type'] = key.content_type # Otherwise we loose the Content-Type with Copy
                     key.copy(key.bucket.name, key.name, md, preserve_acl=False) # Do I need to preserve ACL?
-                    self.publish('md ' + path + ' ' + metadata_name)
+                    self.publish(['md', metadata_name, path])
 
-    def getattr(self, path, fh=None):
+    def getattr(self, path, fh=None, raiseError=True):
         if self.cache.has(path) and self.cache.is_empty(path):
             raise FuseOSError(errno.ENOENT)
-	attr = self.get_metadata(path, 'attr')
+	attr = self.get_metadata(path, 'attr', raiseError=raiseError)
+        if attr == None:
+            return None
 	st = {}
 	st['st_mode'] = int(attr['st_mode'])
 	st['st_atime'] = float(attr['st_atime']) # Should I update this ???
@@ -716,7 +742,7 @@ class YAS3FS(LoggingMixIn, Operations):
 	self.cache.set(path, 'readdir', ['.', '..']) # the directory is empty
 	if path != '':
             self.add_to_parent_readdir(path)
-            self.publish('mkdir ' + path)
+            self.publish(['mkdir', path])
 	return 0
  
     def symlink(self, path, link):
@@ -746,19 +772,32 @@ class YAS3FS(LoggingMixIn, Operations):
         self.cache.set(path, 'key', k)
 	self.cache.delete(path, 'change')
 	self.add_to_parent_readdir(path)
-	self.publish('symlink ' + path)
+	self.publish(['symlink', path])
 	return 0
 
     def check_data(self, path): 
-	if not self.cache.has(path, 'data') or self.cache.has(path, 'old-data'):
+	if not self.cache.has(path, 'data') or self.cache.has(path, 'new-data'):
 	    k = self.get_key(path)
             if not k:
 		return False
+            if k.size == 0:
+                data = io.BytesIO()
+                self.cache.set(path, 'data', data)
+                self.cache.delete(path, 'new-data')
+                with self.cache.lock:
+                    if self.cache.has(path, 'data-range'):
+                        (range, event) = self.cache.get(path, 'data-range')
+                        self.cache.delete(path, 'data-range')
+                        event.set()
+                return True
 	    if self.cache.has(path, 'data'):
-                self.cache.delete(path, 'old-data')
+                new_md5 = self.cache.get(path, 'new-data')
 		md5 = '"' + hashlib.md5(self.cache.get(path, 'data').getvalue()).hexdigest() + '"'
+                if not new_md5 or new_md5 == k.etag:
+                    self.cache.delete(path, 'new-data')
 		if md5 == k.etag:
 		    return True
+            self.cache.delete(path, 'attr')
             if self.buffer_size > 0:
                 with self.cache.lock:
                     if self.cache.has(path, 'data-range'):
@@ -779,7 +818,11 @@ class YAS3FS(LoggingMixIn, Operations):
         key.BufferSize = min(self.buffer_size, key.size) # Is this an optimization or not?
 
         for bytes in key:
-            (total, event) = self.cache.get(path, 'data-range')
+            with self.cache.lock:
+                if self.cache.has(path, 'data-range'):
+                    (total, event) = self.cache.get(path, 'data-range')
+                else:
+                    return
             data.seek(total)
             data.write(bytes)
             total += len(bytes)
@@ -819,7 +862,7 @@ class YAS3FS(LoggingMixIn, Operations):
 	k.delete()
 	self.cache.reset(path) # Cache invalidation
 	self.remove_from_parent_readdir(path)
-	self.publish('rmdir ' + path)
+	self.publish(['rmdir', path])
 	return 0
 
     def truncate(self, path, size):
@@ -833,8 +876,7 @@ class YAS3FS(LoggingMixIn, Operations):
 	attr['st_size'] = str(size)
 	self.cache.set(path, 'change', True)
 	self.set_metadata(path, 'attr', attr)
-
-	self.publish('truncate ' + path)
+	self.publish(['truncate', path])
 	return 0
 
     def rename(self, path, new_path):
@@ -868,7 +910,8 @@ class YAS3FS(LoggingMixIn, Operations):
             md['Content-Type'] = key.content_type # Otherwise we loose the Content-Type with S3 Copy
             key.copy(key.bucket.name, target, md, preserve_acl=False) # Do I need to preserve ACL?
             key.delete()
-            self.publish('rename ' + source_path + ' ' + target_path)
+            self.publish(['rename-from', source_path])
+            self.publish(['rename-to', target_path])
         self.remove_from_parent_readdir(path)
         self.add_to_parent_readdir(new_path)
 
@@ -896,7 +939,7 @@ class YAS3FS(LoggingMixIn, Operations):
 	self.set_metadata(path, 'xattr', {})
 	self.cache.set(path, 'data', io.BytesIO(''))
 	self.add_to_parent_readdir(path)
-	self.publish('mknod ' + path)
+	self.publish(['mknod', path])
 	return 0
 
     def unlink(self, path):
@@ -908,7 +951,7 @@ class YAS3FS(LoggingMixIn, Operations):
 	k.delete()
 	self.cache.reset(path)
 	self.remove_from_parent_readdir(path)
-	self.publish('unlink ' + path)
+	self.publish(['unlink', path])
 	return 0
 
     def create(self, path, mode, fi=None):
@@ -982,7 +1025,7 @@ class YAS3FS(LoggingMixIn, Operations):
             data.seek(0)
             k.set_contents_from_file(data, headers={'Content-Type': type})
             self.cache.delete(path, 'change')
-            self.publish('flush ' + path)
+            self.publish(['flush', k.etag, path])
         return 0
 
     def chmod(self, path, mode):
