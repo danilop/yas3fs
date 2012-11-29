@@ -324,6 +324,8 @@ class YAS3FS(LoggingMixIn, Operations):
         logger.info("Download buffer size (in KB, 0 to disable buffering): '%i'" % self.buffer_size)
         self.write_metadata = options.write_metadata
         logger.info("Write metadata (file system attr/xattr) on S3: '%s'" % str(self.write_metadata))
+        self.prefetch = options.prefetch
+        logger.info("Download prefetch: '%s'" % str(self.prefetch))
 
         # AWS Initialization
         try:
@@ -658,6 +660,8 @@ class YAS3FS(LoggingMixIn, Operations):
         if stat.S_ISDIR(st['st_mode']) and st['st_size'] == 0:
             st['st_size'] = 4096 # For compatibility...
 	st['st_nlink'] = 1 # Something better TODO ???
+        if not stat.S_ISDIR(st['st_mode']) and self.prefetch:
+            self.check_data(path) # Prefetch
 	return st
 
     def readdir(self, path, fh=None):
@@ -1051,6 +1055,24 @@ class YAS3FS(LoggingMixIn, Operations):
         self.set_metadata(path, 'xattr', xattr)
         return 0
 
+    def statfs(self, path):
+        """Returns a dictionary with keys identical to the statvfs C
+           structure of statvfs(3).
+           The 'f_frsize', 'f_favail', 'f_fsid' and 'f_flag' fields are ignored
+           On Mac OS X f_bsize and f_frsize must be a power of 2
+           (minimum 512)."""
+        return {
+            "f_namemax" : 512,
+            "f_bsize" : 128 * 1024,
+            "f_blocks" : 1024 * 1024 * 1024,
+            "f_bfree" : 1024 * 1024 * 1024,
+            "f_bavail" : 1024 * 1024 * 1024,
+            "f_files" : 1024 * 1024 * 1024,
+            "f_favail" : 1024 * 1024 * 1024,
+            "f_ffree" : 1024 * 1024 * 1024
+            }
+        return {}
+
 def errorAndExit(error, exitCode=1):
     logger.error(error + ", use -h for help.")
     exit(exitCode)
@@ -1106,6 +1128,8 @@ In an EC2 instance a IAM role can be used to give access to S3/SNS/SQS resources
                       help="download buffer size in KB (0 to disable buffering, default is %default KB)", metavar="N", default=10240)
     parser.add_option("--no-metadata", action="store_false", dest="write_metadata", default=True,
                       help="don't write user metadata on S3 to persist file system attr/xattr")
+    parser.add_option("--prefetch", action="store_true", dest="prefetch", default=False,
+                      help="start downloading file content as soon as the file is discovered")
     parser.add_option("--id", dest="id",
                       help="a unique ID identifying this node in a cluster, hostname or queue name are used if not provided", metavar="ID")
     parser.add_option("--log", dest="logfile",
@@ -1141,7 +1165,9 @@ In an EC2 instance a IAM role can be used to give access to S3/SNS/SQS resources
         fuse = FUSE(YAS3FS(options), mountpoint, fsname="yas3fs",
                     foreground=options.foreground or options.debug,
                     default_permissions=True, allow_other=True,
-                    auto_xattr=True, volname=volume_name)
+                    auto_xattr=True, volname=volume_name,
+                    noappledouble=True, daemon_timeout=3600,
+                    auto_cache=True, local=True)
     else:
         fuse = FUSE(YAS3FS(options), mountpoint, fsname="yas3fs",
                     foreground=options.foreground or options.debug,
