@@ -33,7 +33,7 @@ To mount an S3 bucket using SNS and listening to an SQS endpoint:
 
     yas3fs.py /path/to/mount --url=s3://bucket/path --topic TOPIC-ARN --new-queue
 
-To mount an S3 bucket using SNS and listening to an HTTP endpoint:
+To mount an S3 bucket using SNS and listening to an HTTP endpoint (on EC2):
 
     yas3fs.py /path/to/mount --url=s3://bucket/path --topic TOPIC-ARN --ec2-hostname --port N
 
