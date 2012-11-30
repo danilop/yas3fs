@@ -502,35 +502,34 @@ class YAS3FS(LoggingMixIn, Operations):
         print "got '%s'" % changes
         c = json.loads(changes)
         if not c[0] == self.unique_id: # discard message coming from itself
-            if c[1] in ( 'mkdir', 'mknod', 'symlink' ) and c[2] != None:
+            if c[1] in ( 'mkdir', 'mknod', 'symlink' ):
                 self.delete_cache(c[2], True)
-            elif c[1] in ( 'rmdir', 'unlink' ) and c[2] != None:
+            elif c[1] in ( 'rmdir', 'unlink' ):
                 self.delete_cache(c[2], False)
-            elif c[1] == 'rename' and c[2] != None and c[3] != None:
+            elif c[1] == 'rename':
                 self.delete_cache(c[2], False)
                 self.delete_cache(c[3], True)
-            ###elif c[1] == 'truncate':
-            ###    self.invalidate_cache(c[2])
+            elif c[1] == 'truncate':
+                self.invalidate_cache(c[2])
             elif c[1] == 'flush':
-                if c[2] != None:
+                if c[2] and c[3]:
                     self.invalidate_cache(c[2], c[3])
                 else: # Invalidate all the cached data
                     for path in self.cache.entries:
                         self.invalidate_cache(path)
             elif c[1] == 'md':
-                if c[2]:
-                    self.cache.delete(c[3], 'key')
-                    self.cache.delete(c[3], c[2])
+                self.cache.delete(c[3], 'key')
+                self.cache.delete(c[3], c[2])
             elif c[1] == 'reset':
                 with self.cache.lock:
                     self.flush_all_cache()
                     self.cache.reset_all() # Completely reset the cache
             elif c[1] == 'cache':
-                if c[2] == 'entries' and c[3] > 0:
+                if c[2] == 'entries':
                     self.max_num_entries = int(c[3])
-            elif c[2] == 'size' and c[3] > 0:
+            elif c[2] == 'size':
                 self.max_props_size = int(c[3]) * (1024 * 1024) # MB
-            elif c[1] == 'buffer' and c[3] >= 0:
+            elif c[1] == 'buffer':
                 if c[2] == 'size':
                     self.buffer_size = int(c[3]) * 1024 # KB
             elif c[1] == 'prefetch':
