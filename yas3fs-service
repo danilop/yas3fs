@@ -3,7 +3,7 @@
 # This is a sample script to be configured and copied in /etc/rc.d/init.d
 # to mount one (or more) file systems using yas3fs at boot
 
-# This are some environmental variable to configure this service
+# Those are some environmental variables to configure yas3fs
 
 UNPRIVILEGED_USER=ec2-user
 INSTALL_PATH=/usr/local/bin
