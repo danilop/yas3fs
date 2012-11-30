@@ -39,8 +39,8 @@ interface to <a href="http://aws.amazon.com/s3/">Amazon S3</a>.</p>
 <p><strong>This is a personal project. No relation whatsoever exists between this project and my employer.</strong></p>
 
 <ul>
-<li>It allows to mount an S3 bucket (or a part of it, if you specify a path) as a local folder</li>
-<li>It works on Linux and Mac OS X</li>
+<li>It allows to mount an S3 bucket (or a part of it, if you specify a path) as a local folder.</li>
+<li>It works on Linux and Mac OS X.</li>
 <li>For maximum speed all data read from S3 is cached in memory locally on the node.</li>
 <li>It can be used on more than one node to create a "shared" file system (i.e. a yas3fs "cluster").</li>
 <li>
@@ -85,11 +85,11 @@ When everything works it can be interrupted (with <code>^C</code>) and restarted
 <p>If you want to do a quick test here's the installation procedure depending on the OS flavor (Linux or Mac):</p>
 
 <ul>
-<li>Create an S3 bucket in the region you work</li>
-<li>You don't need to create anything in the bucket as the initial path (if any) is created by the tool on the first mount</li>
-<li>If you want to use an existing S3 bucket you can use the <code>--no-metadata</code> option to not use user metadata to persist file system attr/xattr</li>
-<li>Create an SNS topic in the same region as the S3 bucket and write down the full topic ARN (you need it to run the tool if more than one client is connected to the same bucket/path)</li>
-<li>Create a IAM Role that gives access to the S3 and SNS/SQS resources you need or pass the AWS credentials to the tool using environmental variables (see <code>-h</code>)</li>
+<li>Create an S3 bucket in the AWS region you prefer.</li>
+<li>You don't need to create anything in the bucket as the initial path (if any) is created by the tool on the first mount.</li>
+<li>If you want to use an existing S3 bucket you can use the <code>--no-metadata</code> option to not use user metadata to persist file system attr/xattr.</li>
+<li>Create an SNS topic in the same region as the S3 bucket and write down the full topic ARN (you need it to run the tool if more than one client is connected to the same bucket/path).</li>
+<li>Create a IAM Role that gives access to the S3 and SNS/SQS resources you need or pass the AWS credentials to the tool using environmental variables (see <code>-h</code>).</li>
 <li>I used the <code>eu-west-1</code> region in my sample, but you can replace that with any region you want. If no region is specified it defaults to <code>us-east-1</code>.</li>
 </ul><p><strong>On EC2 with Amazon Linux 2012.09</strong></p>
 
@@ -125,7 +125,7 @@ mkdir LOCAL-PATH
 
 <p>To install the Python <a href="http://chandlerproject.org/Projects/MeTooCrypto">M2Crypto</a> module,
 download the most suitable "egg" from
-<a href="http://chandlerproject.org/Projects/MeTooCrypto#Downloads">http://chandlerproject.org/Projects/MeTooCrypto#Downloads</a></p>
+<a href="http://chandlerproject.org/Projects/MeTooCrypto#Downloads">http://chandlerproject.org/Projects/MeTooCrypto#Downloads</a>.</p>
 
 <pre><code>sudo easy_install M2Crypto-*.egg
 sudo easy_install boto
@@ -210,8 +210,8 @@ Options:
 Those are some sample use cases:</p>
 
 <ul>
-<li>You can listen to the SNS topic to be updated on changes on S3 (if their are done through yas3fs)</li>
-<li>You can publish on the SNS topic to manage the overall "cluster" of yas3fs nodes</li>
+<li>You can listen to the SNS topic to be updated on changes on S3 (if their are done through yas3fs).</li>
+<li>You can publish on the SNS topic to manage the overall "cluster" of yas3fs nodes.</li>
 </ul><p>The SNS notification syntax is based on <a href="http://www.json.org">JSON (JavaScript Object Notation)</a>:</p>
 
 <pre><code>[ "node_id", "action", ... ]
@@ -255,12 +255,14 @@ Those are some sample use cases:</p>
 <li>
 <code>prefetch</code> (change prefetch config): <code>[ "node_id", "prefetch", "on" or "off" ]</code>
 </li>
-</ul><p>Every node will listen to notifications coming from a <code>node_id</code> different from its own.
+</ul><p>Every node will listen to notifications coming from a <code>node_id</code> different from its own id.
 As an example, if you want to reset the cache of all the nodes in a yas3fs cluster,
 you can send the following notification to the SNS topic (assuming there is no node with id equal to <code>all</code>):</p>
 
 <pre><code>[ "all", "reset" ]
 </code></pre>
+
+<p>To send the notification tou can use the SNS web console.</p>
 
 <p>In the same way, if you uploaded a new file (or updated an old one) directly on S3 
 you can invalidate the caches of all the nodes in the yas3fs cluster for that <code>path</code> sending this SNS notification:</p>
@@ -286,6 +288,8 @@ you can publish (the size is in MB as in the corresponding command line option):
 
 <pre><code>[ "all", "prefetch", "on" ]
 </code></pre>
+
+<p>Happy File Sharing!</p>
       </section>
     </div>
 
