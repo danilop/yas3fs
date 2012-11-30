@@ -5,8 +5,8 @@ interface to [Amazon S3](http://aws.amazon.com/s3/).
 
 **This is a personal project. No relation whatsoever exists between this project and my employer.**
 
-* It allows to mount an S3 bucket (or a part of it, if you specify a path) as a local folder
-* It works on Linux and Mac OS X
+* It allows to mount an S3 bucket (or a part of it, if you specify a path) as a local folder.
+* It works on Linux and Mac OS X.
 * For maximum speed all data read from S3 is cached in memory locally on the node.
 * It can be used on more than one node to create a "shared" file system (i.e. a yas3fs "cluster").
 * [SNS](http://aws.amazon.com/sns/) notifications are used to update other nodes in the cluster that something has changed on S3 and they need to invalidate their cache.
@@ -47,11 +47,11 @@ When everything works it can be interrupted (with `^C`) and restarted to run in 
 
 If you want to do a quick test here's the installation procedure depending on the OS flavor (Linux or Mac):
 
-* Create an S3 bucket in the region you work
-* You don't need to create anything in the bucket as the initial path (if any) is created by the tool on the first mount
-* If you want to use an existing S3 bucket you can use the `--no-metadata` option to not use user metadata to persist file system attr/xattr
-* Create an SNS topic in the same region as the S3 bucket and write down the full topic ARN (you need it to run the tool if more than one client is connected to the same bucket/path)
-* Create a IAM Role that gives access to the S3 and SNS/SQS resources you need or pass the AWS credentials to the tool using environmental variables (see `-h`)
+* Create an S3 bucket in the AWS region you prefer.
+* You don't need to create anything in the bucket as the initial path (if any) is created by the tool on the first mount.
+* If you want to use an existing S3 bucket you can use the `--no-metadata` option to not use user metadata to persist file system attr/xattr.
+* Create an SNS topic in the same region as the S3 bucket and write down the full topic ARN (you need it to run the tool if more than one client is connected to the same bucket/path).
+* Create a IAM Role that gives access to the S3 and SNS/SQS resources you need or pass the AWS credentials to the tool using environmental variables (see `-h`).
 * I used the `eu-west-1` region in my sample, but you can replace that with any region you want. If no region is specified it defaults to `us-east-1`.
 
 **On EC2 with Amazon Linux 2012.09**
@@ -86,7 +86,7 @@ Install FUSE for OS X from <http://osxfuse.github.com>
 
 To install the Python [M2Crypto](http://chandlerproject.org/Projects/MeTooCrypto) module,
 download the most suitable "egg" from
-<http://chandlerproject.org/Projects/MeTooCrypto#Downloads>
+<http://chandlerproject.org/Projects/MeTooCrypto#Downloads>.
 
     sudo easy_install M2Crypto-*.egg
     sudo easy_install boto
@@ -167,8 +167,8 @@ To unmount the file system on a Mac you can use `umount`.
 You can use the SNS topic for other purposes than keeping the cache of the nodes in sync.
 Those are some sample use cases:
 
-* You can listen to the SNS topic to be updated on changes on S3 (if their are done through yas3fs)
-* You can publish on the SNS topic to manage the overall "cluster" of yas3fs nodes
+* You can listen to the SNS topic to be updated on changes on S3 (if their are done through yas3fs).
+* You can publish on the SNS topic to manage the overall "cluster" of yas3fs nodes.
 
 The SNS notification syntax is based on [JSON (JavaScript Object Notation)](http://www.json.org):
 
@@ -189,11 +189,13 @@ The following `action`(s) are currently implemented:
 * `buffer` (change buffer config): `[ "node_id", "buffer", "size", new_value ]`
 * `prefetch` (change prefetch config): `[ "node_id", "prefetch", "on" or "off" ]`
 
-Every node will listen to notifications coming from a `node_id` different from its own.
+Every node will listen to notifications coming from a `node_id` different from its own id.
 As an example, if you want to reset the cache of all the nodes in a yas3fs cluster,
 you can send the following notification to the SNS topic (assuming there is no node with id equal to `all`):
 
     [ "all", "reset" ]
+
+To send the notification tou can use the SNS web console.
 
 In the same way, if you uploaded a new file (or updated an old one) directly on S3 
 you can invalidate the caches of all the nodes in the yas3fs cluster for that `path` sending this SNS notification:
@@ -215,3 +217,5 @@ To change the buffer size used to download the content (and make it available fo
 Similarly, to activate download prefetch on all nodes you can use:
 
     [ "all", "prefetch", "on" ]
+
+Happy File Sharing!
