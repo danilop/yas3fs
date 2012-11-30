@@ -46,7 +46,7 @@ interface to <a href="http://aws.amazon.com/s3/">Amazon S3</a>.</p>
 <li>
 <a href="http://aws.amazon.com/sns/">SNS</a> notifications are used to update other nodes in the cluster that something has changed on S3 and they need to invalidate their cache.</li>
 <li>Notifications can be listened using HTTP or <a href="http://aws.amazon.com/sqs/">SQS</a> endpoints.</li>
-<li>With buffering enabled (the default) files can be accessed during the download from S3.</li>
+<li>With buffering enabled (the default) files can be accessed during the download from S3 (e.g. for streaming).</li>
 <li>If the cache grows to its maximum size, the least accessed files are removed.</li>
 <li>AWS credentials can be passed using AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY environmental variables.</li>
 <li>In an <a href="http://aws.amazon.com/ec2/">EC2</a> instance a <a href="http://aws.amazon.com/iam/">IAM</a> role can be used to give access to S3/SNS/SQS resources.</li>
@@ -210,7 +210,7 @@ Options:
 Those are some sample use cases:</p>
 
 <ul>
-<li>You can listen to the SNS topic to be updated on changes on S3 (if their are done through yas3fs).</li>
+<li>You can listen to the SNS topic to be updated on changes on S3 (if done through yas3fs).</li>
 <li>You can publish on the SNS topic to manage the overall "cluster" of yas3fs nodes.</li>
 </ul><p>The SNS notification syntax is based on <a href="http://www.json.org">JSON (JavaScript Object Notation)</a>:</p>
 
