@@ -187,7 +187,7 @@ The following `action`(s) are currently implemented:
 * `reset` (reset cache): `[ "node_id", "reset" ]`
 * `cache` (change cache config): `[ "node_id", "cache" , "entries" or "size", new_value ]`
 * `buffer` (change buffer config): `[ "node_id", "buffer", "size", new_value ]`
-* `prefetch' (change prefetch config): `[ "node_id", "prefetch", "on" or "off" ]`
+* `prefetch` (change prefetch config): `[ "node_id", "prefetch", "on" or "off" ]`
 
 Every node will listen to notifications coming from a `node_id` different from its own.
 As an example, if you want to reset the cache of all the nodes in a yas3fs cluster,
