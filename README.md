@@ -167,7 +167,7 @@ To unmount the file system on a Mac you can use `umount`.
 You can use the SNS topic for other purposes than keeping the cache of the nodes in sync.
 Those are some sample use cases:
 
-* You can listen to the SNS topic to be updated on changes on S3 (if their are done through yas3fs).
+* You can listen to the SNS topic to be updated on changes on S3 (if done through yas3fs).
 * You can publish on the SNS topic to manage the overall "cluster" of yas3fs nodes.
 
 The SNS notification syntax is based on [JSON (JavaScript Object Notation)](http://www.json.org):
