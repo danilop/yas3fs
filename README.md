@@ -182,7 +182,7 @@ The following `action`(s) are currently implemented:
 * `unlink` (remove file): `[ "node_id", "unlink", "path" ]`
 * `symlink` (new symbolic link): `[ "node_id", "symlink", "path" ]`
 * `rename` (rename file or directory): `[ "node_id", "rename", "old_path", "new_path" ]`
-* `flush` (updated file): `[ "node_id", "flush", "path", "new_md5" ]` (path and new_md5 are optional)
+* `flush` (updated file): `[ "node_id", "flush", "path", "new_md5" ]` (`path` and `new_md5` are optional)
 * `md` (updated metadata, e.g. attr/xattr): `[ "node_id", "md", "path", "metadata_name" ]`
 * `reset` (reset cache): `[ "node_id", "reset" ]`
 * `cache` (change cache config): `[ "node_id", "cache" , "entries" or "size", new_value ]`
