@@ -499,7 +499,6 @@ class YAS3FS(LoggingMixIn, Operations):
                 t.start()
 
     def sync_cache(self, changes):
-        print "got '%s'" % changes
         c = json.loads(changes)
         if not c[0] == self.unique_id: # discard message coming from itself
             if c[1] in ( 'mkdir', 'mknod', 'symlink' ) and c[2] != None:
@@ -509,7 +508,7 @@ class YAS3FS(LoggingMixIn, Operations):
             elif c[1] == 'rename' and c[2] != None and c[3] != None:
                 self.delete_cache(c[2], False)
                 self.delete_cache(c[3], True)
-            ###elif c[1] == 'truncate':
+           ###elif c[1] == 'truncate': # No need to broadcast, wait for the following 'flush'
             ###    self.invalidate_cache(c[2])
             elif c[1] == 'flush':
                 if c[2] != None:
@@ -544,7 +543,6 @@ class YAS3FS(LoggingMixIn, Operations):
             message = self.publish_queue.get()
             message.insert(0, self.unique_id)
             full_message = json.dumps(message)
-            print "publish '%s'" % full_message
             self.sns.publish(self.sns_topic_arn, full_message.encode('ascii'))
             self.publish_queue.task_done()
                 
@@ -880,7 +878,7 @@ class YAS3FS(LoggingMixIn, Operations):
 	attr['st_size'] = str(size)
 	self.cache.set(path, 'change', True)
 	self.set_metadata(path, 'attr', attr)
-	self.publish(['truncate', path])
+	### self.publish(['truncate', path]) # No need to broadcast, wait for the following 'flush'
 	return 0
 
     def rename(self, path, new_path):
