@@ -1209,10 +1209,12 @@ In an EC2 instance a IAM role can be used to give access to S3/SNS/SQS resources
         fuse = FUSE(YAS3FS(options), mountpoint, fsname="yas3fs",
                     foreground=options.foreground or options.debug,
                     default_permissions=True, allow_other=True,
+                    auto_cache=True,
                     auto_xattr=True, volname=volume_name,
                     noappledouble=True, daemon_timeout=3600,
-                    auto_cache=True, local=True)
+                    local=True)
     else:
         fuse = FUSE(YAS3FS(options), mountpoint, fsname="yas3fs",
                     foreground=options.foreground or options.debug,
-                    default_permissions=True, allow_other=True)
+                    default_permissions=True, allow_other=True,
+                    auto_cache=True)
