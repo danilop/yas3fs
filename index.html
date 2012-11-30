@@ -212,60 +212,60 @@ Those are some sample use cases:</p>
 <ul>
 <li>You can listen to the SNS topic to be updated on changes on S3 (if their are done through yas3fs)</li>
 <li>You can publish on the SNS topic to manage the overall "cluster" of yas3fs nodes</li>
-</ul><p>The SNS notification syntax is (with no spaces):</p>
+</ul><p>The SNS notification syntax is based on <a href="http://www.json.org">JSON (JavaScript Object Notation)</a>:</p>
 
-<pre><code>node_id,action[,object1[,object2]]
+<pre><code>[ "node_id", "action", ... ]
 </code></pre>
-
-<p>The <code>object1</code> and <code>object2</code> are optional and their meaning depends on the <code>action</code>.</p>
 
 <p>The following <code>action</code>(s) are currently implemented:</p>
 
 <ul>
 <li>
-<code>mkdir</code> (new directory): <code>node_id,mkdir,path</code>
+<code>mkdir</code> (new directory): <code>[ "node_id", "mkdir", "path" ]</code>
 </li>
 <li>
-<code>rmdir</code> (remove directory): <code>node_id,rmdir,path</code>
+<code>rmdir</code> (remove directory): <code>[ "node_id", "rmdir", "path" ]</code>
 </li>
 <li>
-<code>mknod</code> (new empty file): <code>node_id,mknod,path</code>
+<code>mknod</code> (new empty file): <code>[ "node_id", "mknod", "path" ]</code>
 </li>
 <li>
-<code>unlink</code> (remove file): <code>node_id,unlink,path</code>
+<code>unlink</code> (remove file): <code>[ "node_id", "unlink", "path" ]</code>
 </li>
 <li>
-<code>symlink</code> (new symbolic link): <code>node_id,symlink,path</code>
+<code>symlink</code> (new symbolic link): <code>[ "node_id", "symlink", "path" ]</code>
 </li>
 <li>
-<code>rename</code> (rename file or directory): <code>node_id,rename,old_path,new_path</code>
+<code>rename</code> (rename file or directory): <code>[ "node_id", "rename", "old_path", "new_path" ]</code>
 </li>
 <li>
-<code>flush</code> (updated file): <code>node_id,flush,path</code>
+<code>flush</code> (updated file): <code>[ "node_id", "flush", "path", "new_md5" ]</code> (<code>path</code> and <code>new_md5</code> are optional)</li>
+<li>
+<code>md</code> (updated metadata, e.g. attr/xattr): <code>[ "node_id", "md", "path", "metadata_name" ]</code>
 </li>
 <li>
-<code>md</code> (updated metadata, e.g. attr/xattr): <code>node_id,md,path</code>
+<code>reset</code> (reset cache): <code>[ "node_id", "reset" ]</code>
 </li>
 <li>
-<code>reset</code> (reset cache): <code>node_id,reset</code>
+<code>cache</code> (change cache config): <code>[ "node_id", "cache" , "entries" or "size", new_value ]</code>
 </li>
 <li>
-<code>cache</code> (change cache config): <code>node_id,cache,(entries|size),new_value</code>
+<code>buffer</code> (change buffer config): <code>[ "node_id", "buffer", "size", new_value ]</code>
 </li>
 <li>
-<code>buffer</code> (change buffer config): <code>node_id,buffer,size,new_value</code>
+<code>prefetch</code> (change prefetch config): <code>[ "node_id", "prefetch", "on" or "off" ]</code>
 </li>
 </ul><p>Every node will listen to notifications coming from a <code>node_id</code> different from its own.
 As an example, if you want to reset the cache of all the nodes in a yas3fs cluster,
 you can send the following notification to the SNS topic (assuming there is no node with id equal to <code>all</code>):</p>
 
-<pre><code>all,reset
+<pre><code>[ "all", "reset" ]
 </code></pre>
 
 <p>In the same way, if you uploaded a new file (or updated an old one) directly on S3 
 you can invalidate the caches of all the nodes in the yas3fs cluster for that <code>path</code> sending this SNS notification:</p>
 
-<pre><code>all,flush,path
+<pre><code>[ "all", "flush", "path" ]
 </code></pre>
 
 <p>The <code>path</code> is the relative path of the file system (<code>/</code> corresponding to the mount point)
@@ -274,12 +274,17 @@ and doesn't include any S3 path (i.e. prefix) as given in the <code>--url</code>
 <p>To change the size of the cache on all nodes, e.g. to bring it from 1GB (the current default) to 10GB,
 you can publish (the size is in MB as in the corresponding command line option):</p>
 
-<pre><code>all,cache,size,10240
+<pre><code>[ "all", "cache", "size", 10240 ]
 </code></pre>
 
 <p>To change the buffer size used to download the content (and make it available for reads) from the default of 10MB (optimized for a full download speed) to 256KB (optimized for a streaming service) you can use (the size is in KB, as in the corresponding command line option):</p>
 
-<pre><code>all,buffer,size,256
+<pre><code>[ "all", "buffer", "size", 256 ]
+</code></pre>
+
+<p>Similarly, to activate download prefetch on all nodes you can use:</p>
+
+<pre><code>[ "all", "prefetch", "on" ]
 </code></pre>
       </section>
     </div>
