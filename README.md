@@ -219,7 +219,7 @@ Similarly, to activate download prefetch on all nodes you can use:
 
     [ "all", "prefetch", "on" ]
 
-You can even change dinamically the S3 URL (i.e. the bucker and/or the path prefix) that are mounted:
+You can even change dinamically the S3 URL (i.e. the bucket and/or the path prefix) that are mounted:
 
     [ "all", "url", "s3://BUCKET/PATH" ]
 
