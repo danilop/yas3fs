@@ -508,8 +508,6 @@ class YAS3FS(LoggingMixIn, Operations):
             elif c[1] == 'rename' and c[2] != None and c[3] != None:
                 self.delete_cache(c[2], False)
                 self.delete_cache(c[3], True)
-           ###elif c[1] == 'truncate': # No need to broadcast, wait for the following 'flush'
-            ###    self.invalidate_cache(c[2])
             elif c[1] == 'flush':
                 if c[2] != None:
                     self.invalidate_cache(c[2], c[3])
@@ -524,6 +522,21 @@ class YAS3FS(LoggingMixIn, Operations):
                 with self.cache.lock:
                     self.flush_all_cache()
                     self.cache.reset_all() # Completely reset the cache
+            elif c[1] == 'url':
+                with self.cache.lock:
+                    self.flush_all_cache()
+                    self.cache.reset_all() # Completely reset the cache
+                    s3url = urlparse.urlparse(c[2])
+                    if s3url.scheme != 's3':
+                        errorAndExit("The S3 path to mount must be in URL format: s3://BUCKET/PATH")
+                    self.s3_bucket_name = s3url.netloc
+                    logger.info("S3 bucket: '%s'" % self.s3_bucket_name)
+                    self.s3_prefix = s3url.path.strip('/')
+                    logger.info("S3 prefix: '%s'" % self.s3_prefix)
+                    try:
+                        self.s3_bucket = self.s3.get_bucket(self.s3_bucket_name)
+                    except boto.exception.S3ResponseError:
+                        errorAndExit("S3 bucket not found")
             elif c[1] == 'cache':
                 if c[2] == 'entries' and c[3] > 0:
                     self.max_num_entries = int(c[3])
@@ -878,7 +891,6 @@ class YAS3FS(LoggingMixIn, Operations):
 	attr['st_size'] = str(size)
 	self.cache.set(path, 'change', True)
 	self.set_metadata(path, 'attr', attr)
-	### self.publish(['truncate', path]) # No need to broadcast, wait for the following 'flush'
 	return 0
 
     def rename(self, path, new_path):
