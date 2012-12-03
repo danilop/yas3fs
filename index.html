@@ -255,6 +255,9 @@ Those are some sample use cases:</p>
 <li>
 <code>prefetch</code> (change prefetch config): <code>[ "node_id", "prefetch", "on" or "off" ]</code>
 </li>
+<li>
+<code>url</code> (change S3 url): <code>[ "node_id", "url", "s3://BUCKET/PATH" ]</code>
+</li>
 </ul><p>Every node will listen to notifications coming from a <code>node_id</code> different from its own id.
 As an example, if you want to reset the cache of all the nodes in a yas3fs cluster,
 you can send the following notification to the SNS topic (assuming there is no node with id equal to <code>all</code>):</p>
@@ -287,6 +290,11 @@ you can publish (the size is in MB as in the corresponding command line option):
 <p>Similarly, to activate download prefetch on all nodes you can use:</p>
 
 <pre><code>[ "all", "prefetch", "on" ]
+</code></pre>
+
+<p>You can even change dinamically the S3 URL (i.e. the bucker and/or the path prefix) that are mounted:</p>
+
+<pre><code>[ "all", "url", "s3://BUCKET/PATH" ]
 </code></pre>
 
 <p>Happy File Sharing!</p>
