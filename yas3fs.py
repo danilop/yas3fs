@@ -1145,7 +1145,7 @@ Access to file content is provided during the download from S3 using buffers.
 SNS notifications are used to update other nodes that something has changed on S3 and they need to invalidate their cache.
 Notifications can be listened using HTTP or SQS endpoints.
 With buffering enabled (the default) files can be accessed during the download from S3.
-If the cache grows to its maximum size the least accessed files are removed.
+If the cache grows to its maximum size the less recently accessed files are removed.
 AWS credentials can be passed using AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY environmental variables.
 In an EC2 instance a IAM role can be used to give access to S3/SNS/SQS resources."""
 
