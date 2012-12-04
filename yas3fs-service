@@ -23,7 +23,7 @@ start()
 
 stop()
 {
-	su  -c "fusermount -u $MOUNT_PATH"
+	su  -c "fusermount -zu $MOUNT_PATH"
 }
 
 restart() {
