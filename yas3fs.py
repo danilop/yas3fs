@@ -845,10 +845,7 @@ class YAS3FS(LoggingMixIn, Operations):
                     total += len(bytes)
                     self.cache.set(path, 'data-range', (total, threading.Event()))
                     event.set()
-        except S3ResponseError:
-            print S3ResponseError
-            print S3ResponseError.code
-            print S3ResponseError.status
+        except boto.exception.S3ResponseError:
             pass
             
         with self.cache.lock:
