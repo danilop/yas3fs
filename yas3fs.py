@@ -1,4 +1,4 @@
-#!/usr/bin/python
+truncat!/usr/bin/python
 
 """
 Yet Another S3-backed File System, or yas3fs
@@ -482,7 +482,7 @@ class YAS3FS(LoggingMixIn, Operations):
             self.cache.delete(path, 'key')
             if self.cache.is_empty(path):
                 self.cache.delete(path)
-            elif self.cache.has(path, 'data') and not self.cache.has(path, 'change'):
+            elif self.cache.has(path, 'data'):
                 self.cache.set(path, 'new-data', md5)
                 if self.prefetch:
                     t = threading.Thread(target=self.getattr, args=(path, None, False))
@@ -808,10 +808,11 @@ class YAS3FS(LoggingMixIn, Operations):
                 etag = k.etag[1:-1]
                 if not new_md5 or new_md5 == etag:
                     self.cache.delete(path, 'new-data')
+                else: # I'm not sure I got the latest version
+                    self.cache.delete(path, 'key')
+                    self.cache.set(path, 'new-data', None) # Next time don't check the MD5
 		if md5 == etag:
 		    return True
-                else:
-                    self.cache.set(path, 'new-data', None) # Next time don't check the MD5
             self.cache.delete(path, 'attr')
             if self.buffer_size > 0:
                 with self.cache.lock:
@@ -1190,6 +1191,8 @@ In an EC2 instance a IAM role can be used to give access to S3/SNS/SQS resources
                       help="a unique ID identifying this node in a cluster, hostname or queue name are used if not provided", metavar="ID")
     parser.add_option("--log", dest="logfile",
                       help="the filename to use for logs", metavar="FILE", default="")
+    parser.add_option("--mkdir", action="store_true", dest="mkdir", default=False,
+                      help="create mountpoint if not found (equivalent to the 'mkdir -p' command")
     parser.add_option("-f", "--foreground", action="store_true", dest="foreground", default=False,
                       help="run in foreground")
     parser.add_option("-d", "--debug", action="store_true", dest="debug", default=False,
@@ -1215,6 +1218,15 @@ In an EC2 instance a IAM role can be used to give access to S3/SNS/SQS resources
         errorAndExit("not more than one mountpoint must be provided")
 
     mountpoint = args[0]
+
+    if options.mkdir:
+        try:
+            os.makedirs(mountpoint)
+        except OSError as exc: # Python >2.5
+            if exc.errno == errno.EEXIST and os.path.isdir(mountpoint):
+                pass
+            else:
+                raise
 
     if sys.platform == "darwin":
         volume_name = os.path.basename(mountpoint)
