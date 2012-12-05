@@ -156,8 +156,9 @@ To unmount the file system on a Mac you can use `umount`.
                          attr/xattr
       --prefetch         start downloading file content as soon as the file is
                          discovered
-      --id=ID            a unique ID identifying this node in a cluster, hostname
-                         or queue name are used if not provided
+      --id=ID            a unique ID identifying this node in a cluster (hostname,
+                         queue name or UUID Version 1 as per RFC 4122 are used if
+                         not provided)
       --log=FILE         the filename to use for logs
       --mkdir            create mountpoint if not found (create intermediate
                          directories as required)
