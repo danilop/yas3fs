@@ -831,23 +831,31 @@ class YAS3FS(LoggingMixIn, Operations):
 	return True
 
     def get_data(self, path, data, key):
-        key.BufferSize = min(self.buffer_size, key.size) # Is this an optimization or not?
+        key.BufferSize = self.buffer_size
 
-        for bytes in key:
-            with self.cache.lock:
-                if self.cache.has(path, 'data-range'):
-                    (total, event) = self.cache.get(path, 'data-range')
-                else:
-                    return
-            data.seek(total)
-            data.write(bytes)
-            total += len(bytes)
-            self.cache.set(path, 'data-range', (total, threading.Event()))
-            event.set()
-
-        (total, event) = self.cache.get(path, 'data-range')
-        self.cache.delete(path, 'data-range')
-        event.set()
+        try:
+            for bytes in key:
+                with self.cache.lock:
+                    if self.cache.has(path, 'data-range'):
+                        (total, event) = self.cache.get(path, 'data-range')
+                    else:
+                        return
+                    data.seek(total)
+                    data.write(bytes)
+                    total += len(bytes)
+                    self.cache.set(path, 'data-range', (total, threading.Event()))
+                    event.set()
+        except S3ResponseError:
+            print S3ResponseError
+            print S3ResponseError.code
+            print S3ResponseError.status
+            pass
+            
+        with self.cache.lock:
+            if self.cache.has(path, 'data-range'):
+                (total, event) = self.cache.get(path, 'data-range')
+                self.cache.delete(path, 'data-range')
+                event.set()
 
     def readlink(self, path):
 	if self.cache.has(path) and self.cache.is_empty(path):
