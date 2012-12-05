@@ -1192,7 +1192,7 @@ In an EC2 instance a IAM role can be used to give access to S3/SNS/SQS resources
     parser.add_option("--log", dest="logfile",
                       help="the filename to use for logs", metavar="FILE", default="")
     parser.add_option("--mkdir", action="store_true", dest="mkdir", default=False,
-                      help="create mountpoint if not found (equivalent to the 'mkdir -p' command")
+                      help="create mountpoint if not found (create intermediate directories as required)")
     parser.add_option("-f", "--foreground", action="store_true", dest="foreground", default=False,
                       help="run in foreground")
     parser.add_option("-d", "--debug", action="store_true", dest="debug", default=False,
