@@ -1206,7 +1206,7 @@ In an EC2 instance a IAM role can be used to give access to S3/SNS/SQS resources
     parser.add_option("--prefetch", action="store_true", dest="prefetch", default=False,
                       help="start downloading file content as soon as the file is discovered")
     parser.add_option("--id", dest="id",
-                      help="a unique ID identifying this node in a cluster, hostname or queue name are used if not provided", metavar="ID")
+                      help="a unique ID identifying this node in a cluster (hostname, queue name or UUID Version 1 as per RFC 4122 are used if not provided)", metavar="ID")
     parser.add_option("--log", dest="logfile",
                       help="the filename to use for logs", metavar="FILE", default="")
     parser.add_option("--mkdir", action="store_true", dest="mkdir", default=False,
