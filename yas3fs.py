@@ -28,6 +28,7 @@ import logging
 import signal
 import io
 import re
+import uuid
 
 import boto
 import boto.s3        
@@ -339,6 +340,9 @@ class YAS3FS(LoggingMixIn, Operations):
         except boto.exception.S3ResponseError:
             errorAndExit("S3 bucket not found")
 
+        self.unique_id = options.id or self.hostname or self.sqs_queue_name or str(uuid.uuid1())
+        logger.info("Unique node ID: '%s'" % self.unique_id)
+                
         if self.sns_topic_arn:
             if not self.aws_region in (r.name for r in boto.sns.regions()):
                 errorAndExit("wrong AWS region '%s' for SNS" % self.aws_region)
@@ -362,29 +366,14 @@ class YAS3FS(LoggingMixIn, Operations):
             if not self.sqs:
                 errorAndExit("no SQS connection")
             if self.new_queue:
-                pattern = re.compile('[\W_]+') # Alphanumeric characters only
-                queue_name = pattern.sub('', self.s3_bucket_name) + '-' + pattern.sub('', self.s3_prefix) + '-'
-                i = 1
-                while True:
-                    try:
-                        while self.sqs.lookup(queue_name + str(i)):
-                            i += 1
-                        self.sqs_queue_name = queue_name + str(i)
-                        self.queue = self.sqs.create_queue(self.sqs_queue_name)
-                        break
-                    except boto.exception.SQSError:
-                        i += 1
-            else:
-                self.queue =  self.sqs.lookup(self.sqs_queue_name)
+                pattern = re.compile('[\W_]+') # Alphanumeric characters only, to be used for pattern.sub('', s)
+                self.sqs_queue_name = '-'.join( pattern.sub('', s) for s in [ self.s3_bucket_name, self.s3_prefix, self.unique_id ] )
+            self.queue =  self.sqs.lookup(self.sqs_queue_name)
             if not self.queue:
                 self.queue = self.sqs.create_queue(self.sqs_queue_name)
             logger.info("SQS queue name (new): '%s'" % self.sqs_queue_name)
             self.queue.set_message_class(boto.sqs.message.RawMessage) # There is a bug with the default Message class in boto
 
-        self.unique_id = options.id or self.hostname or self.sqs_queue_name
-        if self.unique_id:
-            logger.info("Unique node ID: '%s'" % self.unique_id)
-                
         if self.hostname or self.sns_http_port:
             if not self.sns_topic_arn:
                 errorAndExit("The SNS topic must be provided when the hostname/port to listen to SNS HTTP notifications is given")            
@@ -410,13 +399,16 @@ class YAS3FS(LoggingMixIn, Operations):
             response = self.sns.subscribe_sqs_queue(self.sns_topic_arn, self.queue)
             self.sqs_subscription = response['SubscribeResponse']['SubscribeResult']['SubscriptionArn']
             logger.debug('SNS SQS subscription = %s' % self.sqs_subscription)
-
+        else:
+            self.queue_listen_thread = None
 
         if self.sns_http_port:
             self.http_listen_thread = threading.Thread(target=self.listen_for_changes_over_http)
             self.http_listen_thread.daemon = True
             self.http_listen_thread.start()
             self.sns.subscribe(self.sns_topic_arn, 'http', self.http_listen_url)
+        else:
+            self.http_listen_thread = None
 
         self.memory_thread = threading.Thread(target=self.check_memory_usage)
         self.memory_thread.daemon = True
@@ -434,26 +426,33 @@ class YAS3FS(LoggingMixIn, Operations):
     def destroy(self, path):
         # Cleanup for unmount
         logger.info('file system unmount')
-        try:
-            self.httpd.shutdown()
-        except AttributeError:
-            pass
+
+        if self.http_listen_thread:
+            self.httpd.shutdown() # To stop HTTP listen thread
+            self.sns.unsubscribe(self.http_subscription)
+        if self.queue_listen_thread:
+            self.sqs_queue_name = None # To stop queue listen thread
+            self.sns.unsubscribe(self.sqs_subscription)
+            if self.new_queue:
+                self.sqs.delete_queue(self.queue, force_deletion=True)
+        if self.sns_topic_arn:
+            self.sns_topic_arn = None # To stop publish thread
+        if  self.max_num_entries:
+            self.max_num_entries = 0 # To stop memory thread
+        
+        if self.publish_thread:
+            self.publish_thread.join()
+        if self.http_listen_thread:
+            self.http_listen_thread.join()
+        if self.queue_listen_thread:
+            self.queue_listen_thread.join()
+        if self.memory_thread:
+            self.memory_thread.join()
+
         self.flush_all_cache()
-        try:
-            if self.sqs_subscription:
-                self.sns.unsubscribe(self.sqs_subscription)
-                if self.new_queue:
-                    self.sqs.delete_queue(self.queue, force_deletion=True)
-        except AttributeError:
-            pass
-        try:
-            if self.http_subscription:
-                self.sns.unsubscribe(self.http_subscription)
-        except AttributeError:
-            pass
 
     def listen_for_changes_over_http(self):
-        logger.info("listening on %s" % self.http_listen_url)
+        logger.info("listening on %s" % self.http_listen_rl)
         server_class = SNS_HTTPServer
         handler_class = SNS_HTTPRequestHandler
         server_address = ('', self.sns_http_port)
@@ -463,7 +462,7 @@ class YAS3FS(LoggingMixIn, Operations):
 
     def listen_for_changes_over_sqs(self):
         logger.info("listening on queue %s" % self.queue.name)
-        while True:
+        while self.sqs_queue_name:
             if self.queue_wait_time > 0:
                 messages = self.queue.get_messages(10, wait_time_seconds=self.queue_wait_time) # Using SQS long polling, needs boto > 2.6.0
             else:
@@ -480,23 +479,28 @@ class YAS3FS(LoggingMixIn, Operations):
     def invalidate_cache(self, path, md5=None):
         with self.cache.lock:
             self.cache.delete(path, 'key')
+            if self.cache.has(path, 'data'):
+                if self.cache.has(path, 'data-range'):
+                    self.cache.delete(path, 'data-range')
+                    self.cache.delete(path, 'data')
+                    self.cache.delete(path, 'new-data') # Do I need this ???
+                else:
+                    self.cache.set(path, 'new-data', md5)
             if self.cache.is_empty(path):
                 self.cache.delete(path)
-            elif self.cache.has(path, 'data'):
-                self.cache.set(path, 'new-data', md5)
-                if self.prefetch:
-                    t = threading.Thread(target=self.getattr, args=(path, None, False))
-                    t.daemon = True
-                    t.start()
+        if self.prefetch:
+            t = threading.Thread(target=self.getattr, args=(path, None, False))
+            t.daemon = True
+            t.start()
 
     def delete_cache(self, path, tryPrefetch):
         with self.cache.lock:
             self.cache.delete(path)
             self.reset_parent_readdir(path)
-            if tryPrefetch and self.prefetch:
-                t = threading.Thread(target=self.getattr, args=(path, None, False))
-                t.daemon = True
-                t.start()
+        if tryPrefetch and self.prefetch:
+            t = threading.Thread(target=self.getattr, args=(path, None, False))
+            t.daemon = True
+            t.start()
 
     def sync_cache(self, changes):
         c = json.loads(changes)
@@ -553,17 +557,20 @@ class YAS3FS(LoggingMixIn, Operations):
 
     def publish_changes(self):
         while self.sns_topic_arn:
-            message = self.publish_queue.get()
-            message.insert(0, self.unique_id)
-            full_message = json.dumps(message)
-            self.sns.publish(self.sns_topic_arn, full_message.encode('ascii'))
-            self.publish_queue.task_done()
+            try:
+                message = self.publish_queue.get(True, 10) # 10 seconds time-out
+                message.insert(0, self.unique_id)
+                full_message = json.dumps(message)
+                self.sns.publish(self.sns_topic_arn, full_message.encode('ascii'))
+                self.publish_queue.task_done()
+            except Queue.Empty:
+                pass
                 
     def publish(self, message):
         self.publish_queue.put(message)
 
     def check_memory_usage(self):
-        while True:
+        while self.max_num_entries:
             num_entries, props_size = self.cache.get_memory_usage()
             logger.debug("num_entries, props_size: %i, %i" % (num_entries, props_size))
             if num_entries > self.max_num_entries or props_size > self.max_props_size:
@@ -709,7 +716,9 @@ class YAS3FS(LoggingMixIn, Operations):
 
 	self.cache.add(path)
 
-	if not self.cache.has(path, 'readdir'):
+        dirs = self.cache.get(path, 'readdir')
+
+	if not dirs:
 	    full_path = self.join_prefix(path)
             if full_path != '' and full_path[-1] != '/':
                 full_path += '/'
@@ -723,7 +732,7 @@ class YAS3FS(LoggingMixIn, Operations):
 		    dirs.append(d)
 	    self.cache.set(path, 'readdir', dirs)
 
-	return sorted(self.cache.get(path, 'readdir'))
+	return dirs
 
     def mkdir(self, path, mode):
 	if self.cache.has(path) and not self.cache.is_empty(path):
@@ -832,6 +841,7 @@ class YAS3FS(LoggingMixIn, Operations):
 
     def get_data(self, path, data, key):
         key.BufferSize = self.buffer_size
+        delete_flag = False
 
         try:
             for bytes in key:
@@ -845,14 +855,17 @@ class YAS3FS(LoggingMixIn, Operations):
                     total += len(bytes)
                     self.cache.set(path, 'data-range', (total, threading.Event()))
                     event.set()
-        except boto.exception.S3ResponseError:
-            pass
+        except:
+            delete_flag = True
             
         with self.cache.lock:
             if self.cache.has(path, 'data-range'):
                 (total, event) = self.cache.get(path, 'data-range')
                 self.cache.delete(path, 'data-range')
                 event.set()
+
+        if delete_flag:
+            self.cache.delete(path) # Something went wrong...
 
     def readlink(self, path):
 	if self.cache.has(path) and self.cache.is_empty(path):
@@ -1175,7 +1188,7 @@ In an EC2 instance a IAM role can be used to give access to S3/SNS/SQS resources
     parser.add_option("--queue", dest="queue",
                       help="SQS queue name, a new queue is created if it doesn't exist", metavar="NAME")
     parser.add_option("--new-queue", action="store_true", dest="new_queue", default=False,
-                      help="create a new SQS queue that is deleted on unmount (overrides '--queue', queue name is BUCKET-PATH-N with alphanumeric characters only)")
+                      help="create a new SQS queue that is deleted on unmount (overrides '--queue', queue name is BUCKET-PATH-ID-N with alphanumeric characters only)")
     parser.add_option("--queue-wait", dest="queue_wait_time",
                       help="SQS queue wait time in seconds (using long polling, 0 to disable, default is %default seconds)", metavar="N", default=0)
     parser.add_option("--queue-polling", dest="queue_polling_interval",
