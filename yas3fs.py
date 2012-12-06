@@ -97,14 +97,15 @@ class FSCache():
     """ File System Cache """
     def __init__(self):
         self.lock = threading.RLock()
+        self.data_size_lock = threading.Lock()
         self.reset_all()
     def reset_all(self):
         with self.lock:
             self.entries = {}
             self.lru = LinkedList()
-            self.props_size = 0
+            self.data_size = 0
     def get_memory_usage(self):
-        return len(self.entries), self.props_size
+        return len(self.entries), self.data_size
     def add(self, path):
         with self.lock:
             if not self.has(path):
@@ -114,13 +115,15 @@ class FSCache():
         with self.lock:
             if path in self.entries:
         	if prop == None:
-        	    for prop in self.entries[path]:
-        		self.props_size -= sys.getsizeof(self.entries[path][prop])
+                    props = sorted(self.entries[path].keys()) # Sorting to have 'data-*' after 'data'
+        	    for prop in props:
+                        self.delete(path, prop)
         	    del self.entries[path]
         	    self.lru.delete(path)
         	else:
         	    if prop in self.entries[path]:
-        		self.props_size -= sys.getsizeof(self.entries[path][prop])
+                        if prop == 'data' and 'data-size' in self.entries[path]:
+                            self.update_data_size(path, -self.entries[path]['data-size'])
         		del self.entries[path][prop]
     def rename(self, path, new_path):
         with self.lock:
@@ -131,7 +134,6 @@ class FSCache():
                 self.lru.append(new_path)
                 del self.entries[path]
                 self.lru.delete(path)
-
     def get(self, path, prop=None):
         self.lru.move_to_the_tail(path) # Move to the tail of the LRU cache
         try:
@@ -147,9 +149,8 @@ class FSCache():
         with self.lock:
             if path in self.entries:
         	if prop in self.entries[path]:
-        	    self.props_size -= sys.getsizeof(self.entries[path][prop])
+                    self.delete(path, prop)
         	self.entries[path][prop] = value
-        	self.props_size += sys.getsizeof(self.entries[path][prop])
         	return True
             else:
         	return False
@@ -157,9 +158,9 @@ class FSCache():
         self.lru.move_to_the_tail(path) # Move to the tail of the LRU cache
         with self.lock:
             if path in self.entries:
-        	for prop in self.entries[path]:
-        	    self.props_size -= sys.getsizeof(self.entries[path][prop])
-        	self.entries[path] = {}
+                props = self.entries[path].keys()
+        	for prop in props:
+                    self.delete(path, prop)
     def inc(self, path, prop):
         with self.lock:
             if path in self.entries:
@@ -189,7 +190,18 @@ class FSCache():
             return False
     def is_empty(self, path, prop=None): # A wrapper to improve readability
         return not self.get(path, prop)
-
+    def update_data_size(self, path, delta):
+        if delta == 0: # Nothing to do
+            return
+        with self.data_size_lock:
+            if 'data-size' in self.entries[path]:
+                self.entries[path]['data-size'] += delta
+            else:
+                self.entries[path]['data-size'] = delta
+            if self.entries[path]['data-size'] == 0:
+                del self.entries[path]['data-size']
+            self.data_size += delta
+ 
 class SNS_HTTPServer(BaseHTTPServer.HTTPServer):
     """ HTTP Server to receive SNS notifications via HTTP """
     def set_fs(self, fs):
@@ -307,8 +319,8 @@ class YAS3FS(LoggingMixIn, Operations):
             logger.info("SQS queue polling interval (in seconds): '%i'" % self.queue_polling_interval)
         self.max_num_entries = int(options.cache_max_num_entries)
         logger.info("Cache max entries: '%i'" % self.max_num_entries)
-        self.max_props_size = int(options.cache_max_props_size) * (1024 * 1024) # To convert MB to bytes
-        logger.info("Cache max size (in bytes): '%i'" % self.max_props_size)
+        self.max_data_size = int(options.cache_max_data_size) * (1024 * 1024) # To convert MB to bytes
+        logger.info("Cache max size (in bytes): '%i'" % self.max_data_size)
         self.check_memory_interval = int(options.cache_check_interval) # seconds
         logger.info("Cache check memory interval (in seconds): '%i'" % self.check_memory_interval)
         if options.ec2_hostname:
@@ -367,8 +379,11 @@ class YAS3FS(LoggingMixIn, Operations):
                 errorAndExit("no SQS connection")
             if self.new_queue:
                 pattern = re.compile('[\W_]+') # Alphanumeric characters only, to be used for pattern.sub('', s)
-                self.sqs_queue_name = '-'.join( pattern.sub('', s) for s in [ self.s3_bucket_name, self.s3_prefix, self.unique_id ] )
-            self.queue =  self.sqs.lookup(self.sqs_queue_name)
+                self.sqs_queue_name = '-'.join( pattern.sub('', s) for s in
+                                                [ self.s3_bucket_name, self.s3_prefix, self.unique_id ] )
+                self.queue = None
+            else:
+                self.queue =  self.sqs.lookup(self.sqs_queue_name)
             if not self.queue:
                 self.queue = self.sqs.create_queue(self.sqs_queue_name)
             logger.info("SQS queue name (new): '%s'" % self.sqs_queue_name)
@@ -388,6 +403,7 @@ class YAS3FS(LoggingMixIn, Operations):
         signal.signal(signal.SIGINT, self.handler)
 
     def init(self, path):
+        logger.debug("init '%s'" % (path))
         self.publish_thread = threading.Thread(target=self.publish_changes)
         self.publish_thread.daemon = True
         self.publish_thread.start()
@@ -418,12 +434,14 @@ class YAS3FS(LoggingMixIn, Operations):
         self.destroy('/')
 
     def flush_all_cache(self):
+        logger.debug("flush_all_cache")
         with self.cache.lock:
             for path in self.cache.entries:
                 if self.cache.has(path, 'change'):
                     self.flush(path)
  
     def destroy(self, path):
+        logger.debug("destroy '%s'" % (path))
         # Cleanup for unmount
         logger.info('file system unmount')
 
@@ -440,14 +458,14 @@ class YAS3FS(LoggingMixIn, Operations):
         if  self.max_num_entries:
             self.max_num_entries = 0 # To stop memory thread
         
-        if self.publish_thread:
-            self.publish_thread.join()
-        if self.http_listen_thread:
-            self.http_listen_thread.join()
-        if self.queue_listen_thread:
-            self.queue_listen_thread.join()
-        if self.memory_thread:
-            self.memory_thread.join()
+        #if self.publish_thread:
+        #    self.publish_thread.join()
+        #if self.http_listen_thread:
+        #    self.http_listen_thread.join()
+        #if self.queue_listen_thread:
+        #    self.queue_listen_thread.join()
+        #if self.memory_thread:
+        #    self.memory_thread.join()
 
         self.flush_all_cache()
 
@@ -477,6 +495,7 @@ class YAS3FS(LoggingMixIn, Operations):
                 time.sleep(self.queue_polling_interval)
 
     def invalidate_cache(self, path, md5=None):
+        logger.debug("invalidate_cache '%s' '%s'" % (path, md5))
         with self.cache.lock:
             self.cache.delete(path, 'key')
             if self.cache.has(path, 'data'):
@@ -488,12 +507,14 @@ class YAS3FS(LoggingMixIn, Operations):
                     self.cache.set(path, 'new-data', md5)
             if self.cache.is_empty(path):
                 self.cache.delete(path)
+                self.reset_parent_readdir(path)
         if self.prefetch:
             t = threading.Thread(target=self.getattr, args=(path, None, False))
             t.daemon = True
             t.start()
 
     def delete_cache(self, path, tryPrefetch):
+        logger.debug("delete_cache '%s' '%s'" % (path, tryPrefetch))
         with self.cache.lock:
             self.cache.delete(path)
             self.reset_parent_readdir(path)
@@ -503,6 +524,7 @@ class YAS3FS(LoggingMixIn, Operations):
             t.start()
 
     def sync_cache(self, changes):
+        logger.debug("sync_cache '%s'" % (changes))
         c = json.loads(changes)
         if not c[0] == self.unique_id: # discard message coming from itself
             if c[1] in ( 'mkdir', 'mknod', 'symlink' ) and c[2] != None:
@@ -545,7 +567,7 @@ class YAS3FS(LoggingMixIn, Operations):
                 if c[2] == 'entries' and c[3] > 0:
                     self.max_num_entries = int(c[3])
             elif c[2] == 'size' and c[3] > 0:
-                self.max_props_size = int(c[3]) * (1024 * 1024) # MB
+                self.max_data_size = int(c[3]) * (1024 * 1024) # MB
             elif c[1] == 'buffer' and c[3] >= 0:
                 if c[2] == 'size':
                     self.buffer_size = int(c[3]) * 1024 # KB
@@ -567,13 +589,15 @@ class YAS3FS(LoggingMixIn, Operations):
                 pass
                 
     def publish(self, message):
+        logger.debug("publish '%s'" % (message))
         self.publish_queue.put(message)
 
     def check_memory_usage(self):
+        logger.debug("check_memory_usage")
         while self.max_num_entries:
-            num_entries, props_size = self.cache.get_memory_usage()
-            logger.debug("num_entries, props_size: %i, %i" % (num_entries, props_size))
-            if num_entries > self.max_num_entries or props_size > self.max_props_size:
+            num_entries, data_size = self.cache.get_memory_usage()
+            logger.debug("num_entries, data_size: %i, %i" % (num_entries, data_size))
+            if num_entries > self.max_num_entries or data_size > self.max_data_size:
                 with self.cache.lock:
                     path = self.cache.lru.popleft()
                     logger.debug("purge: %s ?" % path)
@@ -585,20 +609,23 @@ class YAS3FS(LoggingMixIn, Operations):
                     else:
                         logger.debug("purge: yes")
                         self.cache.delete(path)
-            else: 
+            else:
                 time.sleep(self.check_memory_interval)
 
     def add_to_parent_readdir(self, path):
+        logger.debug("add_to_parent_readdir '%s'" % (path))
         (parent_path, dir) = os.path.split(path)
         if self.cache.has(parent_path, 'readdir') and self.cache.get(parent_path, 'readdir').count(dir) == 0:
             self.cache.get(parent_path, 'readdir').append(dir)
 
     def remove_from_parent_readdir(self, path):
+        logger.debug("remove_to_parent_readdir '%s'" % (path))
         (parent_path, dir) = os.path.split(path)
         if self.cache.has(parent_path, 'readdir') and self.cache.get(parent_path, 'readdir').count(dir) > 0:
             self.cache.get(parent_path, 'readdir').remove(dir)
 
     def reset_parent_readdir(self, path):
+        logger.debug("reset_to_parent_readdir '%s'" % (path))
         (parent_path, dir) = os.path.split(path)
         self.cache.delete(parent_path, 'readdir')
 
@@ -619,6 +646,7 @@ class YAS3FS(LoggingMixIn, Operations):
         return key
 
     def get_metadata(self, path, metadata_name, key=None, raiseError=True):
+        logger.debug("get_metadata '%s' '%s' '%s' '%s'" % (path, metadata_name, key, raiseError))
         if not self.cache.has(path, metadata_name):
             if not key:
                 key = self.get_key(path)
@@ -671,6 +699,7 @@ class YAS3FS(LoggingMixIn, Operations):
 	return self.cache.get(path, metadata_name)
 
     def set_metadata(self, path, metadata_name, metadata_values, key=None):
+        logger.debug("set_metadata '%s' '%s' '%s' '%s'" % (path, metadata_name, metadata_values, key))
 	self.cache.set(path, metadata_name, metadata_values)
         if self.write_metadata and (key or not self.cache.has(path, 'change')): # No change in progress, I should write now
 	    if not key:
@@ -689,6 +718,7 @@ class YAS3FS(LoggingMixIn, Operations):
                     self.publish(['md', metadata_name, path])
 
     def getattr(self, path, fh=None, raiseError=True):
+        logger.debug("getattr '%s' '%s' '%s'" % (path, fh, raiseError))
         if self.cache.has(path) and self.cache.is_empty(path):
             raise FuseOSError(errno.ENOENT)
 	attr = self.get_metadata(path, 'attr', raiseError=raiseError)
@@ -710,6 +740,7 @@ class YAS3FS(LoggingMixIn, Operations):
 	return st
 
     def readdir(self, path, fh=None):
+        logger.debug("readdir '%s' '%s'" % (path, fh))
 
 	if self.cache.has(path) and self.cache.is_empty(path):
 	    raise FuseOSError(errno.ENOENT)
@@ -735,6 +766,7 @@ class YAS3FS(LoggingMixIn, Operations):
 	return dirs
 
     def mkdir(self, path, mode):
+        logger.debug("mkdir '%s' '%s'" % (path, mode))
 	if self.cache.has(path) and not self.cache.is_empty(path):
 	    return FuseOSError(errno.EEXIST)
 	k = self.get_key(path)
@@ -767,6 +799,7 @@ class YAS3FS(LoggingMixIn, Operations):
 	return 0
  
     def symlink(self, path, link):
+        logger.debug("symlink '%s' '%s'" % (path, link))
 	if self.cache.has(path) and not self.cache.is_empty(path):
 	    return FuseOSError(errno.EEXIST)
 	k = self.get_key(path)
@@ -797,6 +830,7 @@ class YAS3FS(LoggingMixIn, Operations):
 	return 0
 
     def check_data(self, path): 
+        logger.debug("check_data '%s'" % (path))
 	if not self.cache.has(path, 'data') or self.cache.has(path, 'new-data'):
 	    k = self.get_key(path)
             if not k:
@@ -837,9 +871,12 @@ class YAS3FS(LoggingMixIn, Operations):
                 data = io.BytesIO()
                 self.cache.set(path, 'data', data)
                 k.get_contents_to_file(data)
+                self.cache.update_data_size(path, k.size)
 	return True
 
     def get_data(self, path, data, key):
+        logger.debug("get_data '%s' '%s' '%s'" % (path, data, key))
+
         key.BufferSize = self.buffer_size
         delete_flag = False
 
@@ -852,7 +889,9 @@ class YAS3FS(LoggingMixIn, Operations):
                         return
                     data.seek(total)
                     data.write(bytes)
-                    total += len(bytes)
+                    length = len(bytes)
+                    total += length
+                    self.cache.update_data_size(path, length)
                     self.cache.set(path, 'data-range', (total, threading.Event()))
                     event.set()
         except:
@@ -868,6 +907,7 @@ class YAS3FS(LoggingMixIn, Operations):
             self.cache.delete(path) # Something went wrong...
 
     def readlink(self, path):
+        logger.debug("readlink '%s'" % (path))
 	if self.cache.has(path) and self.cache.is_empty(path):
 	    raise FuseOSError(errno.ENOENT)
 	self.cache.add(path)
@@ -883,6 +923,7 @@ class YAS3FS(LoggingMixIn, Operations):
 	return FuseOSError(errno.EINVAL)
  
     def rmdir(self, path):
+        logger.debug("rmdir '%s'" % (path))
 	if self.cache.has(path) and self.cache.is_empty(path):
 	    raise FuseOSError(errno.ENOENT)
 	k = self.get_key(path) # Should I use cache here ???
@@ -900,19 +941,28 @@ class YAS3FS(LoggingMixIn, Operations):
 	return 0
 
     def truncate(self, path, size):
+        logger.debug("truncate '%s' '%i'" % (path, size))
 	if self.cache.has(path) and self.cache.is_empty(path):
 	    raise FuseOSError(errno.ENOENT)
 	self.cache.add(path)
 	if not self.check_data(path):
 	    raise FuseOSError(errno.ENOENT)
+        while True:
+            range = self.cache.get(path, 'data-range')
+            if range == None or range[0] >= size:
+                break
+            range[1].wait()
         self.cache.get(path, 'data').truncate(size)
 	attr = self.get_metadata(path, 'attr')
-	attr['st_size'] = str(size)
+        old_size = int(attr['st_size'])
 	self.cache.set(path, 'change', True)
-	self.set_metadata(path, 'attr', attr)
+        if size != old_size:
+            attr['st_size'] = str(size)
+            self.set_metadata(path, 'attr', attr)
 	return 0
 
     def rename(self, path, new_path):
+        logger.debug("rename '%s'" % (path, new_path))
         if self.cache.has(path) and self.cache.is_empty(path):
             raise FuseOSError(errno.ENOENT)
         key = self.get_key(path)
@@ -948,6 +998,7 @@ class YAS3FS(LoggingMixIn, Operations):
         self.add_to_parent_readdir(new_path)
 
     def mknod(self, path, mode, dev=None):
+        logger.debug("mknod '%s' '%i' '%s'" % (path, mode, dev))
 	if self.cache.has(file):
 	    if not self.cache.is_empty(file):
 		return FuseOSError(errno.EEXIST)
@@ -975,6 +1026,7 @@ class YAS3FS(LoggingMixIn, Operations):
 	return 0
 
     def unlink(self, path):
+        logger.debug("unlink '%s'" % (path))
 	if self.cache.has(path) and self.cache.is_empty(path):
 	    raise FuseOSError(errno.ENOENT)
 	k = self.get_key(path)
@@ -987,9 +1039,11 @@ class YAS3FS(LoggingMixIn, Operations):
 	return 0
 
     def create(self, path, mode, fi=None):
+        logger.debug("create '%s' '%i' '%s'" % (path, mode, fi))
 	return self.open(path, mode)
 
     def open(self, path, flags):
+        logger.debug("open '%s' '%i'" % (path, flags))
 	self.cache.add(path)
 	if not self.check_data(path):
 	    self.mknod(path, flags)
@@ -997,12 +1051,14 @@ class YAS3FS(LoggingMixIn, Operations):
 	return 0
 
     def release(self, path, flags):
+        logger.debug("release '%s' '%i'" % (path, flags))
         if self.cache.has(path) and self.cache.is_empty(path):
             raise FuseOSError(errno.ENOENT)
 	self.cache.dec(path, 'open')
 	return 0
 
     def read(self, path, length, offset, fh=None):
+        logger.debug("read '%s' '%i' '%i' '%s'" % (path, length, offset, fh))
         if not self.cache.has(path) or (self.cache.has(path) and self.cache.is_empty(path)):
             raise FuseOSError(errno.ENOENT)
         while True:
@@ -1016,6 +1072,7 @@ class YAS3FS(LoggingMixIn, Operations):
         return sio.read(length)
 
     def write(self, path, data, offset, fh=None):
+        logger.debug("write '%s' '%i' '%i' '%s'" % (path, len(data), offset, fh))
         if not self.cache.has(path) or (self.cache.has(path) and self.cache.is_empty(path)):
             raise FuseOSError(errno.ENOENT)
 	length = len(data)
@@ -1032,13 +1089,17 @@ class YAS3FS(LoggingMixIn, Operations):
 	    self.cache.set(path, 'change', True)
 	    now = str(time.time())
 	    attr = self.get_metadata(path, 'attr')
-            attr['st_size'] = str(max(int(attr['st_size']), offset + length))
+            old_size = int(attr['st_size'])
+            new_size = max(old_size, offset + length)
+            if new_size != old_size:
+                attr['st_size'] = str(new_size)
             attr['st_mtime'] = now
             attr['st_atime'] = now
             self.set_metadata(path, 'attr', attr)
         return length
 
     def flush(self, path, fh=None):
+        logger.debug("flush '%s' '%s'" % (path, fh))
         if self.cache.has(path) and not self.cache.is_empty(path) and self.cache.has(path, 'change'):
             k = self.get_key(path)
             if not k:
@@ -1055,12 +1116,18 @@ class YAS3FS(LoggingMixIn, Operations):
             type = mimetypes.guess_type(path)[0]
             data = self.cache.get(path, 'data')
             data.seek(0)
+            if k.size == None:
+                old_size = 0
+            else:
+                old_size = k.size
             k.set_contents_from_file(data, headers={'Content-Type': type})
+            self.cache.update_data_size(path, k.size - old_size)
             self.cache.delete(path, 'change')
             self.publish(['flush', path, k.etag[1:-1]])
         return 0
 
     def chmod(self, path, mode):
+        logger.debug("chmod '%s' '%i'" % (path, mode))
         if self.cache.has(path) and self.cache.is_empty(path):
             raise FuseOSError(errno.ENOENT)
         attr = self.get_metadata(path, 'attr')
@@ -1071,6 +1138,7 @@ class YAS3FS(LoggingMixIn, Operations):
         return 0
 
     def chown(self, path, uid, gid):
+        logger.debug("chown '%s' '%i' '%i'" % (path, uid, gid))
         if self.cache.has(path) and self.cache.is_empty(path):
             raise FuseOSError(errno.ENOENT)
         attr = self.get_metadata(path, 'attr')
@@ -1082,6 +1150,7 @@ class YAS3FS(LoggingMixIn, Operations):
         return 0
 
     def utime(self, path, times=None):
+        logger.debug("utime '%s' '%s'" % (path, times))
         if self.cache.has(path) and self.cache.is_empty(path):
             raise FuseOSError(errno.ENOENT)
         now = time.time()
@@ -1095,6 +1164,7 @@ class YAS3FS(LoggingMixIn, Operations):
         return 0
 
     def getxattr(self, path, name, position=0):
+        logger.debug("getxattr '%s' '%s' '%i'" % (path, name, position))
         if self.cache.has(path) and self.cache.is_empty(path):
             raise FuseOSError(errno.ENOENT)
         xattr = self.get_metadata(path, 'xattr')
@@ -1104,12 +1174,14 @@ class YAS3FS(LoggingMixIn, Operations):
             return '' # Should return ENOATTR
 
     def listxattr(self, path):
+        logger.debug("listxattr '%s'" % (path))
         if self.cache.has(path) and self.cache.is_empty(path):
             raise FuseOSError(errno.ENOENT)
         xattr = self.get_metadata(path, 'xattr')
         return xattr.keys()
 
     def removexattr(self, path, name):
+        logger.debug("removexattr '%s'" % (path, name))
         if self.cache.has(path) and self.cache.is_empty(path):
             raise FuseOSError(errno.ENOENT)
         xattr = self.get_metadata(path, 'xattr')
@@ -1121,6 +1193,7 @@ class YAS3FS(LoggingMixIn, Operations):
         return 0
 
     def setxattr(self, path, name, value, options, position=0):
+        logger.debug("setxattr '%s' '%s' '%s' '%s' '%i'" % (path, name, value, options, position))
         if self.cache.has(path) and self.cache.is_empty(path):
             raise FuseOSError(errno.ENOENT)
         xattr = self.get_metadata(path, 'xattr')
@@ -1131,6 +1204,7 @@ class YAS3FS(LoggingMixIn, Operations):
         return 0
 
     def statfs(self, path):
+        logger.debug("statfs '%s'" % (path))
         """Returns a dictionary with keys identical to the statvfs C
            structure of statvfs(3).
            The 'f_frsize', 'f_favail', 'f_fsid' and 'f_flag' fields are ignored
@@ -1195,7 +1269,7 @@ In an EC2 instance a IAM role can be used to give access to S3/SNS/SQS resources
                       help="SQS queue polling interval in seconds (default is %default seconds)", metavar="N", default=1)
     parser.add_option("--cache-entries", dest="cache_max_num_entries",
                       help="max number of entries to cache (default is %default entries)", metavar="N", default=1000000)
-    parser.add_option("--cache-size", dest="cache_max_props_size",
+    parser.add_option("--cache-size", dest="cache_max_data_size",
                       help="max size of the cache in MB (default is %default MB)", metavar="N", default=1024)
     parser.add_option("--cache-check", dest="cache_check_interval",
                       help="interval between cache memory checks in seconds (default is %default seconds)", metavar="N", default=10)
