@@ -502,38 +502,31 @@ class YAS3FS(LoggingMixIn, Operations):
                 if self.cache.has(path, 'data-range'):
                     self.cache.delete(path, 'data-range')
                     self.cache.delete(path, 'data')
-                    self.cache.delete(path, 'new-data') # Do I need this ???
+                    self.cache.delete(path, 'data-size') # Do I need this ???
+                    self.cache.delete(path, 'data-new') # Do I need this ???
                 else:
-                    self.cache.set(path, 'new-data', md5)
+                    self.cache.set(path, 'data-new', md5)
             if self.cache.is_empty(path):
                 self.cache.delete(path)
                 self.reset_parent_readdir(path)
-        if self.prefetch:
-            t = threading.Thread(target=self.getattr, args=(path, None, False))
-            t.daemon = True
-            t.start()
 
-    def delete_cache(self, path, tryPrefetch):
-        logger.debug("delete_cache '%s' '%s'" % (path, tryPrefetch))
+    def delete_cache(self, path):
+        logger.debug("delete_cache '%s'" % (path))
         with self.cache.lock:
             self.cache.delete(path)
             self.reset_parent_readdir(path)
-        if tryPrefetch and self.prefetch:
-            t = threading.Thread(target=self.getattr, args=(path, None, False))
-            t.daemon = True
-            t.start()
 
     def sync_cache(self, changes):
         logger.debug("sync_cache '%s'" % (changes))
         c = json.loads(changes)
         if not c[0] == self.unique_id: # discard message coming from itself
             if c[1] in ( 'mkdir', 'mknod', 'symlink' ) and c[2] != None:
-                self.delete_cache(c[2], True)
+                self.delete_cache(c[2])
             elif c[1] in ( 'rmdir', 'unlink' ) and c[2] != None:
-                self.delete_cache(c[2], False)
+                self.delete_cache(c[2])
             elif c[1] == 'rename' and c[2] != None and c[3] != None:
-                self.delete_cache(c[2], False)
-                self.delete_cache(c[3], True)
+                self.delete_cache(c[2])
+                self.delete_cache(c[3])
             elif c[1] == 'flush':
                 if c[2] != None:
                     self.invalidate_cache(c[2], c[3])
@@ -645,8 +638,8 @@ class YAS3FS(LoggingMixIn, Operations):
         self.cache.set(path, 'key', key)
         return key
 
-    def get_metadata(self, path, metadata_name, key=None, raiseError=True):
-        logger.debug("get_metadata '%s' '%s' '%s' '%s'" % (path, metadata_name, key, raiseError))
+    def get_metadata(self, path, metadata_name, key=None):
+        logger.debug("get_metadata '%s' '%s' '%s'" % (path, metadata_name, key))
         if not self.cache.has(path, metadata_name):
             if not key:
                 key = self.get_key(path)
@@ -661,10 +654,7 @@ class YAS3FS(LoggingMixIn, Operations):
                     key_list = self.s3_bucket.list(full_path) # Don't need to set a delimeter here
                     if len(list(key_list)) == 0:
                         self.cache.add(path) # It is empty to cache further checks
-                        if raiseError:
-                            raise FuseOSError(errno.ENOENT)
-                        else:
-                            return None
+                        raise FuseOSError(errno.ENOENT)
             metadata_values = {}
             if key:
                 s = key.get_metadata(metadata_name)
@@ -717,11 +707,11 @@ class YAS3FS(LoggingMixIn, Operations):
                     key.copy(key.bucket.name, key.name, md, preserve_acl=False) # Do I need to preserve ACL?
                     self.publish(['md', metadata_name, path])
 
-    def getattr(self, path, fh=None, raiseError=True):
-        logger.debug("getattr '%s' '%s' '%s'" % (path, fh, raiseError))
+    def getattr(self, path, fh=None):
+        logger.debug("getattr '%s' '%s'" % (path, fh))
         if self.cache.has(path) and self.cache.is_empty(path):
             raise FuseOSError(errno.ENOENT)
-	attr = self.get_metadata(path, 'attr', raiseError=raiseError)
+	attr = self.get_metadata(path, 'attr')
         if attr == None:
             return None
 	st = {}
@@ -735,9 +725,12 @@ class YAS3FS(LoggingMixIn, Operations):
         if stat.S_ISDIR(st['st_mode']) and st['st_size'] == 0:
             st['st_size'] = 4096 # For compatibility...
 	st['st_nlink'] = 1 # Something better TODO ???
-        if not stat.S_ISDIR(st['st_mode']) and self.prefetch:
-            self.check_data(path) # Prefetch
-	return st
+        if self.prefetch: # Prefetch
+            if stat.S_ISDIR(st['st_mode']):
+                self.readdir(path)
+            else:
+                self.check_data(path)
+        return st
 
     def readdir(self, path, fh=None):
         logger.debug("readdir '%s' '%s'" % (path, fh))
@@ -831,14 +824,14 @@ class YAS3FS(LoggingMixIn, Operations):
 
     def check_data(self, path): 
         logger.debug("check_data '%s'" % (path))
-	if not self.cache.has(path, 'data') or self.cache.has(path, 'new-data'):
+	if not self.cache.has(path, 'data') or self.cache.has(path, 'data-new'):
 	    k = self.get_key(path)
             if not k:
 		return False
             if k.size == 0:
                 data = io.BytesIO()
                 self.cache.set(path, 'data', data)
-                self.cache.delete(path, 'new-data')
+                self.cache.delete(path, 'data-new')
                 with self.cache.lock:
                     if self.cache.has(path, 'data-range'):
                         (range, event) = self.cache.get(path, 'data-range')
@@ -846,14 +839,14 @@ class YAS3FS(LoggingMixIn, Operations):
                         event.set()
                 return True
 	    if self.cache.has(path, 'data'):
-                new_md5 = self.cache.get(path, 'new-data')
+                new_md5 = self.cache.get(path, 'data-new')
 		md5 = hashlib.md5(self.cache.get(path, 'data').getvalue()).hexdigest()
                 etag = k.etag[1:-1]
                 if not new_md5 or new_md5 == etag:
-                    self.cache.delete(path, 'new-data')
+                    self.cache.delete(path, 'data-new')
                 else: # I'm not sure I got the latest version
                     self.cache.delete(path, 'key')
-                    self.cache.set(path, 'new-data', None) # Next time don't check the MD5
+                    self.cache.set(path, 'data-new', None) # Next time don't check the MD5
 		if md5 == etag:
 		    return True
             self.cache.delete(path, 'attr')
