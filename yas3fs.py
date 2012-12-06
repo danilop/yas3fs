@@ -608,14 +608,16 @@ class YAS3FS(LoggingMixIn, Operations):
     def add_to_parent_readdir(self, path):
         logger.debug("add_to_parent_readdir '%s'" % (path))
         (parent_path, dir) = os.path.split(path)
-        if self.cache.has(parent_path, 'readdir') and self.cache.get(parent_path, 'readdir').count(dir) == 0:
-            self.cache.get(parent_path, 'readdir').append(dir)
+        with self.cache.lock:
+            if self.cache.has(parent_path, 'readdir') and self.cache.get(parent_path, 'readdir').count(dir) == 0:
+                self.cache.get(parent_path, 'readdir').append(dir)
 
     def remove_from_parent_readdir(self, path):
         logger.debug("remove_to_parent_readdir '%s'" % (path))
         (parent_path, dir) = os.path.split(path)
-        if self.cache.has(parent_path, 'readdir') and self.cache.get(parent_path, 'readdir').count(dir) > 0:
-            self.cache.get(parent_path, 'readdir').remove(dir)
+        with self.cache.lock:
+            if self.cache.has(parent_path, 'readdir') and self.cache.get(parent_path, 'readdir').count(dir) > 0:
+                self.cache.get(parent_path, 'readdir').remove(dir)
 
     def reset_parent_readdir(self, path):
         logger.debug("reset_to_parent_readdir '%s'" % (path))
