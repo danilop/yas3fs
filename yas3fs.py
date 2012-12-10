@@ -957,7 +957,7 @@ class YAS3FS(LoggingMixIn, Operations):
 	return 0
 
     def rename(self, path, new_path):
-        logger.debug("rename '%s'" % (path, new_path))
+        logger.debug("rename '%s' '%s'" % (path, new_path))
         if self.cache.has(path) and self.cache.is_empty(path):
             raise FuseOSError(errno.ENOENT)
         key = self.get_key(path)
