@@ -21,7 +21,11 @@ interface to [Amazon S3](http://aws.amazon.com/s3/).
 
 Copyright (c) 2012 Danilo Poccia, http://blog.danilopoccia.net
 
+<<<<<<< HEAD
 This code is licensed under the The MIT License (MIT). Please see the LICENSE file that accompanies this project for the terms of use.
+=======
+This code is licensed under the The MIT License (MIT). Please see the LICENSE.txt file that accompanies this project for the terms of use.
+>>>>>>> b9f22efc0b10941b26d98f2c9125b3a62cfecdba
 
 ### Introduction
 
