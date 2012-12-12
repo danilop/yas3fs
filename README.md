@@ -17,6 +17,14 @@ interface to [Amazon S3](http://aws.amazon.com/s3/).
 * In an [EC2](http://aws.amazon.com/ec2/) instance a [IAM](http://aws.amazon.com/iam/) role can be used to give access to S3/SNS/SQS resources.
 * It is written in Python (2.6) using [boto](https://github.com/boto/boto) and [fusepy](https://github.com/terencehonles/fusepy).
 
+### License
+
+Copyright (c) 2012 Danilo Poccia, http://blog.danilopoccia.net
+
+This code is licensed under the The MIT License (MIT). Please see the LICENSE.txt file that accompanies this project for the terms of use.
+
+### Introduction
+
 On EC2 the command line doesn't need any information on the actual server and can easily be used
 within an [Auto Scaling](http://aws.amazon.com/autoscaling/) group.
 
