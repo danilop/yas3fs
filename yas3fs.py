@@ -1257,7 +1257,7 @@ In an EC2 instance a IAM role can be used to give access to S3/SNS/SQS resources
     parser.add_option("--queue", dest="queue",
                       help="SQS queue name, a new queue is created if it doesn't exist", metavar="NAME")
     parser.add_option("--new-queue", action="store_true", dest="new_queue", default=False,
-                      help="create a new SQS queue that is deleted on unmount (overrides '--queue', queue name is BUCKET-PATH-ID-N with alphanumeric characters only)")
+                      help="create a new SQS queue that is deleted on unmount (overrides '--queue', queue name is BUCKET-PATH-ID with alphanumeric characters only)")
     parser.add_option("--queue-wait", dest="queue_wait_time",
                       help="SQS queue wait time in seconds (using long polling, 0 to disable, default is %default seconds)", metavar="N", default=0)
     parser.add_option("--queue-polling", dest="queue_polling_interval",

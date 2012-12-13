@@ -147,7 +147,7 @@ To unmount the file system on a Mac you can use `umount`.
       --queue=NAME       SQS queue name, a new queue is created if it doesn't
                          exist
       --new-queue        create a new SQS queue that is deleted on unmount
-                         (overrides '--queue', queue name is BUCKET-PATH-N with
+                         (overrides '--queue', queue name is BUCKET-PATH-ID with
                          alphanumeric characters only)
       --queue-wait=N     SQS queue wait time in seconds (using long polling, 0 to
                          disable, default is 0 seconds)
