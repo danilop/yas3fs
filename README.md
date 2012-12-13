@@ -25,6 +25,10 @@ This code is licensed under the The MIT License (MIT). Please see the LICENSE fi
 
 ### Introduction
 
+This is the logical architecture of yas3fs:
+
+![yas3fs Logical Architecture](danilop.github.com/yas3fs/images/yas3fs.png)
+
 I strongly suggest to start yas3fs for the first time with the `-d` (debug) option, to see if there is any error.
 When everything works it can be interrupted (with `^C`) and restarted to run in background
 (it's the default with no `-d` / `-f` options).
