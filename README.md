@@ -25,8 +25,9 @@ This code is licensed under the The MIT License (MIT). Please see the LICENSE fi
 
 ### Introduction
 
-On EC2 the command line doesn't need any information on the actual server and can easily be used
-within an [Auto Scaling](http://aws.amazon.com/autoscaling/) group.
+I strongly suggest to start yas3fs for the first time with the `-d` (debug) option, to see if there is any error.
+When everything works it can be interrupted (with `^C`) and restarted to run in background
+(it's the default with no `-d` / `-f` options).
 
 To mount an S3 bucket without using SNS (i.e. for a single node):
 
@@ -47,9 +48,8 @@ To mount an S3 bucket using SNS and listening to an HTTP endpoint (on EC2):
 
 On EC2 the security group must allow inbound traffic from SNS on the selected port.
 
-I strongly suggest to start yas3fs for the first time with the `-d` (debug) option, to see if there is any error.
-When everything works it can be interrupted (with `^C`) and restarted to run in background
-(it's the default with no `-d` / `-f` options).
+On EC2 the command line doesn't need any information on the actual server and can easily be used
+within an [Auto Scaling](http://aws.amazon.com/autoscaling/) group.
 
 ### Quick Installation
 
