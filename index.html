@@ -59,8 +59,13 @@ interface to <a href="http://aws.amazon.com/s3/">Amazon S3</a>.</p>
 
 <h3>Introduction</h3>
 
-<p>On EC2 the command line doesn't need any information on the actual server and can easily be used
-within an <a href="http://aws.amazon.com/autoscaling/">Auto Scaling</a> group.</p>
+<p>This is the logical architecture of yas3fs:<p>
+
+<img src="images/yas3fs.png">
+
+<p>I strongly suggest to start yas3fs for the first time with the <code>-d</code> (debug) option, to see if there is any error.
+When everything works it can be interrupted (with <code>^C</code>) and restarted to run in background
+(it's the default with no <code>-d</code> / <code>-f</code> options).</p>
 
 <p>To mount an S3 bucket without using SNS (i.e. for a single node):</p>
 
@@ -84,9 +89,8 @@ you can use the <code>--no-metadata</code> option.</p>
 
 <p>On EC2 the security group must allow inbound traffic from SNS on the selected port.</p>
 
-<p>I strongly suggest to start yas3fs for the first time with the <code>-d</code> (debug) option, to see if there is any error.
-When everything works it can be interrupted (with <code>^C</code>) and restarted to run in background
-(it's the default with no <code>-d</code> / <code>-f</code> options).</p>
+<p>On EC2 the command line doesn't need any information on the actual server and can easily be used
+within an <a href="http://aws.amazon.com/autoscaling/">Auto Scaling</a> group.</p>
 
 <h3>Quick Installation</h3>
 
