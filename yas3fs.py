@@ -1,4 +1,4 @@
-#!/usr/bin/python
+:#!/usr/bin/python
 
 """
 Yet Another S3-backed File System, or yas3fs
@@ -96,6 +96,7 @@ class LinkedList():
 class FSCache():
     """ File System Cache """
     def __init__(self):
+        self.stores = [ 'data-mem', 'data-disk' ]
         self.lock = threading.RLock()
         self.data_size_lock = threading.Lock()
         self.reset_all()
@@ -103,9 +104,11 @@ class FSCache():
         with self.lock:
             self.entries = {}
             self.lru = LinkedList()
-            self.data_size = 0
+            self.size = {}
+            for type in self.stores:
+                self.size[type] = 0
     def get_memory_usage(self):
-        return len(self.entries), self.data_size
+        return len(self.entries), self.size['data-mem'], self.size['data-disk']
     def add(self, path):
         with self.lock:
             if not self.has(path):
@@ -122,8 +125,16 @@ class FSCache():
         	    self.lru.delete(path)
         	else:
         	    if prop in self.entries[path]:
-                        if prop == 'data' and 'data-size' in self.entries[path]:
-                            self.update_data_size(path, -self.entries[path]['data-size'])
+                        if prop == 'data':
+                            for type in self.stores:
+                                if type in self.entries[path]:
+                                    self.update_size(path, type, -self.entries[path][type])
+                                    if type == 'data-disk':
+                                        filename = self.cache_path + path
+                                        try:
+                                            os.unlink(filename) # File *should* be there
+                                        except IOError:
+                                            pass
         		del self.entries[path][prop]
     def rename(self, path, new_path):
         with self.lock:
@@ -190,17 +201,27 @@ class FSCache():
             return False
     def is_empty(self, path, prop=None): # A wrapper to improve readability
         return not self.get(path, prop)
-    def update_data_size(self, path, delta):
+    def update_size(self, path, type, delta): # Type is 'data-mem' or 'data-disk'
         if delta == 0: # Nothing to do
             return
         with self.data_size_lock:
             if 'data-size' in self.entries[path]:
-                self.entries[path]['data-size'] += delta
+                self.entries[path][type] += delta
             else:
-                self.entries[path]['data-size'] = delta
-            if self.entries[path]['data-size'] == 0:
-                del self.entries[path]['data-size']
-            self.data_size += delta
+                self.entries[path][type] = delta
+            if self.entries[path][type] == 0:
+                del self.entries[path][type]
+            self.size[type] += delta
+    def get_data(self, path):
+        data = self.get(path, 'data')
+        if isinstance(data, io.BytesIO):
+            return data.getvalue()
+        elif isinstance(data, io.FileIO):
+            data.seek(0) # Go to the beginning
+            return data.read()
+        else:
+            raise "data object unknown"
+
  
 class SNS_HTTPServer(BaseHTTPServer.HTTPServer):
     """ HTTP Server to receive SNS notifications via HTTP """
@@ -317,12 +338,21 @@ class YAS3FS(LoggingMixIn, Operations):
         if self.sqs_queue_name or self.new_queue:
             logger.info("SQS queue wait time (in seconds): '%i'" % self.queue_wait_time)
             logger.info("SQS queue polling interval (in seconds): '%i'" % self.queue_polling_interval)
-        self.max_num_entries = int(options.cache_max_num_entries)
-        logger.info("Cache max entries: '%i'" % self.max_num_entries)
-        self.max_data_size = int(options.cache_max_data_size) * (1024 * 1024) # To convert MB to bytes
-        logger.info("Cache max size (in bytes): '%i'" % self.max_data_size)
-        self.check_memory_interval = int(options.cache_check_interval) # seconds
-        logger.info("Cache check memory interval (in seconds): '%i'" % self.check_memory_interval)
+        self.cache_entries = int(options.cache_entries)
+        logger.info("Cache entries: '%i'" % self.cache_entries)
+        self.cache_mem_size = int(options.cache_mem_size) * (1024 * 1024) # To convert MB to bytes
+        logger.info("Cache memory size (in bytes): '%i'" % self.cache_mem_size)
+        self.cache_disk_size = int(options.cache_disk_size) * (1024 * 1024) # To convert MB to bytes
+        logger.info("Cache disk size (in bytes): '%i'" % self.cache_mem_size)
+        if options.cache_path == '':
+            self.cache_path = '/tmp/yas3fs/' + self.s3_bucket_name + '/' + self.s3_prefix
+        else:
+            self.cache_path = options.cache_path
+        logger.info("Cache path (on disk): '%s'" % self.cache_path)
+        self.cache_on_disk_gt = int(options.cache_on_disk_gt) * (1024 * 1024) # To convert MB to bytes
+        logger.info("Cache on disk if size greather than (in bytes): '%i'" % self.cache_on_disk_gt)
+        self.cache_check_interval = int(options.cache_check_interval) # seconds
+        logger.info("Cache check interval (in seconds): '%i'" % self.cache_check_interval)
         if options.ec2_hostname:
             instance_metadata = boto.utils.get_instance_metadata() # This is very slow (to fail) if used outside of EC2
             self.hostname = instance_metadata['public-hostname']
@@ -455,8 +485,8 @@ class YAS3FS(LoggingMixIn, Operations):
                 self.sqs.delete_queue(self.queue, force_deletion=True)
         if self.sns_topic_arn:
             self.sns_topic_arn = None # To stop publish thread
-        if  self.max_num_entries:
-            self.max_num_entries = 0 # To stop memory thread
+        if  self.cache_entries:
+            self.cache_entries = 0 # To stop memory thread
         
         #if self.publish_thread:
         #    self.publish_thread.join()
@@ -502,7 +532,8 @@ class YAS3FS(LoggingMixIn, Operations):
                 if self.cache.has(path, 'data-range'):
                     self.cache.delete(path, 'data-range')
                     self.cache.delete(path, 'data')
-                    self.cache.delete(path, 'data-size') # Do I need this ???
+                    self.cache.delete(path, 'data-mem') # Do I need this ???
+                    self.cache.delete(path, 'data-disk') # Do I need this ??? 
                     self.cache.delete(path, 'data-new') # Do I need this ???
                 else:
                     self.cache.set(path, 'data-new', md5)
@@ -558,9 +589,9 @@ class YAS3FS(LoggingMixIn, Operations):
                         errorAndExit("S3 bucket not found")
             elif c[1] == 'cache':
                 if c[2] == 'entries' and c[3] > 0:
-                    self.max_num_entries = int(c[3])
+                    self.cache_entries = int(c[3])
             elif c[2] == 'size' and c[3] > 0:
-                self.max_data_size = int(c[3]) * (1024 * 1024) # MB
+                self.cache_mem_size = int(c[3]) * (1024 * 1024) # MB
             elif c[1] == 'buffer' and c[3] >= 0:
                 if c[2] == 'size':
                     self.buffer_size = int(c[3]) * 1024 # KB
@@ -587,10 +618,11 @@ class YAS3FS(LoggingMixIn, Operations):
 
     def check_memory_usage(self):
         logger.debug("check_memory_usage")
-        while self.max_num_entries:
-            num_entries, data_size = self.cache.get_memory_usage()
-            logger.debug("num_entries, data_size: %i, %i" % (num_entries, data_size))
-            if num_entries > self.max_num_entries or data_size > self.max_data_size:
+        while self.cache_entries:
+            num_entries, mem_size, disk_size = self.cache.get_memory_usage()
+            logger.debug("num_entries, mem_size, disk_size: %i, %i, %i" % (num_entries, mem_size, disk_size))
+            purge = False
+            if num_entries > self.cache_entries:
                 with self.cache.lock:
                     path = self.cache.lru.popleft()
                     logger.debug("purge: %s ?" % path)
@@ -602,8 +634,34 @@ class YAS3FS(LoggingMixIn, Operations):
                     else:
                         logger.debug("purge: yes")
                         self.cache.delete(path)
-            else:
-                time.sleep(self.check_memory_interval)
+                        purge = True
+            if mem_size > self.cache_mem_size:
+                with self.cache.lock:
+                    path = self.cache.lru.popleft()
+                    if not self.cache.has(path, 'data-mem') or self.cache.get(path, 'open') or self.cache.has(path, 'change'):
+                        logger.debug("purge: no")
+                        logger.debug("open: %i" % self.cache.get(path, 'open'))
+                        logger.debug("change: %s" % self.cache.has(path, 'change'))
+                        self.cache.lru.append(path)
+                    else:
+                        logger.debug("purge: yes")
+                        self.cache.delete(path)
+                        purge = True
+            if disk_size > self.cache_disk_size:
+                with self.cache.lock:
+                    path = self.cache.lru.popleft()
+                    logger.debug("purge: %s ?" % path)
+                    if not self.cache.has(path, 'data-disk') or self.cache.get(path, 'open') or self.cache.has(path, 'change'):
+                        logger.debug("purge: no")
+                        logger.debug("open: %i" % self.cache.get(path, 'open'))
+                        logger.debug("change: %s" % self.cache.has(path, 'change'))
+                        self.cache.lru.append(path)
+                    else:
+                        logger.debug("purge: yes")
+                        self.cache.delete(path)
+                        purge = True
+            if not purge:
+                time.sleep(self.cache_check_interval)
 
     def add_to_parent_readdir(self, path):
         logger.debug("add_to_parent_readdir '%s'" % (path))
@@ -840,9 +898,17 @@ class YAS3FS(LoggingMixIn, Operations):
                         self.cache.delete(path, 'data-range')
                         event.set()
                 return True
+            elif k.size > self.cache_on_disk_gt and not self.cache.has(path, 'data'):
+                filename = self.cache_path + path # path begins with '/'
+                if os.path.isfile(filename):
+                    data = io.FileIO(filename, mode='rb+')
+                    content = data.read()
+                    self.cache.set(path, 'data', data)
+                    self.cache.set(path, 'data-new', None)
+                    self.cache.update_size(path, 'data-disk', os.stat(filename).st_size)
 	    if self.cache.has(path, 'data'):
                 new_md5 = self.cache.get(path, 'data-new')
-		md5 = hashlib.md5(self.cache.get(path, 'data').getvalue()).hexdigest()
+                md5 = hashlib.md5(self.cache.get_data(path)).hexdigest()
                 etag = k.etag[1:-1]
                 if not new_md5 or new_md5 == etag:
                     self.cache.delete(path, 'data-new')
@@ -852,25 +918,38 @@ class YAS3FS(LoggingMixIn, Operations):
 		if md5 == etag:
 		    return True
             self.cache.delete(path, 'attr')
+            if k.size <= self.cache_on_disk_gt:
+                data = io.BytesIO()
+                type = 'data-mem'
+            else:
+                filename = self.cache_path + path # path begins with '/'
+                dirname = os.path.dirname(filename)
+                try:
+                    os.makedirs(dirname)
+                except OSError as exc: # Python >2.5
+                    if exc.errno == errno.EEXIST and os.path.isdir(dirname):
+                        pass
+                    else:
+                        raise
+                data = io.FileIO(filename, mode='wb+')
+                type = 'data-disk'
             if self.buffer_size > 0:
                 with self.cache.lock:
                     if self.cache.has(path, 'data-range'):
                         return True
                     self.cache.set(path, 'data-range', (0, threading.Event()))
-                data = io.BytesIO()
                 self.cache.set(path, 'data', data)
-                t = threading.Thread(target=self.get_data, args=(path, data, k))
+                t = threading.Thread(target=self.download_data, args=(path, data, type, k))
                 t.daemon = True
                 t.start()
             else:
-                data = io.BytesIO()
                 self.cache.set(path, 'data', data)
                 k.get_contents_to_file(data)
-                self.cache.update_data_size(path, k.size)
+                self.cache.update_size(path, type, k.size)
 	return True
 
-    def get_data(self, path, data, key):
-        logger.debug("get_data '%s' '%s' '%s'" % (path, data, key))
+    def download_data(self, path, data, type, key):
+        logger.debug("download_data '%s' '%s' '%s' '%s'" % (path, data, type, key))
 
         key.BufferSize = self.buffer_size
         delete_flag = False
@@ -886,7 +965,7 @@ class YAS3FS(LoggingMixIn, Operations):
                     data.write(bytes)
                     length = len(bytes)
                     total += length
-                    self.cache.update_data_size(path, length)
+                    self.cache.update_size(path, type, length)
                     self.cache.set(path, 'data-range', (total, threading.Event()))
                     event.set()
         except:
@@ -914,7 +993,7 @@ class YAS3FS(LoggingMixIn, Operations):
                 if range == None:
                     break
                 range[1].wait()
-	    return self.cache.get(path, 'data').getvalue()
+	    return self.cache.get_data(path)
 	return FuseOSError(errno.EINVAL)
  
     def rmdir(self, path):
@@ -1080,8 +1159,7 @@ class YAS3FS(LoggingMixIn, Operations):
             sio = self.cache.get(path, 'data')
             sio.seek(offset)
             sio.write(data)
-	    self.cache.set(path, 'data', sio)
-	    self.cache.set(path, 'change', True)
+            self.cache.set(path, 'change', True)
 	    now = str(time.time())
 	    attr = self.get_metadata(path, 'attr')
             old_size = int(attr['st_size'])
@@ -1116,7 +1194,9 @@ class YAS3FS(LoggingMixIn, Operations):
             else:
                 old_size = k.size
             k.set_contents_from_file(data, headers={'Content-Type': type})
-            self.cache.update_data_size(path, k.size - old_size)
+            for type in self.cache.stores:
+                if self.cache.has(path, type):
+                    self.cache.update_size(path, type, k.size - old_size)
             self.cache.delete(path, 'change')
             self.publish(['flush', path, k.etag[1:-1]])
         return 0
@@ -1262,10 +1342,17 @@ In an EC2 instance a IAM role can be used to give access to S3/SNS/SQS resources
                       help="SQS queue wait time in seconds (using long polling, 0 to disable, default is %default seconds)", metavar="N", default=0)
     parser.add_option("--queue-polling", dest="queue_polling_interval",
                       help="SQS queue polling interval in seconds (default is %default seconds)", metavar="N", default=1)
-    parser.add_option("--cache-entries", dest="cache_max_num_entries",
+    parser.add_option("--cache-entries", dest="cache_entries",
                       help="max number of entries to cache (default is %default entries)", metavar="N", default=1000000)
-    parser.add_option("--cache-size", dest="cache_max_data_size",
-                      help="max size of the cache in MB (default is %default MB)", metavar="N", default=1024)
+    parser.add_option("--cache-mem-size", dest="cache_mem_size",
+                      help="max size of the memory cache in MB (default is %default MB)", metavar="N", default=1024)
+    parser.add_option("--cache-disk-size", dest="cache_disk_size",
+                      help="max size of the disk cache in MB (default is %default MB)", metavar="N", default=10240)
+    parser.add_option("--cache-path", dest="cache_path",
+                      help="local path to use for disk cache (default is '/tmp/yas3fs/BUCKET/PATH')", metavar="PATH", default="")
+    parser.add_option("--cache-on-disk-gt", dest="cache_on_disk_gt",
+                      help="use disk (instead of memory) cache for files greather than the given size in MB (default is %default MB)",
+                      metavar="N", default=100)
     parser.add_option("--cache-check", dest="cache_check_interval",
                       help="interval between cache memory checks in seconds (default is %default seconds)", metavar="N", default=10)
     parser.add_option("--buffer-size", dest="buffer_size",
