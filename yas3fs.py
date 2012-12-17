@@ -1023,7 +1023,10 @@ class YAS3FS(LoggingMixIn, Operations):
 	    raise FuseOSError(errno.ENOENT)
         while True:
             range = self.cache.get(path, 'data-range')
-            if range == None or range[0] >= size:
+            if range == None:
+                break
+            if range[0] >= size:
+                self.cache.delete(path, 'data-range')
                 break
             range[1].wait()
         self.cache.get(path, 'data').truncate(size)
