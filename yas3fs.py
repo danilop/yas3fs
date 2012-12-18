@@ -349,8 +349,8 @@ class YAS3FS(LoggingMixIn, Operations):
         else:
             self.cache_path = options.cache_path
         logger.info("Cache path (on disk): '%s'" % self.cache_path)
-        self.cache_on_disk_gt = int(options.cache_on_disk_gt) * (1024 * 1024) # To convert MB to bytes
-        logger.info("Cache on disk if size greather than (in bytes): '%i'" % self.cache_on_disk_gt)
+        self.cache_on_disk = int(options.cache_on_disk) * (1024 * 1024) # To convert MB to bytes
+        logger.info("Cache on disk if size greather than (in bytes): '%i'" % self.cache_on_disk)
         self.cache_check_interval = int(options.cache_check_interval) # seconds
         logger.info("Cache check interval (in seconds): '%i'" % self.cache_check_interval)
         if options.ec2_hostname:
@@ -898,7 +898,7 @@ class YAS3FS(LoggingMixIn, Operations):
                         self.cache.delete(path, 'data-range')
                         event.set()
                 return True
-            elif k.size > self.cache_on_disk_gt and not self.cache.has(path, 'data'):
+            elif k.size > self.cache_on_disk and not self.cache.has(path, 'data'):
                 filename = self.cache_path + path # path begins with '/'
                 if os.path.isfile(filename):
                     data = io.FileIO(filename, mode='rb+')
@@ -918,7 +918,7 @@ class YAS3FS(LoggingMixIn, Operations):
 		if md5 == etag:
 		    return True
             self.cache.delete(path, 'attr')
-            if k.size <= self.cache_on_disk_gt:
+            if k.size <= self.cache_on_disk:
                 data = io.BytesIO()
                 type = 'data-mem'
             else:
@@ -1353,7 +1353,7 @@ In an EC2 instance a IAM role can be used to give access to S3/SNS/SQS resources
                       help="max size of the disk cache in MB (default is %default MB)", metavar="N", default=10240)
     parser.add_option("--cache-path", dest="cache_path",
                       help="local path to use for disk cache (default is '/tmp/yas3fs/BUCKET/PATH')", metavar="PATH", default="")
-    parser.add_option("--cache-on-disk-gt", dest="cache_on_disk_gt",
+    parser.add_option("--cache-on-disk", dest="cache_on_disk",
                       help="use disk (instead of memory) cache for files greather than the given size in MB (default is %default MB)",
                       metavar="N", default=100)
     parser.add_option("--cache-check", dest="cache_check_interval",
