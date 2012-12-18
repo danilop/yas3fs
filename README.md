@@ -35,7 +35,7 @@ When everything works it can be interrupted (with `^C`) and restarted to run in 
 
 To mount an S3 bucket without using SNS (i.e. for a single node):
 
-    yas3fs.py /path/to/mount --url=s3://bucket/path 
+    yas3fs.py /path/to/mount --url s3://bucket/path 
 
 To persist file system metadata such as attr/xattr yas3fs is using S3 User Metadata.
 To mount an S3 bucket without actually writing metadata in it,
@@ -44,11 +44,11 @@ you can use the `--no-metadata` option.
 
 To mount an S3 bucket using SNS and listening to an SQS endpoint:
 
-    yas3fs.py /path/to/mount --url=s3://bucket/path --topic TOPIC-ARN --new-queue
+    yas3fs.py /path/to/mount --url s3://bucket/path --topic TOPIC-ARN --new-queue
 
 To mount an S3 bucket using SNS and listening to an HTTP endpoint (on EC2):
 
-    yas3fs.py /path/to/mount --url=s3://bucket/path --topic TOPIC-ARN --ec2-hostname --port N
+    yas3fs.py /path/to/mount --url s3://bucket/path --topic TOPIC-ARN --ec2-hostname --port N
 
 On EC2 the security group must allow inbound traffic from SNS on the selected port.
 
@@ -77,7 +77,7 @@ If you want to do a quick test here's the installation procedure depending on th
     ./yas3fs.py -h # See the usage
     sudo vi /etc/fuse.conf # uncomment user_allow_other
     mkdir LOCAL-PATH
-    ./yas3fs.py LOCAL-PATH --url=s3://BUCKET/PATH --topic TOPIC-ARN --new-queue --region eu-west-1
+    ./yas3fs.py LOCAL-PATH --url s3://BUCKET/PATH --topic TOPIC-ARN --new-queue --region eu-west-1
 
 **On EC2 with Ubuntu Server 12.04.1 LTS**
 
@@ -90,7 +90,7 @@ If you want to do a quick test here's the installation procedure depending on th
     sudo vi /etc/fuse.conf  # uncomment user_allow_other
     sudo chmod a+r /etc/fuse.conf # make it readable by anybody, it is not the default on Ubuntu
     mkdir LOCAL-PATH
-    ./yas3fs.py LOCAL-PATH --url=s3://BUCKET/PATH --topic TOPIC-ARN --new-queue --region eu-west-1
+    ./yas3fs.py LOCAL-PATH --url s3://BUCKET/PATH --topic TOPIC-ARN --new-queue --region eu-west-1
 
 **On a Mac (tested under Mountain Lion)**
 
@@ -108,7 +108,7 @@ download the most suitable "egg" from
     chmod u+x yas3fs.py
     ./yas3fs.py -h # See the usage
     mkdir LOCAL-PATH
-    ./yas3fs.py LOCAL-PATH --url=s3://BUCKET/PATH --topic TOPIC-ARN --new-queue --region eu-west-1
+    ./yas3fs.py LOCAL-PATH --url s3://BUCKET/PATH --topic TOPIC-ARN --new-queue --region eu-west-1
 
 If something does not work as expected you can use the `-d` option to run in foreground in debug mode.
 
