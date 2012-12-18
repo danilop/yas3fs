@@ -69,7 +69,7 @@ When everything works it can be interrupted (with <code>^C</code>) and restarted
 
 <p>To mount an S3 bucket without using SNS (i.e. for a single node):</p>
 
-<pre><code>yas3fs.py /path/to/mount --url=s3://bucket/path 
+<pre><code>yas3fs.py /path/to/mount --url s3://bucket/path 
 </code></pre>
 
 <p>To persist file system metadata such as attr/xattr yas3fs is using S3 User Metadata.
@@ -79,12 +79,12 @@ you can use the <code>--no-metadata</code> option.</p>
 
 <p>To mount an S3 bucket using SNS and listening to an SQS endpoint:</p>
 
-<pre><code>yas3fs.py /path/to/mount --url=s3://bucket/path --topic TOPIC-ARN --new-queue
+<pre><code>yas3fs.py /path/to/mount --url s3://bucket/path --topic TOPIC-ARN --new-queue
 </code></pre>
 
 <p>To mount an S3 bucket using SNS and listening to an HTTP endpoint (on EC2):</p>
 
-<pre><code>yas3fs.py /path/to/mount --url=s3://bucket/path --topic TOPIC-ARN --ec2-hostname --port N
+<pre><code>yas3fs.py /path/to/mount --url s3://bucket/path --topic TOPIC-ARN --ec2-hostname --port N
 </code></pre>
 
 <p>On EC2 the security group must allow inbound traffic from SNS on the selected port.</p>
@@ -114,7 +114,7 @@ chmod u+x yas3fs.py
 ./yas3fs.py -h # See the usage
 sudo vi /etc/fuse.conf # uncomment user_allow_other
 mkdir LOCAL-PATH
-./yas3fs.py LOCAL-PATH --url=s3://BUCKET/PATH --topic TOPIC-ARN --new-queue --region eu-west-1
+./yas3fs.py LOCAL-PATH --url s3://BUCKET/PATH --topic TOPIC-ARN --new-queue --region eu-west-1
 </code></pre>
 
 <p><strong>On EC2 with Ubuntu Server 12.04.1 LTS</strong></p>
@@ -128,7 +128,7 @@ chmod u+x yas3fs.py
 sudo vi /etc/fuse.conf  # uncomment user_allow_other
 sudo chmod a+r /etc/fuse.conf # make it readable by anybody, it is not the default on Ubuntu
 mkdir LOCAL-PATH
-./yas3fs.py LOCAL-PATH --url=s3://BUCKET/PATH --topic TOPIC-ARN --new-queue --region eu-west-1
+./yas3fs.py LOCAL-PATH --url s3://BUCKET/PATH --topic TOPIC-ARN --new-queue --region eu-west-1
 </code></pre>
 
 <p><strong>On a Mac (tested under Mountain Lion)</strong></p>
@@ -147,7 +147,7 @@ cd yas3fs
 chmod u+x yas3fs.py
 ./yas3fs.py -h # See the usage
 mkdir LOCAL-PATH
-./yas3fs.py LOCAL-PATH --url=s3://BUCKET/PATH --topic TOPIC-ARN --new-queue --region eu-west-1
+./yas3fs.py LOCAL-PATH --url s3://BUCKET/PATH --topic TOPIC-ARN --new-queue --region eu-west-1
 </code></pre>
 
 <p>If something does not work as expected you can use the <code>-d</code> option to run in foreground in debug mode.</p>
@@ -205,7 +205,7 @@ Options:
   --cache-disk-size=N  max size of the disk cache in MB (default is 10240 MB)
   --cache-path=PATH    local path to use for disk cache (default is
                        '/tmp/yas3fs/BUCKET/PATH')
-  --cache-on-disk=N    use disk (instead of memory) cache for files greather
+  --cache-on-disk=N    use disk (instead of memory) cache for files greater
                        than the given size in MB (default is 100 MB)
   --cache-check=N      interval between cache memory checks in seconds
                        (default is 10 seconds)
