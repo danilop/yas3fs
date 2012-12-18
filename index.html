@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html>
+
+  <head>
+    <meta charset='utf-8' />
+    <meta http-equiv="X-UA-Compatible" content="chrome=1" />
+    <meta name="description" content="Yas3fs : Yet Another S3-backed File System" />
+
+    <link rel="stylesheet" type="text/css" media="screen" href="stylesheets/stylesheet.css">
+
+    <title>Yas3fs</title>
+  </head>
+
+  <body>
+
+    <!-- HEADER -->
+    <div id="header_wrap" class="outer">
+        <header class="inner">
+          <a id="forkme_banner" href="https://github.com/danilop/yas3fs">View on GitHub</a>
+
+          <h1 id="project_title">Yas3fs</h1>
+          <h2 id="project_tagline">Yet Another S3-backed File System</h2>
+
+            <section id="downloads">
+              <a class="zip_download_link" href="https://github.com/danilop/yas3fs/zipball/master">Download this project as a .zip file</a>
+              <a class="tar_download_link" href="https://github.com/danilop/yas3fs/tarball/master">Download this project as a tar.gz file</a>
+            </section>
+        </header>
+    </div>
+
+    <!-- MAIN CONTENT -->
+    <div id="main_content_wrap" class="outer">
+      <section id="main_content" class="inner">
+        <h3>Yet Another S3-backed File System: yas3fs</h3>
+
+<p>YAS3FS (Yet Another S3-backed File System) is a <a href="http://fuse.sourceforge.net">Filesystem in Userspace (FUSE)</a>
+interface to <a href="http://aws.amazon.com/s3/">Amazon S3</a>.</p>
+
+<p><strong>This is a personal project. No relation whatsoever exists between this project and my employer.</strong></p>
+
+<ul>
+<li>It allows to mount an S3 bucket (or a part of it, if you specify a path) as a local folder.</li>
+<li>It works on Linux and Mac OS X.</li>
+<li>For maximum speed all data read from S3 is cached in memory locally on the node.</li>
+<li>It can be used on more than one node to create a "shared" file system (i.e. a yas3fs "cluster").</li>
+<li>
+<a href="http://aws.amazon.com/sns/">SNS</a> notifications are used to update other nodes in the cluster that something has changed on S3 and they need to invalidate their cache.</li>
+<li>Notifications can be listened using HTTP or <a href="http://aws.amazon.com/sqs/">SQS</a> endpoints.</li>
+<li>With buffering enabled (the default) files can be accessed during the download from S3 (e.g. for streaming).</li>
+<li>If the cache grows to its maximum size, the less recently accessed files are removed.</li>
+<li>AWS credentials can be passed using AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY environmental variables.</li>
+<li>In an <a href="http://aws.amazon.com/ec2/">EC2</a> instance a <a href="http://aws.amazon.com/iam/">IAM</a> role can be used to give access to S3/SNS/SQS resources.</li>
+<li>It is written in Python (2.6) using <a href="https://github.com/boto/boto">boto</a> and <a href="https://github.com/terencehonles/fusepy">fusepy</a>.</li>
+</ul><h3>License</h3>
+
+<p>Copyright (c) 2012 Danilo Poccia, <a href="http://blog.danilopoccia.net">http://blog.danilopoccia.net</a></p>
+
+<p>This code is licensed under the The MIT License (MIT). Please see the LICENSE file that accompanies this project for the terms of use.</p>
+
+<h3>Introduction</h3>
+
+<p>This is the logical architecture of yas3fs:</p>
+
+<p><img src="http://danilop.github.com/yas3fs/images/yas3fs.png" alt="yas3fs Logical Architecture"></p>
+
+<p>I strongly suggest to start yas3fs for the first time with the <code>-d</code> (debug) option, to see if there is any error.
+When everything works it can be interrupted (with <code>^C</code>) and restarted to run in background
+(it's the default with no <code>-d</code> / <code>-f</code> options).</p>
+
+<p>To mount an S3 bucket without using SNS (i.e. for a single node):</p>
+
+<pre><code>yas3fs.py /path/to/mount --url s3://bucket/path 
+</code></pre>
+
+<p>To persist file system metadata such as attr/xattr yas3fs is using S3 User Metadata.
+To mount an S3 bucket without actually writing metadata in it,
+e.g. because it is a bucket you mainly use as a repository and not as a file system,
+you can use the <code>--no-metadata</code> option.</p>
+
+<p>To mount an S3 bucket using SNS and listening to an SQS endpoint:</p>
+
+<pre><code>yas3fs.py /path/to/mount --url s3://bucket/path --topic TOPIC-ARN --new-queue
+</code></pre>
+
+<p>To mount an S3 bucket using SNS and listening to an HTTP endpoint (on EC2):</p>
+
+<pre><code>yas3fs.py /path/to/mount --url s3://bucket/path --topic TOPIC-ARN --ec2-hostname --port N
+</code></pre>
+
+<p>On EC2 the security group must allow inbound traffic from SNS on the selected port.</p>
+
+<p>On EC2 the command line doesn't need any information on the actual server and can easily be used
+within an <a href="http://aws.amazon.com/autoscaling/">Auto Scaling</a> group.</p>
+
+<h3>Quick Installation</h3>
+
+<p>If you want to do a quick test here's the installation procedure depending on the OS flavor (Linux or Mac):</p>
+
+<ul>
+<li>Create an S3 bucket in the AWS region you prefer.</li>
+<li>You don't need to create anything in the bucket as the initial path (if any) is created by the tool on the first mount.</li>
+<li>If you want to use an existing S3 bucket you can use the <code>--no-metadata</code> option to not use user metadata to persist file system attr/xattr.</li>
+<li>Create an SNS topic in the same region as the S3 bucket and write down the full topic ARN (you need it to run the tool if more than one client is connected to the same bucket/path).</li>
+<li>Create a IAM Role that gives access to the S3 and SNS/SQS resources you need or pass the AWS credentials to the tool using environmental variables (see <code>-h</code>).</li>
+<li>I used the <code>eu-west-1</code> region in my sample, but you can replace that with any region you want. If no region is specified it defaults to <code>us-east-1</code>.</li>
+</ul><p><strong>On EC2 with Amazon Linux 2012.09</strong></p>
+
+<pre><code>sudo yum -y install fuse fuse-libs
+sudo easy_install pip
+sudo pip install fusepy
+git clone git://github.com/danilop/yas3fs.git
+cd yas3fs
+chmod u+x yas3fs.py
+./yas3fs.py -h # See the usage
+sudo vi /etc/fuse.conf # uncomment user_allow_other
+mkdir LOCAL-PATH
+./yas3fs.py LOCAL-PATH --url s3://BUCKET/PATH --topic TOPIC-ARN --new-queue --region eu-west-1
+</code></pre>
+
+<p><strong>On EC2 with Ubuntu Server 12.04.1 LTS</strong></p>
+
+<pre><code>sudo aptitude install fuse-utils libfuse2 python-pip
+sudo pip install --upgrade boto fusepy
+git clone git://github.com/danilop/yas3fs.git
+cd yas3fs
+chmod u+x yas3fs.py
+./yas3fs.py -h # See the usage
+sudo vi /etc/fuse.conf  # uncomment user_allow_other
+sudo chmod a+r /etc/fuse.conf # make it readable by anybody, it is not the default on Ubuntu
+mkdir LOCAL-PATH
+./yas3fs.py LOCAL-PATH --url s3://BUCKET/PATH --topic TOPIC-ARN --new-queue --region eu-west-1
+</code></pre>
+
+<p><strong>On a Mac (tested under Mountain Lion)</strong></p>
+
+<p>Install FUSE for OS X from <a href="http://osxfuse.github.com">http://osxfuse.github.com</a></p>
+
+<p>To install the Python <a href="http://chandlerproject.org/Projects/MeTooCrypto">M2Crypto</a> module,
+download the most suitable "egg" from
+<a href="http://chandlerproject.org/Projects/MeTooCrypto#Downloads">http://chandlerproject.org/Projects/MeTooCrypto#Downloads</a>.</p>
+
+<pre><code>sudo easy_install M2Crypto-*.egg
+sudo easy_install boto
+sudo easy_install fusepy
+git clone git://github.com/danilop/yas3fs.git
+cd yas3fs
+chmod u+x yas3fs.py
+./yas3fs.py -h # See the usage
+mkdir LOCAL-PATH
+./yas3fs.py LOCAL-PATH --url s3://BUCKET/PATH --topic TOPIC-ARN --new-queue --region eu-west-1
+</code></pre>
+
+<p>If something does not work as expected you can use the <code>-d</code> option to run in foreground in debug mode.</p>
+
+<p><strong>Unmount</strong></p>
+
+<p>To unmount the file system on Linux:</p>
+
+<pre><code>fusermount -u LOCAL-PATH
+</code></pre>
+
+<p>To unmount the file system on a Mac you can use <code>umount</code>.</p>
+
+<h3>Full Usage</h3>
+
+<pre><code>yas3fs.py -h
+
+Usage: yas3fs.py &lt;mountpoint&gt; [options]
+
+YAS3FS (Yet Another S3-backed File System) is a Filesystem in Userspace (FUSE) interface to Amazon S3.
+
+It allows to mount an S3 bucket (or a part of it) as a local folder.
+For maximum speed all data read from S3 is cached locally on the node.
+Access to file content is provided during the download from S3 using buffers.
+SNS notifications are used to update other nodes that something has changed on S3 and they need to invalidate their cache.
+Notifications can be listened using HTTP or SQS endpoints.
+With buffering enabled (the default) files can be accessed during the download from S3.
+If the cache grows to its maximum size the less recently accessed files are removed.
+AWS credentials can be passed using AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY environmental variables.
+In an EC2 instance a IAM role can be used to give access to S3/SNS/SQS resources.
+
+Options:
+  -h, --help           show this help message and exit
+  --url=URL            the S3 path to mount in s3://BUCKET/PATH format, PATH
+                       can be empty, can contain subfolders and is created on
+                       first mount if not found in the BUCKET
+  --region=REGION      AWS region to use for SNS/SQS (default is us-east-1)
+  --topic=ARN          SNS topic ARN
+  --hostname=HOST      hostname to listen to SNS HTTP notifications
+  --ec2-hostname       get public hostname from EC2 instance metadata
+                       (overrides '--hostname')
+  --port=N             TCP port to listen to SNS HTTP notifications
+  --queue=NAME         SQS queue name, a new queue is created if it doesn't
+                       exist
+  --new-queue          create a new SQS queue that is deleted on unmount
+                       (overrides '--queue', queue name is BUCKET-PATH-ID with
+                       alphanumeric characters only)
+  --queue-wait=N       SQS queue wait time in seconds (using long polling, 0
+                       to disable, default is 0 seconds)
+  --queue-polling=N    SQS queue polling interval in seconds (default is 1
+                       seconds)
+  --cache-entries=N    max number of entries to cache (default is 1000000
+                       entries)
+  --cache-mem-size=N   max size of the memory cache in MB (default is 1024 MB)
+  --cache-disk-size=N  max size of the disk cache in MB (default is 10240 MB)
+  --cache-path=PATH    local path to use for disk cache (default is
+                       '/tmp/yas3fs/BUCKET/PATH')
+  --cache-on-disk=N    use disk (instead of memory) cache for files greater
+                       than the given size in MB (default is 100 MB)
+  --cache-check=N      interval between cache memory checks in seconds
+                       (default is 10 seconds)
+  --buffer-size=N      download buffer size in KB (0 to disable buffering,
+                       default is 10240 KB)
+  --no-metadata        don't write user metadata on S3 to persist file system
+                       attr/xattr
+  --prefetch           start downloading file content as soon as the file is
+                       discovered
+  --id=ID              a unique ID identifying this node in a cluster
+                       (hostname, queue name or UUID Version 1 as per RFC 4122
+                       are used if not provided)
+  --log=FILE           the filename to use for logs
+  --mkdir              create mountpoint if not found (create intermediate
+                       directories as required)
+  -f, --foreground     run in foreground
+  -d, --debug          print debug information (implies '-f')
+</code></pre>
+
+<h3>Notification Syntax &amp; Use</h3>
+
+<p>You can use the SNS topic for other purposes than keeping the cache of the nodes in sync.
+Those are some sample use cases:</p>
+
+<ul>
+<li>You can listen to the SNS topic to be updated on changes on S3 (if done through yas3fs).</li>
+<li>You can publish on the SNS topic to manage the overall "cluster" of yas3fs nodes.</li>
+</ul><p>The SNS notification syntax is based on <a href="http://www.json.org">JSON (JavaScript Object Notation)</a>:</p>
+
+<pre><code>[ "node_id", "action", ... ]
+</code></pre>
+
+<p>The following <code>action</code>(s) are currently implemented:</p>
+
+<ul>
+<li>
+<code>mkdir</code> (new directory): <code>[ "node_id", "mkdir", "path" ]</code>
+</li>
+<li>
+<code>rmdir</code> (remove directory): <code>[ "node_id", "rmdir", "path" ]</code>
+</li>
+<li>
+<code>mknod</code> (new empty file): <code>[ "node_id", "mknod", "path" ]</code>
+</li>
+<li>
+<code>unlink</code> (remove file): <code>[ "node_id", "unlink", "path" ]</code>
+</li>
+<li>
+<code>symlink</code> (new symbolic link): <code>[ "node_id", "symlink", "path" ]</code>
+</li>
+<li>
+<code>rename</code> (rename file or directory): <code>[ "node_id", "rename", "old_path", "new_path" ]</code>
+</li>
+<li>
+<code>flush</code> (updated file): <code>[ "node_id", "flush", "path", "new_md5" ]</code> (<code>path</code> and <code>new_md5</code> are optional)</li>
+<li>
+<code>md</code> (updated metadata, e.g. attr/xattr): <code>[ "node_id", "md", "path", "metadata_name" ]</code>
+</li>
+<li>
+<code>reset</code> (reset cache): <code>[ "node_id", "reset" ]</code>
+</li>
+<li>
+<code>cache</code> (change cache config): <code>[ "node_id", "cache" , "entries" or "mem" or "disk", new_value ]</code>
+</li>
+<li>
+<code>buffer</code> (change buffer config): <code>[ "node_id", "buffer", "size", new_value ]</code>
+</li>
+<li>
+<code>prefetch</code> (change prefetch config): <code>[ "node_id", "prefetch", "on" or "off" ]</code>
+</li>
+<li>
+<code>url</code> (change S3 url): <code>[ "node_id", "url", "s3://BUCKET/PATH" ]</code>
+</li>
+</ul><p>Every node will listen to notifications coming from a <code>node_id</code> different from its own id.
+As an example, if you want to reset the cache of all the nodes in a yas3fs cluster,
+you can send the following notification to the SNS topic (assuming there is no node with id equal to <code>all</code>):</p>
+
+<pre><code>[ "all", "reset" ]
+</code></pre>
+
+<p>To send the notification tou can use the SNS web console.</p>
+
+<p>In the same way, if you uploaded a new file (or updated an old one) directly on S3 
+you can invalidate the caches of all the nodes in the yas3fs cluster for that <code>path</code> sending this SNS notification:</p>
+
+<pre><code>[ "all", "flush", "path" ]
+</code></pre>
+
+<p>The <code>path</code> is the relative path of the file system (<code>/</code> corresponding to the mount point)
+and doesn't include any S3 path (i.e. prefix) as given in the <code>--url</code> option.</p>
+
+<p>To change the size of the memory cache on all nodes, e.g. to bring it from 1GB (the current default) to 10GB,
+you can publish (the size is in MB as in the corresponding command line option):</p>
+
+<pre><code>[ "all", "cache", "mem", 10240 ]
+</code></pre>
+
+<p>To change the size of the disk cache on all nodes, e.g. to bring it from 10GB (the current default) to 1TB,
+you can publish (the size is in MB as in the corresponding command line option):</p>
+
+<pre><code>[ "all", "cache", "disk", 1048576 ]
+</code></pre>
+
+<p>To change the buffer size used to download the content (and make it available for reads) from the default of 10MB (optimized for a full download speed) to 256KB (optimized for a streaming service) you can use (the size is in KB, as in the corresponding command line option):</p>
+
+<pre><code>[ "all", "buffer", "size", 256 ]
+</code></pre>
+
+<p>Similarly, to activate download prefetch on all nodes you can use:</p>
+
+<pre><code>[ "all", "prefetch", "on" ]
+</code></pre>
+
+<p>You can even change dinamically the S3 URL (i.e. the bucket and/or the path prefix) that are mounted:</p>
+
+<pre><code>[ "all", "url", "s3://BUCKET/PATH" ]
+</code></pre>
+
+<p>Happy File Sharing!</p>
+      </section>
+    </div>
+
+    <!-- FOOTER  -->
+    <div id="footer_wrap" class="outer">
+      <footer class="inner">
+        <p class="copyright">Yas3fs maintained by <a href="https://github.com/danilop">danilop</a></p>
+        <p>Published with <a href="http://pages.github.com">GitHub Pages</a></p>
+      </footer>
+    </div>
+
+    
+
+  </body>
+</html>
