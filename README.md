@@ -164,7 +164,7 @@ To unmount the file system on a Mac you can use `umount`.
       --cache-disk-size=N  max size of the disk cache in MB (default is 10240 MB)
       --cache-path=PATH    local path to use for disk cache (default is
                            '/tmp/yas3fs/BUCKET/PATH')
-      --cache-on-disk=N    use disk (instead of memory) cache for files greather
+      --cache-on-disk=N    use disk (instead of memory) cache for files greater
                            than the given size in MB (default is 100 MB)
       --cache-check=N      interval between cache memory checks in seconds
                            (default is 10 seconds)
