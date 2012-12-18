@@ -590,8 +590,10 @@ class YAS3FS(LoggingMixIn, Operations):
             elif c[1] == 'cache':
                 if c[2] == 'entries' and c[3] > 0:
                     self.cache_entries = int(c[3])
-            elif c[2] == 'size' and c[3] > 0:
-                self.cache_mem_size = int(c[3]) * (1024 * 1024) # MB
+                elif c[2] == 'mem' and c[3] > 0:
+                    self.cache_mem_size = int(c[3]) * (1024 * 1024) # MB
+                elif c[2] == 'disk' and c[3] > 0:
+                    self.cache_disk_size = int(c[3]) * (1024 * 1024) # MB
             elif c[1] == 'buffer' and c[3] >= 0:
                 if c[2] == 'size':
                     self.buffer_size = int(c[3]) * 1024 # KB

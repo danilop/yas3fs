@@ -130,52 +130,58 @@ To unmount the file system on a Mac you can use `umount`.
 
     It allows to mount an S3 bucket (or a part of it) as a local folder.
     For maximum speed all data read from S3 is cached locally on the node.
+    Access to file content is provided during the download from S3 using buffers.
     SNS notifications are used to update other nodes that something has changed on S3 and they need to invalidate their cache.
     Notifications can be listened using HTTP or SQS endpoints.
     With buffering enabled (the default) files can be accessed during the download from S3.
-    If the cache grows to its maximum size the least accessed files are removed.
-    AWS credentials can be passed using AWS\_ACCESS\_KEY\_ID and AWS\_SECRET\_ACCESS\_KEY environmental variables.
+    If the cache grows to its maximum size the less recently accessed files are removed.
+    AWS credentials can be passed using AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY environmental variables.
     In an EC2 instance a IAM role can be used to give access to S3/SNS/SQS resources.
 
     Options:
-      -h, --help         show this help message and exit
-      --url=URL          the S3 path to mount in s3://BUCKET/PATH format, PATH can
-                         be empty, can contain subfolders and is created on first
-                         mount if not found in the BUCKET
-      --region=REGION    AWS region to use for SNS/SQS (default is us-east-1)
-      --topic=ARN        SNS topic ARN
-      --hostname=HOST    hostname to listen to SNS HTTP notifications
-      --ec2-hostname     get public hostname from EC2 instance metadata (overrides
-                         '--hostname')
-      --port=N           TCP port to listen to SNS HTTP notifications
-      --queue=NAME       SQS queue name, a new queue is created if it doesn't
-                         exist
-      --new-queue        create a new SQS queue that is deleted on unmount
-                         (overrides '--queue', queue name is BUCKET-PATH-ID with
-                         alphanumeric characters only)
-      --queue-wait=N     SQS queue wait time in seconds (using long polling, 0 to
-                         disable, default is 0 seconds)
-      --queue-polling=N  SQS queue polling interval in seconds (default is 1
-                         seconds)
-      --cache-entries=N  max number of entries to cache (default is 1000000
-                         entries)
-      --cache-size=N     max size of the cache in MB (default is 1024 MB)
-      --cache-check=N    interval between cache memory checks in seconds (default
-                         is 10 seconds)
-      --buffer-size=N    download buffer size in KB (0 to disable buffering,
-                         default is 10240 KB)
-      --no-metadata      don't write user metadata on S3 to persist file system
-                         attr/xattr
-      --prefetch         start downloading file content as soon as the file is
-                         discovered
-      --id=ID            a unique ID identifying this node in a cluster (hostname,
-                         queue name or UUID Version 1 as per RFC 4122 are used if
-                         not provided)
-      --log=FILE         the filename to use for logs
-      --mkdir            create mountpoint if not found (create intermediate
-                         directories as required)
-      -f, --foreground   run in foreground
-      -d, --debug        print debug information (implies '-f')
+      -h, --help           show this help message and exit
+      --url=URL            the S3 path to mount in s3://BUCKET/PATH format, PATH
+			   can be empty, can contain subfolders and is created on
+			   first mount if not found in the BUCKET
+      --region=REGION      AWS region to use for SNS/SQS (default is us-east-1)
+      --topic=ARN          SNS topic ARN
+      --hostname=HOST      hostname to listen to SNS HTTP notifications
+      --ec2-hostname       get public hostname from EC2 instance metadata
+			   (overrides '--hostname')
+      --port=N             TCP port to listen to SNS HTTP notifications
+      --queue=NAME         SQS queue name, a new queue is created if it doesn't
+			   exist
+      --new-queue          create a new SQS queue that is deleted on unmount
+			   (overrides '--queue', queue name is BUCKET-PATH-ID with
+			   alphanumeric characters only)
+      --queue-wait=N       SQS queue wait time in seconds (using long polling, 0
+			   to disable, default is 0 seconds)
+      --queue-polling=N    SQS queue polling interval in seconds (default is 1
+			   seconds)
+      --cache-entries=N    max number of entries to cache (default is 1000000
+			   entries)
+      --cache-mem-size=N   max size of the memory cache in MB (default is 1024 MB)
+      --cache-disk-size=N  max size of the disk cache in MB (default is 10240 MB)
+      --cache-path=PATH    local path to use for disk cache (default is
+			   '/tmp/yas3fs/BUCKET/PATH')
+      --cache-on-disk=N    use disk (instead of memory) cache for files greather
+			   than the given size in MB (default is 100 MB)
+      --cache-check=N      interval between cache memory checks in seconds
+			   (default is 10 seconds)
+      --buffer-size=N      download buffer size in KB (0 to disable buffering,
+			   default is 10240 KB)
+      --no-metadata        don't write user metadata on S3 to persist file system
+			   attr/xattr
+      --prefetch           start downloading file content as soon as the file is
+			   discovered
+      --id=ID              a unique ID identifying this node in a cluster
+			   (hostname, queue name or UUID Version 1 as per RFC 4122
+			   are used if not provided)
+      --log=FILE           the filename to use for logs
+      --mkdir              create mountpoint if not found (create intermediate
+			   directories as required)
+      -f, --foreground     run in foreground
+      -d, --debug          print debug information (implies '-f')
 
 ### Notification Syntax & Use
 
@@ -200,7 +206,7 @@ The following `action`(s) are currently implemented:
 * `flush` (updated file): `[ "node_id", "flush", "path", "new_md5" ]` (`path` and `new_md5` are optional)
 * `md` (updated metadata, e.g. attr/xattr): `[ "node_id", "md", "path", "metadata_name" ]`
 * `reset` (reset cache): `[ "node_id", "reset" ]`
-* `cache` (change cache config): `[ "node_id", "cache" , "entries" or "size", new_value ]`
+* `cache` (change cache config): `[ "node_id", "cache" , "entries" or "mem" or "disk", new_value ]`
 * `buffer` (change buffer config): `[ "node_id", "buffer", "size", new_value ]`
 * `prefetch` (change prefetch config): `[ "node_id", "prefetch", "on" or "off" ]`
 * `url` (change S3 url): `[ "node_id", "url", "s3://BUCKET/PATH" ]`
@@ -221,10 +227,15 @@ you can invalidate the caches of all the nodes in the yas3fs cluster for that `p
 The `path` is the relative path of the file system (`/` corresponding to the mount point)
 and doesn't include any S3 path (i.e. prefix) as given in the `--url` option.
 
-To change the size of the cache on all nodes, e.g. to bring it from 1GB (the current default) to 10GB,
+To change the size of the memory cache on all nodes, e.g. to bring it from 1GB (the current default) to 10GB,
 you can publish (the size is in MB as in the corresponding command line option):
 
-    [ "all", "cache", "size", 10240 ]
+    [ "all", "cache", "mem", 10240 ]
+
+To change the size of the disk cache on all nodes, e.g. to bring it from 10GB (the current default) to 1TB,
+you can publish (the size is in MB as in the corresponding command line option):
+
+    [ "all", "cache", "disk", 1048576 ]
 
 To change the buffer size used to download the content (and make it available for reads) from the default of 10MB (optimized for a full download speed) to 256KB (optimized for a streaming service) you can use (the size is in KB, as in the corresponding command line option):
 
