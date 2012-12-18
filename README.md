@@ -141,45 +141,45 @@ To unmount the file system on a Mac you can use `umount`.
     Options:
       -h, --help           show this help message and exit
       --url=URL            the S3 path to mount in s3://BUCKET/PATH format, PATH
-			   can be empty, can contain subfolders and is created on
-			   first mount if not found in the BUCKET
+                           can be empty, can contain subfolders and is created on
+                           first mount if not found in the BUCKET
       --region=REGION      AWS region to use for SNS/SQS (default is us-east-1)
       --topic=ARN          SNS topic ARN
       --hostname=HOST      hostname to listen to SNS HTTP notifications
       --ec2-hostname       get public hostname from EC2 instance metadata
-			   (overrides '--hostname')
+                           (overrides '--hostname')
       --port=N             TCP port to listen to SNS HTTP notifications
       --queue=NAME         SQS queue name, a new queue is created if it doesn't
-			   exist
+                           exist
       --new-queue          create a new SQS queue that is deleted on unmount
-			   (overrides '--queue', queue name is BUCKET-PATH-ID with
-			   alphanumeric characters only)
+                           (overrides '--queue', queue name is BUCKET-PATH-ID with
+                           alphanumeric characters only)
       --queue-wait=N       SQS queue wait time in seconds (using long polling, 0
-			   to disable, default is 0 seconds)
+                           to disable, default is 0 seconds)
       --queue-polling=N    SQS queue polling interval in seconds (default is 1
-			   seconds)
+                           seconds)
       --cache-entries=N    max number of entries to cache (default is 1000000
-			   entries)
+                           entries)
       --cache-mem-size=N   max size of the memory cache in MB (default is 1024 MB)
       --cache-disk-size=N  max size of the disk cache in MB (default is 10240 MB)
       --cache-path=PATH    local path to use for disk cache (default is
-			   '/tmp/yas3fs/BUCKET/PATH')
+                           '/tmp/yas3fs/BUCKET/PATH')
       --cache-on-disk=N    use disk (instead of memory) cache for files greather
-			   than the given size in MB (default is 100 MB)
+                           than the given size in MB (default is 100 MB)
       --cache-check=N      interval between cache memory checks in seconds
-			   (default is 10 seconds)
+                           (default is 10 seconds)
       --buffer-size=N      download buffer size in KB (0 to disable buffering,
-			   default is 10240 KB)
+                           default is 10240 KB)
       --no-metadata        don't write user metadata on S3 to persist file system
-			   attr/xattr
+                           attr/xattr
       --prefetch           start downloading file content as soon as the file is
-			   discovered
+                           discovered
       --id=ID              a unique ID identifying this node in a cluster
-			   (hostname, queue name or UUID Version 1 as per RFC 4122
-			   are used if not provided)
+                           (hostname, queue name or UUID Version 1 as per RFC 4122
+                           are used if not provided)
       --log=FILE           the filename to use for logs
       --mkdir              create mountpoint if not found (create intermediate
-			   directories as required)
+                           directories as required)
       -f, --foreground     run in foreground
       -d, --debug          print debug information (implies '-f')
 
