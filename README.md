@@ -7,7 +7,7 @@ interface to [Amazon S3](http://aws.amazon.com/s3/).
 
 * It allows to mount an S3 bucket (or a part of it, if you specify a path) as a local folder.
 * It works on Linux and Mac OS X.
-* For maximum speed all data read from S3 is cached in locally on the node, in memory or on disk.
+* For maximum speed all data read from S3 is cached locally on the node, in memory or on disk.
 * It can be used on more than one node to create a "shared" file system (i.e. a yas3fs "cluster").
 * [SNS](http://aws.amazon.com/sns/) notifications are used to update other nodes in the cluster that something has changed on S3 and they need to invalidate their cache.
 * Notifications can be listened using HTTP or [SQS](http://aws.amazon.com/sqs/) endpoints.
