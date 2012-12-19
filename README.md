@@ -7,11 +7,12 @@ interface to [Amazon S3](http://aws.amazon.com/s3/).
 
 * It allows to mount an S3 bucket (or a part of it, if you specify a path) as a local folder.
 * It works on Linux and Mac OS X.
-* For maximum speed all data read from S3 is cached locally on the node, in memory or on disk.
+* For maximum speed all data read from S3 is cached locally on the node, in memory or on disk, depending of the file size.
+* Parallel multi-part downloads are used if there are reads in the middle of the file (e.g. for streaming).
+* With buffering enabled (the default) files can be accessed during the download from S3 (e.g. for streaming).
 * It can be used on more than one node to create a "shared" file system (i.e. a yas3fs "cluster").
 * [SNS](http://aws.amazon.com/sns/) notifications are used to update other nodes in the cluster that something has changed on S3 and they need to invalidate their cache.
 * Notifications can be listened using HTTP or [SQS](http://aws.amazon.com/sqs/) endpoints.
-* With buffering enabled (the default) files can be accessed during the download from S3 (e.g. for streaming).
 * If the cache grows to its maximum size, the less recently accessed files are removed.
 * AWS credentials can be passed using AWS\_ACCESS\_KEY\_ID and AWS\_SECRET\_ACCESS\_KEY environmental variables.
 * In an [EC2](http://aws.amazon.com/ec2/) instance a [IAM](http://aws.amazon.com/iam/) role can be used to give access to S3/SNS/SQS resources.
