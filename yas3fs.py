@@ -159,7 +159,7 @@ class FSCache():
                         if prop == 'data':
                             for type in self.stores:
                                 if type in self.entries[path]:
-                                    self.update_size(path, type, -self.entries[path][type])
+                                    self.update_size(path, -self.entries[path][type])
                                     if type == 'data-disk':
                                         filename = self.cache_path + path
                                         try:
@@ -170,9 +170,9 @@ class FSCache():
     def rename(self, path, new_path):
         with self.lock:
             if path in self.entries:
-                self.delete(new_path)
+                self.delete(path, 'key') # Cannot be renamed
+                self.delete(new_path) # Assume overwrite
                 self.entries[new_path] = self.entries[path]
-                self.delete(new_path, 'key') # cannot be renamed
                 self.lru.append(new_path)
                 del self.entries[path]
                 self.lru.delete(path)
@@ -197,12 +197,15 @@ class FSCache():
             else:
         	return False
     def reset(self, path):
-        self.lru.move_to_the_tail(path) # Move to the tail of the LRU cache
         with self.lock:
-            if path in self.entries:
-                props = self.entries[path].keys()
-        	for prop in props:
-                    self.delete(path, prop)
+            self.delete(path)
+            self.add(path)
+#         self.lru.move_to_the_tail(path) # Move to the tail of the LRU cache
+#         with self.lock:
+#             if path in self.entries:
+#                 props = self.entries[path].keys()
+#         	for prop in props:
+#                     self.delete(path, prop)
     def inc(self, path, prop):
         with self.lock:
             if path in self.entries:
@@ -232,9 +235,18 @@ class FSCache():
             return False
     def is_empty(self, path, prop=None): # A wrapper to improve readability
         return not self.get(path, prop)
-    def update_size(self, path, type, delta): # Type is 'data-mem' or 'data-disk'
+    def get_type(self, path):
+        data = self.get(path, 'data')
+        if isinstance(data, io.BytesIO):
+            return 'data-mem'
+        elif isinstance(data, io.FileIO):
+            return 'data-disk'
+        else:
+            raise "unknown store type"
+    def update_size(self, path, delta): # Type is 'data-mem' or 'data-disk'
         if delta == 0: # Nothing to do
             return
+        type = self.get_type(path)
         with self.data_size_lock:
             if 'data-size' in self.entries[path]:
                 self.entries[path][type] += delta
@@ -307,7 +319,7 @@ class SNS_HTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
         if verify_evp.verify_final(signature.decode('base64')):
             self.send_response(200)
-            if message_type == 'Notification':
+            if message_type== 'Notification':
         	changes = message_content['Message']
         	logger.debug('changes = %s' % changes)
                 self.server.fs.sync_cache(changes)
@@ -938,7 +950,7 @@ class YAS3FS(LoggingMixIn, Operations):
                     content = data.read()
                     self.cache.set(path, 'data', data)
                     self.cache.set(path, 'data-new', None)
-                    self.cache.update_size(path, 'data-disk', os.stat(filename).st_size)
+                    self.cache.update_size(path, os.stat(filename).st_size)
 	    if self.cache.has(path, 'data'):
                 new_md5 = self.cache.get(path, 'data-new')
                 md5 = hashlib.md5(self.cache.get_data(path)).hexdigest()
@@ -979,7 +991,7 @@ class YAS3FS(LoggingMixIn, Operations):
             else:
                 self.cache.set(path, 'data', data)
                 k.get_contents_to_file(data)
-                self.cache.update_size(path, type, k.size)
+                self.cache.update_size(path, k.size)
 	return True
 
     def download_data(self, path, starting_from):
@@ -987,13 +999,6 @@ class YAS3FS(LoggingMixIn, Operations):
 
         data = self.cache.get(path, 'data')
         key = copy.deepcopy(self.get_key(path)) # Something better ??? I need a local copy ok the key...
-
-        if isinstance(data, io.BytesIO):
-            type = 'data-mem'
-        elif isinstance(data, io.FileIO):
-            type = 'data-disk'
-        else:
-            raise "unknown data type"
 
         delete_flag = False
 
@@ -1030,7 +1035,7 @@ class YAS3FS(LoggingMixIn, Operations):
                         logger.debug("download_data overlap '%s' for '%s' [thread '%s']" %
                                      (overlap, new_interval, threading.current_thread().name))
                     interval.add(new_interval)
-                    self.cache.update_size(path, type, length) # Should I use max from interval ???
+                    self.cache.update_size(path, length) # Should I use max from interval ???
                     self.cache.set(path, 'data-range', (interval, next_interval, threading.Event()))
                     event.set()
                     if overlap or pos >= key.size: # Check also if pos >= key.size ???
@@ -1274,10 +1279,10 @@ class YAS3FS(LoggingMixIn, Operations):
                 old_size = 0
             else:
                 old_size = k.size
+            print "flush old_size = %i" % old_size
             k.set_contents_from_file(data, headers={'Content-Type': type})
-            for type in self.cache.stores:
-                if self.cache.has(path, type):
-                    self.cache.update_size(path, type, k.size - old_size)
+            print "flush key ssize = %i" % k.size
+            self.cache.update_size(path, k.size - old_size)
             self.cache.delete(path, 'change')
             self.publish(['flush', path, k.etag[1:-1]])
         return 0
