@@ -129,58 +129,60 @@ To unmount the file system on a Mac you can use `umount`.
 
     YAS3FS (Yet Another S3-backed File System) is a Filesystem in Userspace (FUSE) interface to Amazon S3.
 
-    It allows to mount an S3 bucket (or a part of it) as a local folder.
-    For maximum speed all data read from S3 is cached locally on the node.
-    Access to file content is provided during the download from S3 using buffers.
-    SNS notifications are used to update other nodes that something has changed on S3 and they need to invalidate their cache.
+    It allows to mount an S3 bucket (or a part of it, if you specify a path) as a local folder.
+    It works on Linux and Mac OS X.
+    For maximum speed all data read from S3 is cached locally on the node, in memory or on disk, depending of the file size.
+    Parallel multi-part downloads are used if there are reads in the middle of the file (e.g. for streaming).
+    With buffering enabled (the default) files can be accessed during the download from S3 (e.g. for streaming).
+    It can be used on more than one node to create a "shared" file system (i.e. a yas3fs "cluster").
+    SNS notifications are used to update other nodes in the cluster that something has changed on S3 and they need to invalidate their cache.
     Notifications can be listened using HTTP or SQS endpoints.
-    With buffering enabled (the default) files can be accessed during the download from S3.
-    If the cache grows to its maximum size the less recently accessed files are removed.
+    If the cache grows to its maximum size, the less recently accessed files are removed.
     AWS credentials can be passed using AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY environmental variables.
     In an EC2 instance a IAM role can be used to give access to S3/SNS/SQS resources.
 
     Options:
       -h, --help           show this help message and exit
       --url=URL            the S3 path to mount in s3://BUCKET/PATH format, PATH
-                           can be empty, can contain subfolders and is created on
-                           first mount if not found in the BUCKET
+			   can be empty, can contain subfolders and is created on
+			   first mount if not found in the BUCKET
       --region=REGION      AWS region to use for SNS/SQS (default is us-east-1)
       --topic=ARN          SNS topic ARN
       --hostname=HOST      hostname to listen to SNS HTTP notifications
       --ec2-hostname       get public hostname from EC2 instance metadata
-                           (overrides '--hostname')
+			   (overrides '--hostname')
       --port=N             TCP port to listen to SNS HTTP notifications
       --queue=NAME         SQS queue name, a new queue is created if it doesn't
-                           exist
+			   exist
       --new-queue          create a new SQS queue that is deleted on unmount
-                           (overrides '--queue', queue name is BUCKET-PATH-ID with
-                           alphanumeric characters only)
+			   (overrides '--queue', queue name is BUCKET-PATH-ID with
+			   alphanumeric characters only)
       --queue-wait=N       SQS queue wait time in seconds (using long polling, 0
-                           to disable, default is 0 seconds)
+			   to disable, default is 0 seconds)
       --queue-polling=N    SQS queue polling interval in seconds (default is 1
-                           seconds)
+			   seconds)
       --cache-entries=N    max number of entries to cache (default is 1000000
-                           entries)
+			   entries)
       --cache-mem-size=N   max size of the memory cache in MB (default is 1024 MB)
       --cache-disk-size=N  max size of the disk cache in MB (default is 10240 MB)
       --cache-path=PATH    local path to use for disk cache (default is
-                           '/tmp/yas3fs/BUCKET/PATH')
+			   '/tmp/yas3fs/BUCKET/PATH')
       --cache-on-disk=N    use disk (instead of memory) cache for files greater
-                           than the given size in MB (default is 100 MB)
+			   than the given size in MB (default is 100 MB)
       --cache-check=N      interval between cache memory checks in seconds
-                           (default is 10 seconds)
+			   (default is 10 seconds)
       --buffer-size=N      download buffer size in KB (0 to disable buffering,
-                           default is 10240 KB)
+			   default is 10240 KB)
       --no-metadata        don't write user metadata on S3 to persist file system
-                           attr/xattr
+			   attr/xattr
       --prefetch           start downloading file content as soon as the file is
-                           discovered
+			   discovered
       --id=ID              a unique ID identifying this node in a cluster
-                           (hostname, queue name or UUID Version 1 as per RFC 4122
-                           are used if not provided)
+			   (hostname, queue name or UUID Version 1 as per RFC 4122
+			   are used if not provided)
       --log=FILE           the filename to use for logs
       --mkdir              create mountpoint if not found (create intermediate
-                           directories as required)
+			   directories as required)
       -f, --foreground     run in foreground
       -d, --debug          print debug information (implies '-f')
 
