@@ -29,6 +29,7 @@ import signal
 import io
 import re
 import uuid
+import copy
 
 import boto
 import boto.s3        
@@ -49,14 +50,17 @@ class Interval():
         self.l = [] # A list of tuples
     def add(self, t):
         assert t[0] <= t[1]
+        nl = []
         for i in self.l:
             i0 = i[0] - 1 # To take into account consecutive _integer_ intervals
             i1 = i[1] + 1 # Same as above
             if (i0 <= t[0] and t[0] <= i1) or (i0 <= t[1] and t[1]<= i1) or (t[0] <= i[0] and i[1] <= t[1]):
-                i[0] = min(i[0], t[0])
-                i[1] = max(i[1], t[1])
-                return
-        self.l.append(t)
+                t[0] = min(i[0], t[0]) # Enlarge t interval
+                t[1] = max(i[1], t[1])
+            else:
+                nl.append(i)
+        nl.append(t)
+        self.l = nl
     def contains(self, t):
         assert t[0] <= t[1]
         for i in self.l:
@@ -923,9 +927,9 @@ class YAS3FS(LoggingMixIn, Operations):
                 self.cache.delete(path, 'data-new')
                 with self.cache.lock:
                     if self.cache.has(path, 'data-range'):
-                        (interval, event) = self.cache.get(path, 'data-range')
+                        data_range = self.cache.get(path, 'data-range')
                         self.cache.delete(path, 'data-range')
-                        event.set()
+                        data_range[2].set()
                 return True
             elif k.size > self.cache_on_disk and not self.cache.has(path, 'data'):
                 filename = self.cache_path + path # path begins with '/'
@@ -949,7 +953,6 @@ class YAS3FS(LoggingMixIn, Operations):
             self.cache.delete(path, 'attr')
             if k.size <= self.cache_on_disk:
                 data = io.BytesIO()
-                type = 'data-mem'
             else:
                 filename = self.cache_path + path # path begins with '/'
                 dirname = os.path.dirname(filename)
@@ -961,12 +964,14 @@ class YAS3FS(LoggingMixIn, Operations):
                     else:
                         raise
                 data = io.FileIO(filename, mode='wb+')
-                type = 'data-disk'
             if self.buffer_size > 0:
                 with self.cache.lock:
                     if self.cache.has(path, 'data-range'):
                         return True
-                    self.cache.set(path, 'data-range', (Interval(), threading.Event()))
+                    interval = Interval()
+                    next_interval = Interval()
+                    next_interval.add([0, self.buffer_size])
+                    self.cache.set(path, 'data-range', (interval, next_interval, threading.Event()))
                 self.cache.set(path, 'data', data)
                 t = threading.Thread(target=self.download_data, args=(path, 0))
                 t.daemon = True
@@ -975,14 +980,13 @@ class YAS3FS(LoggingMixIn, Operations):
                 self.cache.set(path, 'data', data)
                 k.get_contents_to_file(data)
                 self.cache.update_size(path, type, k.size)
-            print "data = '%s'" % self.cache.get(path, 'data')
 	return True
 
     def download_data(self, path, starting_from):
-        logger.debug("download_data '%s' %i" % (path, starting_from))
+        logger.debug("download_data '%s' %i [thread '%s']" % (path, starting_from, threading.current_thread().name))
 
         data = self.cache.get(path, 'data')
-        key = self.get_key(path)
+        key = copy.deepcopy(self.get_key(path)) # Something better ??? I need a local copy ok the key...
 
         if isinstance(data, io.BytesIO):
             type = 'data-mem'
@@ -999,13 +1003,21 @@ class YAS3FS(LoggingMixIn, Operations):
             key.open_read(headers=range_headers)
             pos = range[0]
             while True:
+                with self.cache.lock:
+                    if self.cache.has(path, 'data-range'):
+                        (interval, next_interval, event) = self.cache.get(path, 'data-range')
+                    else:
+                        return
+                    new_interval = [pos, pos + self.buffer_size - 1]
+                    next_interval.add(new_interval)
+                    self.cache.set(interval, next_interval, event)
                 bytes = key.resp.read(self.buffer_size)
                 if not bytes:
                     key.close()
                     break
                 with self.cache.lock:
                     if self.cache.has(path, 'data-range'):
-                        (interval, event) = self.cache.get(path, 'data-range')
+                        (interval, next_interval, event) = self.cache.get(path, 'data-range')
                     else:
                         return
                     data.seek(pos)
@@ -1014,28 +1026,30 @@ class YAS3FS(LoggingMixIn, Operations):
                     new_interval = [pos, pos + length - 1]
                     pos += length
                     overlap = interval.intersects(new_interval)
+                    if overlap:
+                        logger.debug("download_data overlap '%s' for '%s' [thread '%s']" %
+                                     (overlap, new_interval, threading.current_thread().name))
                     interval.add(new_interval)
                     self.cache.update_size(path, type, length) # Should I use max from interval ???
-                    self.cache.set(path, 'data-range', (interval, threading.Event()))
+                    self.cache.set(path, 'data-range', (interval, next_interval, threading.Event()))
                     event.set()
-                    if overlap:
+                    if overlap or pos >= key.size: # Check also if pos >= key.size ???
                         key.close()
                         break
         except boto.exception.S3ResponseError:
-            print "something went wrong in download"
             delete_flag = True
+
+        logger.debug("download_data end '%s' %i-%i [thread '%s']" % (path, starting_from, pos, threading.current_thread().name))
 
         with self.cache.lock:
             if self.cache.has(path, 'data-range'):
-                (interval, event) = self.cache.get(path, 'data-range')
-                print "end download with interval '%s'" % interval.l
+                (interval, next_interval, event) = self.cache.get(path, 'data-range')
                 if interval.contains([0, key.size - 1]): # -1 ???
                     self.cache.delete(path, 'data-range')
+                    logger.debug("download_data all ended '%s' [thread '%s']" % (path, threading.current_thread().name))
                     event.set()
 
         if delete_flag:
-            self.cache.delete(path, 'data-range') # Something better ???
-            event.set()
             self.cache.delete(path) # Something went wrong...
 
     def readlink(self, path):
@@ -1050,7 +1064,7 @@ class YAS3FS(LoggingMixIn, Operations):
                 data_range = self.cache.get(path, 'data-range')
                 if data_range == None:
                     break
-                data_range[1].wait()
+                data_range[2].wait()
 	    return self.cache.get_data(path)
 	return FuseOSError(errno.EINVAL)
  
@@ -1086,7 +1100,7 @@ class YAS3FS(LoggingMixIn, Operations):
             if data_range[0].contains([0, size]):
                 self.cache.delete(path, 'data-range')
                 break
-            data_range[1].wait()
+            data_range[2].wait()
         self.cache.get(path, 'data').truncate(size)
 	attr = self.get_metadata(path, 'attr')
         old_size = int(attr['st_size'])
@@ -1197,21 +1211,16 @@ class YAS3FS(LoggingMixIn, Operations):
         if not self.cache.has(path) or (self.cache.has(path) and self.cache.is_empty(path)):
             raise FuseOSError(errno.ENOENT)
         while True:
-            print "start loop"
-            data_range = self.cache.get(path, 'data-range')
-            if data_range:
-                print "interval '%s'" % data_range[0].l
-            if data_range == None or data_range[0].contains([offset, offset + length - 1]):
-                break
-
-            t = threading.Thread(target=self.download_data, args=(path, offset))
-            t.daemon = True
-            t.start()
-
-            print "wait"
-            data_range[1].wait()
-            print "after wait"
-        print "out of the loop"
+            with self.cache.lock:
+                data_range = self.cache.get(path, 'data-range')
+                if data_range == None or data_range[0].contains([offset, offset + length - 1]):
+                    break
+                if not data_range[1].contains([offset, offset]):
+                    data_range[1].add([offset, offset + length - 1]) # To avoid starting the same thread again
+                    t = threading.Thread(target=self.download_data, args=(path, offset))
+                    t.daemon = True
+                    t.start()
+            data_range[2].wait()
 	# update atime just in the cache ???
         sio = self.cache.get(path, 'data')
         sio.seek(offset)
@@ -1226,10 +1235,9 @@ class YAS3FS(LoggingMixIn, Operations):
             data_range = self.cache.get(path, 'data-range')
             if data_range == None or data_range[0].contains([offset, offset + length - 1]):
                 break
-            data_range[1].wait()
+            data_range[2].wait()
 	with self.cache.lock:
             sio = self.cache.get(path, 'data')
-            print "write sio = '%s'" % sio
             sio.seek(offset)
             sio.write(data)
             self.cache.set(path, 'change', True)
