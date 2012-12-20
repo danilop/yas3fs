@@ -76,7 +76,7 @@ If you want to do a quick test here's the installation procedure depending on th
     cd yas3fs
     chmod u+x yas3fs.py
     ./yas3fs.py -h # See the usage
-    sudo vi /etc/fuse.conf # uncomment user_allow_other
+    sudo sed -i'' 's/^# user_allow_other/user_allow_other/' /etc/fuse.conf # uncomment user_allow_other
     mkdir LOCAL-PATH
     ./yas3fs.py LOCAL-PATH --url s3://BUCKET/PATH --topic TOPIC-ARN --new-queue --region eu-west-1
 
@@ -88,7 +88,7 @@ If you want to do a quick test here's the installation procedure depending on th
     cd yas3fs
     chmod u+x yas3fs.py
     ./yas3fs.py -h # See the usage
-    sudo vi /etc/fuse.conf  # uncomment user_allow_other
+    sudo sed -i'' 's/^# user_allow_other/user_allow_other/' /etc/fuse.conf # uncomment user_allow_other
     sudo chmod a+r /etc/fuse.conf # make it readable by anybody, it is not the default on Ubuntu
     mkdir LOCAL-PATH
     ./yas3fs.py LOCAL-PATH --url s3://BUCKET/PATH --topic TOPIC-ARN --new-queue --region eu-west-1
