@@ -740,11 +740,12 @@ class YAS3FS(LoggingMixIn, Operations):
         key = self.s3_bucket.get_key(self.join_prefix(path))
         if not key:
             key = self.s3_bucket.get_key(self.join_prefix(path + '/'))
-        self.cache.set(path, 'key', key)
+        if key:
+            self.cache.set(path, 'key', key)
         return key
 
     def get_metadata(self, path, metadata_name, key=None):
-        logger.debug("get_metadata '%s' '%s' '%s'" % (path, metadata_name, key))
+        logger.debug("get_metadata -> '%s' '%s' '%s'" % (path, metadata_name, key))
         if not self.cache.has(path, metadata_name):
             if not key:
                 key = self.get_key(path)
@@ -759,7 +760,9 @@ class YAS3FS(LoggingMixIn, Operations):
                     key_list = self.s3_bucket.list(full_path) # Don't need to set a delimeter here
                     if len(list(key_list)) == 0:
                         self.cache.add(path) # It is empty to cache further checks
-                        raise FuseOSError(errno.ENOENT)
+                        logger.debug("get_metadata '%s' '%s' '%s' return None" % (path, metadata_name, key))
+                        return None
+###                     raise FuseOSError(errno.ENOENT)
             metadata_values = {}
             if key:
                 s = key.get_metadata(metadata_name)
@@ -791,7 +794,10 @@ class YAS3FS(LoggingMixIn, Operations):
 		    metadata_values[k] = v
 	    self.cache.add(path)
 	    self.cache.set(path, metadata_name, metadata_values)
-	return self.cache.get(path, metadata_name)
+        else:
+            metadata_values = self.cache.get(path, metadata_name)
+        logger.debug("get_metadata <- '%s' '%s' '%s' '%s'" % (path, metadata_name, key, metadata_values))
+	return metadata_values
 
     def set_metadata(self, path, metadata_name, metadata_values, key=None):
         logger.debug("set_metadata '%s' '%s' '%s' '%s'" % (path, metadata_name, metadata_values, key))
@@ -813,12 +819,14 @@ class YAS3FS(LoggingMixIn, Operations):
                     self.publish(['md', metadata_name, path])
 
     def getattr(self, path, fh=None):
-        logger.debug("getattr '%s' '%s'" % (path, fh))
+        logger.debug("getattr -> '%s' '%s'" % (path, fh))
         if self.cache.has(path) and self.cache.is_empty(path):
+            logger.debug("getattr <- '%s' '%s' ENOENT" % (path, fh))
             raise FuseOSError(errno.ENOENT)
 	attr = self.get_metadata(path, 'attr')
         if attr == None:
-            return None
+            logger.debug("getattr <- '%s' '%s' ENOENT" % (path, fh))
+            raise FuseOSError(errno.ENOENT)
 	st = {}
 	st['st_mode'] = int(attr['st_mode'])
 	st['st_atime'] = float(attr['st_atime']) # Should I update this ???
@@ -835,12 +843,14 @@ class YAS3FS(LoggingMixIn, Operations):
                 self.readdir(path)
             else:
                 self.check_data(path)
+        logger.debug("getattr <- '%s' '%s' '%s'" % (path, fh, st))
         return st
 
     def readdir(self, path, fh=None):
         logger.debug("readdir '%s' '%s'" % (path, fh))
 
 	if self.cache.has(path) and self.cache.is_empty(path):
+            logger.debug("readdir '%s' '%s' ENOENT" % (path, fh))
 	    raise FuseOSError(errno.ENOENT)
 
 	self.cache.add(path)
@@ -1060,10 +1070,12 @@ class YAS3FS(LoggingMixIn, Operations):
     def readlink(self, path):
         logger.debug("readlink '%s'" % (path))
 	if self.cache.has(path) and self.cache.is_empty(path):
+            logger.debug("readlink '%s' ENONENT" % (path))
 	    raise FuseOSError(errno.ENOENT)
 	self.cache.add(path)
 	if stat.S_ISLNK(self.getattr(path)['st_mode']):
 	    if not self.check_data(path):
+                logger.debug("readlink '%s' ENONENT" % (path))
 		raise FuseOSError(errno.ENOENT)
             while True:
                 data_range = self.cache.get(path, 'data-range')
@@ -1071,19 +1083,23 @@ class YAS3FS(LoggingMixIn, Operations):
                     break
                 data_range[2].wait()
 	    return self.cache.get_data(path)
-	return FuseOSError(errno.EINVAL)
+        logger.debug("readlink '%s' EINVAL" % (path))
+	raise FuseOSError(errno.EINVAL)
  
     def rmdir(self, path):
         logger.debug("rmdir '%s'" % (path))
 	if self.cache.has(path) and self.cache.is_empty(path):
+            logger.debug("rmdir '%s' ENOENT" % (path))
 	    raise FuseOSError(errno.ENOENT)
 	k = self.get_key(path) # Should I use cache here ???
 	if not k:
+            logger.debug("rmdir '%s' ENOENT" % (path))
 	    raise FuseOSError(errno.ENOENT)
 	full_path = self.join_prefix(path + '/')
 	key_list = self.s3_bucket.list(full_path) # Don't need to set a delimeter here
 	for l in key_list:
 	    if l.name != full_path:
+                logger.debug("rmdir '%s' ENOTEMPTY" % (path))
 		raise FuseOSError(errno.ENOTEMPTY)
 	k.delete()
 	self.cache.reset(path) # Cache invalidation
@@ -1094,9 +1110,11 @@ class YAS3FS(LoggingMixIn, Operations):
     def truncate(self, path, size):
         logger.debug("truncate '%s' '%i'" % (path, size))
 	if self.cache.has(path) and self.cache.is_empty(path):
+            logger.debug("truncate '%s' '%i' ENOENT" % (path, size))
 	    raise FuseOSError(errno.ENOENT)
 	self.cache.add(path)
 	if not self.check_data(path):
+            logger.debug("truncate '%s' '%i' ENOENT" % (path, size))
 	    raise FuseOSError(errno.ENOENT)
         while True:
             data_range = self.cache.get(path, 'data-range')
@@ -1115,25 +1133,33 @@ class YAS3FS(LoggingMixIn, Operations):
             self.set_metadata(path, 'attr', attr)
 	return 0
 
+    ### Should work for files in cache but not flushed to S3...
     def rename(self, path, new_path):
         logger.debug("rename '%s' '%s'" % (path, new_path))
         if self.cache.has(path) and self.cache.is_empty(path):
+            logger.debug("rename '%s' '%s' ENOENT" % (path, new_path))
             raise FuseOSError(errno.ENOENT)
         key = self.get_key(path)
-        if not key:
+        if not key and not self.cache.has(path):
+            logger.debug("rename '%s' '%s' ENOENT" % (path, new_path))
             raise FuseOSError(errno.ENOENT)
         new_parent_key = self.get_key(os.path.dirname(new_path))
         if not new_parent_key:
+            logger.debug("rename '%s' '%s' ENOENT" % (path, new_path))
             raise FuseOSError(errno.ENOENT)
         to_copy = {}
-        if key.name[-1] == '/':
-            key_list = self.s3_bucket.list(key.name)
-	    for k in key_list:
-                source = k.name.encode('ascii')
-		target = self.join_prefix(new_path + source[len(key.name) - 1:])
-                to_copy[source] = target
+        if key:
+            if key.name[-1] == '/':
+                key_list = self.s3_bucket.list(key.name)
+                for k in key_list:
+                    source = k.name.encode('ascii')
+                    target = self.join_prefix(new_path + source[len(key.name) - 1:])
+                    to_copy[source] = target
+            else:
+                to_copy[key.name] = self.join_prefix(new_path)
         else:
-            to_copy[key.name] = self.join_prefix(new_path)
+            ### Should I manage a "full" search in cache for files in path ???
+            to_copy[self.join_prefix(path)] = self.join_prefix(new_path) # For files in cache but still not flushed to S3, doesn't work for dirs!!!
         for source, target in to_copy.iteritems():
             source_path = source[len(self.s3_prefix):].rstrip('/')
             if source_path[0] != '/':
@@ -1143,10 +1169,11 @@ class YAS3FS(LoggingMixIn, Operations):
                 target_path = '/' + target_path
             self.cache.rename(source_path, target_path)
             key = self.s3_bucket.get_key(source)
-            md = key.metadata
-            md['Content-Type'] = key.content_type # Otherwise we loose the Content-Type with S3 Copy
-            key.copy(key.bucket.name, target, md, preserve_acl=False) # Do I need to preserve ACL?
-            key.delete()
+            if key: # For files in cache but still not flushed to S3
+                md = key.metadata
+                md['Content-Type'] = key.content_type # Otherwise we loose the Content-Type with S3 Copy
+                key.copy(key.bucket.name, target, md, preserve_acl=False) # Do I need to preserve ACL?
+                key.delete()
             self.publish(['rename', source_path, target_path])
         self.remove_from_parent_readdir(path)
         self.add_to_parent_readdir(new_path)
@@ -1155,10 +1182,12 @@ class YAS3FS(LoggingMixIn, Operations):
         logger.debug("mknod '%s' '%i' '%s'" % (path, mode, dev))
 	if self.cache.has(file):
 	    if not self.cache.is_empty(file):
+                logger.debug("mknod '%s' '%i' '%s' EEXIST" % (path, mode, dev))
 		return FuseOSError(errno.EEXIST)
 	else:
 	    k = self.get_key(path)
 	    if k:
+                logger.debug("mknod '%s' '%i' '%s' EEXIST" % (path, mode, dev))
 		return FuseOSError(errno.EEXIST)
 	    self.cache.add(path)
 	now = str(time.time())
@@ -1182,11 +1211,14 @@ class YAS3FS(LoggingMixIn, Operations):
     def unlink(self, path):
         logger.debug("unlink '%s'" % (path))
 	if self.cache.has(path) and self.cache.is_empty(path):
+            logger.debug("unlink '%s' ENOENT" % (path))
 	    raise FuseOSError(errno.ENOENT)
 	k = self.get_key(path)
-	if not k:
+	if not k and not self.cache.has(path):
+            logger.debug("unlink '%s' ENOENT" % (path))
 	    raise FuseOSError(errno.ENOENT)
-	k.delete()
+        if k:
+            k.delete()
 	self.cache.reset(path)
 	self.remove_from_parent_readdir(path)
 	self.publish(['unlink', path])
@@ -1202,18 +1234,22 @@ class YAS3FS(LoggingMixIn, Operations):
 	if not self.check_data(path):
 	    self.mknod(path, flags)
 	self.cache.inc(path, 'open')
+        logger.debug("open '%s' '%i' '%s'" % (path, flags, self.cache.get(path, 'open')))
 	return 0
 
     def release(self, path, flags):
         logger.debug("release '%s' '%i'" % (path, flags))
         if self.cache.has(path) and self.cache.is_empty(path):
+            logger.debug("release '%s' '%i' ENOENT" % (path, flags))
             raise FuseOSError(errno.ENOENT)
 	self.cache.dec(path, 'open')
+        logger.debug("release '%s' '%i' '%s'" % (path, flags, self.cache.get(path, 'open')))
 	return 0
 
     def read(self, path, length, offset, fh=None):
         logger.debug("read '%s' '%i' '%i' '%s'" % (path, length, offset, fh))
         if not self.cache.has(path) or (self.cache.has(path) and self.cache.is_empty(path)):
+            logger.debug("read '%s' '%i' '%i' '%s' ENOENT" % (path, length, offset, fh))
             raise FuseOSError(errno.ENOENT)
         while True:
             with self.cache.lock:
@@ -1234,6 +1270,7 @@ class YAS3FS(LoggingMixIn, Operations):
     def write(self, path, data, offset, fh=None):
         logger.debug("write '%s' '%i' '%i' '%s'" % (path, len(data), offset, fh))
         if not self.cache.has(path) or (self.cache.has(path) and self.cache.is_empty(path)):
+            logger.debug("write '%s' '%i' '%i' '%s' ENOENT" % (path, len(data), offset, fh))
             raise FuseOSError(errno.ENOENT)
 	length = len(data)
         while True:
@@ -1279,9 +1316,7 @@ class YAS3FS(LoggingMixIn, Operations):
                 old_size = 0
             else:
                 old_size = k.size
-            print "flush old_size = %i" % old_size
             k.set_contents_from_file(data, headers={'Content-Type': type})
-            print "flush key ssize = %i" % k.size
             self.cache.update_size(path, k.size - old_size)
             self.cache.delete(path, 'change')
             self.publish(['flush', path, k.etag[1:-1]])
@@ -1290,6 +1325,7 @@ class YAS3FS(LoggingMixIn, Operations):
     def chmod(self, path, mode):
         logger.debug("chmod '%s' '%i'" % (path, mode))
         if self.cache.has(path) and self.cache.is_empty(path):
+            logger.debug("chmod '%s' '%i' ENOENT" % (path, mode))
             raise FuseOSError(errno.ENOENT)
         attr = self.get_metadata(path, 'attr')
         if attr < 0:
@@ -1301,6 +1337,7 @@ class YAS3FS(LoggingMixIn, Operations):
     def chown(self, path, uid, gid):
         logger.debug("chown '%s' '%i' '%i'" % (path, uid, gid))
         if self.cache.has(path) and self.cache.is_empty(path):
+            logger.debug("chown '%s' '%i' '%i' ENOENT" % (path, uid, gid))
             raise FuseOSError(errno.ENOENT)
         attr = self.get_metadata(path, 'attr')
         if attr < 0:
@@ -1313,6 +1350,7 @@ class YAS3FS(LoggingMixIn, Operations):
     def utime(self, path, times=None):
         logger.debug("utime '%s' '%s'" % (path, times))
         if self.cache.has(path) and self.cache.is_empty(path):
+            logger.debug("utime '%s' '%s' ENOENT" % (path, times))
             raise FuseOSError(errno.ENOENT)
         now = time.time()
         atime, mtime = times if times else (now, now)
@@ -1327,6 +1365,7 @@ class YAS3FS(LoggingMixIn, Operations):
     def getxattr(self, path, name, position=0):
         logger.debug("getxattr '%s' '%s' '%i'" % (path, name, position))
         if self.cache.has(path) and self.cache.is_empty(path):
+            logger.debug("getxattr '%s' '%s' '%i' ENOENT" % (path, name, position))
             raise FuseOSError(errno.ENOENT)
         xattr = self.get_metadata(path, 'xattr')
         try:
@@ -1337,6 +1376,7 @@ class YAS3FS(LoggingMixIn, Operations):
     def listxattr(self, path):
         logger.debug("listxattr '%s'" % (path))
         if self.cache.has(path) and self.cache.is_empty(path):
+            logger.debug("listxattr '%s' ENOENT" % (path))
             raise FuseOSError(errno.ENOENT)
         xattr = self.get_metadata(path, 'xattr')
         return xattr.keys()
@@ -1344,18 +1384,21 @@ class YAS3FS(LoggingMixIn, Operations):
     def removexattr(self, path, name):
         logger.debug("removexattr '%s'" % (path, name))
         if self.cache.has(path) and self.cache.is_empty(path):
+            logger.debug("removexattr '%s' ENOENT" % (path, name))
             raise FuseOSError(errno.ENOENT)
         xattr = self.get_metadata(path, 'xattr')
         try:
             del xattr[name]
             self.set_metadata(path, 'xattr', xattr)
         except KeyError:
+            logger.debug("removexattr '%s' should ENOATTR" % (path, name))
             return '' # Should return ENOATTR
         return 0
 
     def setxattr(self, path, name, value, options, position=0):
         logger.debug("setxattr '%s' '%s' '%s' '%s' '%i'" % (path, name, value, options, position))
         if self.cache.has(path) and self.cache.is_empty(path):
+            logger.debug("setxattr '%s' '%s' '%s' '%s' '%i' ENOENT" % (path, name, value, options, position))
             raise FuseOSError(errno.ENOENT)
         xattr = self.get_metadata(path, 'xattr')
         if xattr < 0:
