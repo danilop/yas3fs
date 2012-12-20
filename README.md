@@ -70,6 +70,7 @@ If you want to do a quick test here's the installation procedure depending on th
 **On EC2 with Amazon Linux 2012.09**
 
     sudo yum -y install fuse fuse-libs
+    sudo yum -y install git # You need to install git on S3-backed AMI
     sudo easy_install pip
     sudo pip install fusepy
     git clone git://github.com/danilop/yas3fs.git
