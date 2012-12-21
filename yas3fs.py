@@ -367,7 +367,7 @@ class YAS3FS(LoggingMixIn, Operations):
         self.s3_bucket_name = s3url.netloc
         logger.info("S3 bucket: '%s'" % self.s3_bucket_name)
         self.s3_prefix = s3url.path.strip('/')
-        logger.info("S3 prefix: '%s'" % self.s3_prefix)
+        logger.info("S3 prefix (can be empty): '%s'" % self.s3_prefix)
         if self.s3_bucket_name == '':
             errorAndExit("The S3 bucket cannot be empty")
         self.sns_topic_arn = options.topic
@@ -487,6 +487,7 @@ class YAS3FS(LoggingMixIn, Operations):
             self.queue_listen_thread = threading.Thread(target=self.listen_for_changes_over_sqs)
             self.queue_listen_thread.daemon = True
             self.queue_listen_thread.start()
+            logger.debug('Subscribing %s to %s' % (self.queue, self.sns_topic_arn))
             response = self.sns.subscribe_sqs_queue(self.sns_topic_arn, self.queue)
             self.sqs_subscription = response['SubscribeResponse']['SubscribeResult']['SubscriptionArn']
             logger.debug('SNS SQS subscription = %s' % self.sqs_subscription)
@@ -545,7 +546,7 @@ class YAS3FS(LoggingMixIn, Operations):
         self.flush_all_cache()
 
     def listen_for_changes_over_http(self):
-        logger.info("listening on %s" % self.http_listen_rl)
+        logger.info("Listening on: '%s'" % self.http_listen_rl)
         server_class = SNS_HTTPServer
         handler_class = SNS_HTTPRequestHandler
         server_address = ('', self.sns_http_port)
@@ -554,12 +555,14 @@ class YAS3FS(LoggingMixIn, Operations):
         self.httpd.serve_forever()
 
     def listen_for_changes_over_sqs(self):
-        logger.info("listening on queue %s" % self.queue.name)
+        logger.info("Listening on queue: '%s'" % self.queue.name)
         while self.sqs_queue_name:
             if self.queue_wait_time > 0:
-                messages = self.queue.get_messages(10, wait_time_seconds=self.queue_wait_time) # Using SQS long polling, needs boto > 2.6.0
+                # Using SQS long polling, needs boto > 2.6.0
+                messages = self.queue.get_messages(10, wait_time_seconds=self.queue_wait_time)
             else:
                 messages = self.queue.get_messages(10)
+            logger.debug("Got %i messages from SQS" % len(messages))
             if messages:
                 for m in messages:
                     content = json.loads(m.get_body())
