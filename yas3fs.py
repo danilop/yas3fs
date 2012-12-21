@@ -368,6 +368,8 @@ class YAS3FS(LoggingMixIn, Operations):
         logger.info("S3 bucket: '%s'" % self.s3_bucket_name)
         self.s3_prefix = s3url.path.strip('/')
         logger.info("S3 prefix: '%s'" % self.s3_prefix)
+        if self.s3_bucket_name == '':
+            errorAndExit("The S3 bucket cannot be empty")
         self.sns_topic_arn = options.topic
         if self.sns_topic_arn:
             logger.info("AWS region for SNS/SQS: '" + self.aws_region + "'")
