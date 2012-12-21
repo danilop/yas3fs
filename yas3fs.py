@@ -133,7 +133,7 @@ class FSCache():
         self.reset_all()
     def reset_all(self):
         with self.lock:
-            self.entries = {}
+            self.entries = {} # This will leave disk cache (if any) on place, is this ok???
             self.lru = LinkedList()
             self.size = {}
             for type in self.stores:
