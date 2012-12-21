@@ -161,7 +161,7 @@ class FSCache():
                                 if type in self.entries[path]:
                                     self.update_size(path, -self.entries[path][type])
                                     if type == 'data-disk':
-                                        filename = self.cache_path + path
+                                        filename = self.cache_filename(path)
                                         try:
                                             os.unlink(filename) # File *should* be there
                                         except IOError:
@@ -677,9 +677,6 @@ class YAS3FS(LoggingMixIn, Operations):
                     path = self.cache.lru.popleft()
                     logger.debug("purge: %s ?" % path)
                     if self.cache.get(path, 'open') or self.cache.has(path, 'change'):
-                        logger.debug("purge: no")
-                        logger.debug("open: %i" % self.cache.get(path, 'open'))
-                        logger.debug("change: %s" % self.cache.has(path, 'change'))
                         self.cache.lru.append(path)
                     else:
                         logger.debug("purge: yes")
@@ -689,25 +686,16 @@ class YAS3FS(LoggingMixIn, Operations):
                 with self.cache.lock:
                     path = self.cache.lru.popleft()
                     if not self.cache.has(path, 'data-mem') or self.cache.get(path, 'open') or self.cache.has(path, 'change'):
-                        logger.debug("purge: no")
-                        logger.debug("open: %i" % self.cache.get(path, 'open'))
-                        logger.debug("change: %s" % self.cache.has(path, 'change'))
                         self.cache.lru.append(path)
                     else:
-                        logger.debug("purge: yes")
                         self.cache.delete(path)
                         purge = True
             if disk_size > self.cache_disk_size:
                 with self.cache.lock:
                     path = self.cache.lru.popleft()
-                    logger.debug("purge: %s ?" % path)
                     if not self.cache.has(path, 'data-disk') or self.cache.get(path, 'open') or self.cache.has(path, 'change'):
-                        logger.debug("purge: no")
-                        logger.debug("open: %i" % self.cache.get(path, 'open'))
-                        logger.debug("change: %s" % self.cache.has(path, 'change'))
                         self.cache.lru.append(path)
                     else:
-                        logger.debug("purge: yes")
                         self.cache.delete(path)
                         purge = True
             if not purge:
@@ -717,15 +705,17 @@ class YAS3FS(LoggingMixIn, Operations):
         logger.debug("add_to_parent_readdir '%s'" % (path))
         (parent_path, dir) = os.path.split(path)
         with self.cache.lock:
-            if self.cache.has(parent_path, 'readdir') and self.cache.get(parent_path, 'readdir').count(dir) == 0:
-                self.cache.get(parent_path, 'readdir').append(dir)
+            dirs = self.cache.get(parent_path, 'readdir')
+            if dirs != None and dirs.count(dir) == 0:
+                dirs.append(dir)
 
     def remove_from_parent_readdir(self, path):
         logger.debug("remove_to_parent_readdir '%s'" % (path))
         (parent_path, dir) = os.path.split(path)
         with self.cache.lock:
-            if self.cache.has(parent_path, 'readdir') and self.cache.get(parent_path, 'readdir').count(dir) > 0:
-                self.cache.get(parent_path, 'readdir').remove(dir)
+            dirs = self.cache.get(parent_path, 'readdir')
+            if dirs != None and dirs.count(dir) > 0:
+                dirs.remove(dir)
 
     def reset_parent_readdir(self, path):
         logger.debug("reset_to_parent_readdir '%s'" % (path))
@@ -737,6 +727,9 @@ class YAS3FS(LoggingMixIn, Operations):
             return path[1:] # Remove beginning "/"
         else:
             return self.s3_prefix + path
+
+    def cache_filename(self, path):
+        return self.cache_path + path # path begins with '/'
 
     def get_key(self, path):
         key = self.cache.get(path, 'key')
@@ -959,7 +952,7 @@ class YAS3FS(LoggingMixIn, Operations):
                         data_range[2].set()
                 return True
             elif k.size > self.cache_on_disk and not self.cache.has(path, 'data'):
-                filename = self.cache_path + path # path begins with '/'
+                filename = self.cache_filename(path)
                 if os.path.isfile(filename):
                     data = io.FileIO(filename, mode='rb+')
                     content = data.read()
@@ -981,7 +974,7 @@ class YAS3FS(LoggingMixIn, Operations):
             if k.size <= self.cache_on_disk:
                 data = io.BytesIO()
             else:
-                filename = self.cache_path + path # path begins with '/'
+                filename = self.cache_filename(path)
                 dirname = os.path.dirname(filename)
                 try:
                     os.makedirs(dirname)
