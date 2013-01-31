@@ -353,24 +353,28 @@ class PartOfBytesIO():
         self.length = length
         self.pos = 0
     def seek(self, offset, whence=0):
+        logger.debug("seek '%i' '%i'" % (offset, whence))
         if whence == 0:
             self.pos = offset
         elif whence == 1:
-            self.seek(self.tell() + offset)
+            self.pos = self.pos + offset
         elif whence == 2:
-            self.seek(self.length + offset)
+            self.pos = self.length + offset
     def tell(self):
         return self.pos
     def read(self, n=-1):
+        logger.debug("read '%i' at '%i' starting from '%i' for '%i'" % (n, self.pos, self.start, self.length))
         if n >= 0:
-            n = min([n, self.length - self.tell()])
+            n = min([n, self.length - self.pos])
             with PartOfBytesIO.lock:
-                base.seek(self.start + set.pos)
-                return base.read(n)
+                self.base.seek(self.start + self.pos)
+                s = self.base.read(n)
+                self.pos += len(s)
+            return s
         else:
             return self.readall()
     def readall(self):
-        return self.read(self.length - self.tell())
+        return self.read(self.length - self.pos)
 
 class YAS3FS(LoggingMixIn, Operations):
     """ Main FUSE Operations class for fusepy """
@@ -1375,18 +1379,35 @@ class YAS3FS(LoggingMixIn, Operations):
         mpu = self.s3_bucket.initiate_multipart_upload(key.name, headers=headers)
         num_threads = min(part_num, self.multipart_num)
         for i in range(num_threads):
-            threading.Thread(target=self.part_upload, args=(mpu, data, part_queue))
-        logger.debug("multipart_upload thread started '%s' '%s' '%s'" %(key, data, headers))
+            t = threading.Thread(target=self.part_upload, args=(mpu.id, part_queue))
+            t.demon = True
+            t.start()
+            logger.debug("multipart_upload thread '%i' started" % i)
+        logger.debug("multipart_upload all threads started '%s' '%s' '%s'" %(key, data, headers))
         part_queue.join()
-        ### Set metadata
-        logger.debug("multipart_upload thread joined '%s' '%s' '%s'" %(key, data, headers))
+        if len(mpu.get_all_parts()) == part_num:
+            mpu.complete_upload()
+            key = self.s3_bucket.get_key(key.name) # Check cached value???
+            ### Set metadata
+        else:
+            mpu.cancel_upload()
+        logger.debug("multipart_upload all threads joined '%s' '%s' '%s'" %(key, data, headers))
 
-    def part_upload(self, mpu, part_queue):
-        [ num, part ] = part_queue.get()
-        logger.debug("begin upload of part %i" % num)
-        mpu.upload_part_from_file(fp=part, num=num) # Manage retries???
-        logger.debug("end upload of part %i" % num)
-        part_queue.task_done()
+    def part_upload(self, mpu_id, part_queue):
+        logger.debug("new thread!")
+        for mpu in self.s3_bucket.get_all_multipart_uploads():
+            if mpu.id == mpu_id:
+                logger.debug("multi part id found '%s'" % mpu_id)
+                try:
+                    while (True):
+                        logger.debug("trying to get a part from the queue")
+                        [ num, part ] = part_queue.get(False)
+                        logger.debug("begin upload of part %i" % num)
+                        mpu.upload_part_from_file(fp=part, part_num=num) # Manage retries???
+                        logger.debug("end upload of part %i" % num)
+                        part_queue.task_done()
+                except Queue.Empty:
+                    logger.debug("the queue is empty")
 
     def chmod(self, path, mode):
         logger.debug("chmod '%s' '%i'" % (path, mode))
@@ -1560,7 +1581,7 @@ In an EC2 instance a IAM role can be used to give access to S3/SNS/SQS resources
     parser.add_option("--prefetch", action="store_true", dest="prefetch", default=False,
                       help="start downloading file content as soon as the file is discovered")
     parser.add_option("--multipart-size", dest="multipart_size",
-                      help="size of parts to use for multipart upload in KB (default is %default KB)", metavar="N", default=5120)
+                      help="size of parts to use for multipart upload in KB (default and minimum allowed value is %default KB)", metavar="N", default=5120)
     parser.add_option("--multipart-num", dest="multipart_num",
                       help="max number of parallel multipart uploads per file (0 to disable multipart upload, default is %default)", metavar="N", default=4)
     parser.add_option("--id", dest="id",
