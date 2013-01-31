@@ -30,6 +30,7 @@ import io
 import re
 import uuid
 import copy
+import 
 
 import boto
 import boto.s3        
@@ -344,6 +345,34 @@ class SNS_HTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         logger.debug('http head')
         self.send_response(404)
 
+class PartOfBytesIO():
+    lock = threading.Lock()
+    """ To read just a part of an existing BytesIO, inspired by FileChunkIO """
+    def __init__(self, base, start, length):
+        self.base = base
+        self.start = start
+        self.length = length
+        self.pos = 0
+    def seek(self, offset, whence=0):
+        if whence == 0:
+            self.pos = offset
+        elif whence == 1:
+            self.seek(self.tell() + offset)
+        elif whence == 2:
+            self.seek(self.length + offset)
+    def tell(self):
+        return self.pos
+    def read(self, n=-1):
+        if n >= 0:
+            n = min([n, self.length - self.tell()])
+            with PartOfBytesIO.lock:
+                base.seek(self.start + set.pos)
+                return base.read(n)
+        else:
+            return self.readall()
+    def readall(self):
+        return self.read(self.length - self.tell())
+
 class YAS3FS(LoggingMixIn, Operations):
     """ Main FUSE Operations class for fusepy """
     def __init__(self, options):
@@ -414,6 +443,10 @@ class YAS3FS(LoggingMixIn, Operations):
         logger.info("Write metadata (file system attr/xattr) on S3: '%s'" % str(self.write_metadata))
         self.prefetch = options.prefetch
         logger.info("Download prefetch: '%s'" % str(self.prefetch))
+        self.multipart_size = options.multipart_size
+        logger.info("Multipart size: '%s'" % str(self.multipart_size))
+        self.multipart_num = options.multipart_num
+        logger.info("Multipart number (of threads): '%s'" % str(self.multipart_num))
 
         # AWS Initialization
         try:
@@ -1314,11 +1347,45 @@ class YAS3FS(LoggingMixIn, Operations):
                 old_size = 0
             else:
                 old_size = k.size
-            k.set_contents_from_file(data, headers={'Content-Type': type})
+            if self.multipart_num > 0:
+                self.multipart_upload(k, data, headers={'Content-Type': type})
+            else:
+                k.set_contents_from_file(data, headers={'Content-Type': type})
             self.cache.update_size(path, k.size - old_size)
             self.cache.delete(path, 'change')
             self.publish(['flush', path, k.etag[1:-1]])
         return 0
+
+    def multipart_upload(self, key, data, headers):
+        logger.debug("multipart_upload '%s' '%s' '%s'" %(key, data, headers))
+        full_size = len(data.getvalue()) # Something better here ???
+        part_num = 0
+        part_pos = 0
+        part_queue = Queue.Queue()
+        while part_pos < full_size:
+            bytes_left = full_size - part_pos
+            if bytes_left > self.multipart_size:
+                part_size = self.multipart_size
+            else:
+                part_size = bytes_left
+            part_num += 1
+            part_queue.put([ part_num, PartOfBytesIO(data, part_pos, part_size) ])
+            part_pos += part_size
+            logger.debug("part from %i for %i" % (part_pos, part_size))
+        mpu = self.s3_bucket.initiate_multipart_upload(key.name, headers=headers, metadata=key.metadata)
+        num_threads = min(part_num, self.multipart_num)
+        for i in range(num_threads):
+            threading.Thread(target=self.part_upload, args=(mpu, data, part_queue))
+        logger.debug("multipart_upload thread started '%s' '%s' '%s'" %(key, data, headers))
+        part_queue.join()
+        logger.debug("multipart_upload thread joined '%s' '%s' '%s'" %(key, data, headers))
+
+    def part_upload(self, mpu, part_queue):
+        [ num, part ] = part_queue.get()
+        logger.debug("begin upload of part %i" % num)
+        mpu.upload_part_from_file(fp=part, num=num) # Manage retries???
+        logger.debug("end upload of part %i" % num)
+        part_queue.task_done()
 
     def chmod(self, path, mode):
         logger.debug("chmod '%s' '%i'" % (path, mode))
@@ -1491,6 +1558,10 @@ In an EC2 instance a IAM role can be used to give access to S3/SNS/SQS resources
                       help="don't write user metadata on S3 to persist file system attr/xattr")
     parser.add_option("--prefetch", action="store_true", dest="prefetch", default=False,
                       help="start downloading file content as soon as the file is discovered")
+    parser.add_option("--multipart-size", dest="multipart_size",
+                      help="size of parts to use for multipart upload in KB (default is %default KB)", metavar="N", default=5120)
+    parser.add_option("--multipart-num", dest="multipart_num",
+                      help="max number of parallel multipart uploads per file (0 to disable multipart upload, default is %default)", metavar="N", default=4)
     parser.add_option("--id", dest="id",
                       help="a unique ID identifying this node in a cluster (hostname, queue name or UUID Version 1 as per RFC 4122 are used if not provided)", metavar="ID")
     parser.add_option("--log", dest="logfile",
