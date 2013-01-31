@@ -30,7 +30,6 @@ import io
 import re
 import uuid
 import copy
-import 
 
 import boto
 import boto.s3        
@@ -443,7 +442,7 @@ class YAS3FS(LoggingMixIn, Operations):
         logger.info("Write metadata (file system attr/xattr) on S3: '%s'" % str(self.write_metadata))
         self.prefetch = options.prefetch
         logger.info("Download prefetch: '%s'" % str(self.prefetch))
-        self.multipart_size = options.multipart_size
+        self.multipart_size = int(options.multipart_size) * 1024
         logger.info("Multipart size: '%s'" % str(self.multipart_size))
         self.multipart_num = options.multipart_num
         logger.info("Multipart number (of threads): '%s'" % str(self.multipart_num))
@@ -1340,7 +1339,7 @@ class YAS3FS(LoggingMixIn, Operations):
             self.set_metadata(path, 'attr', attr, k)
             xattr = self.get_metadata(path, 'xattr') # Do something better ???
             self.set_metadata(path, 'xattr', xattr, k)
-            type = mimetypes.guess_type(path)[0]
+            type = mimetypes.guess_type(path)[0] or 'application/octet-stream'
             data = self.cache.get(path, 'data')
             data.seek(0)
             if k.size == None:
@@ -1372,12 +1371,14 @@ class YAS3FS(LoggingMixIn, Operations):
             part_queue.put([ part_num, PartOfBytesIO(data, part_pos, part_size) ])
             part_pos += part_size
             logger.debug("part from %i for %i" % (part_pos, part_size))
-        mpu = self.s3_bucket.initiate_multipart_upload(key.name, headers=headers, metadata=key.metadata)
+        logger.debug("initiate_multipart_upload '%s' '%s'" % (key.name, headers))
+        mpu = self.s3_bucket.initiate_multipart_upload(key.name, headers=headers)
         num_threads = min(part_num, self.multipart_num)
         for i in range(num_threads):
             threading.Thread(target=self.part_upload, args=(mpu, data, part_queue))
         logger.debug("multipart_upload thread started '%s' '%s' '%s'" %(key, data, headers))
         part_queue.join()
+        ### Set metadata
         logger.debug("multipart_upload thread joined '%s' '%s' '%s'" %(key, data, headers))
 
     def part_upload(self, mpu, part_queue):
