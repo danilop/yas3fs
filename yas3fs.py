@@ -1350,18 +1350,21 @@ class YAS3FS(LoggingMixIn, Operations):
                 old_size = 0
             else:
                 old_size = k.size
+            written = False
             if self.multipart_num > 0:
-                self.multipart_upload(k, data, headers={'Content-Type': type})
-            else:
+                full_size = len(data.getvalue()) # Something better here ???
+                if full_size > self.multipart_size:
+                    k = self.multipart_upload(k.name, data, full_size, headers={'Content-Type': type}, metadata=k.metadata)
+                    written = True
+            if not written:
                 k.set_contents_from_file(data, headers={'Content-Type': type})
             self.cache.update_size(path, k.size - old_size)
             self.cache.delete(path, 'change')
             self.publish(['flush', path, k.etag[1:-1]])
         return 0
 
-    def multipart_upload(self, key, data, headers):
-        logger.debug("multipart_upload '%s' '%s' '%s'" %(key, data, headers))
-        full_size = len(data.getvalue()) # Something better here ???
+    def multipart_upload(self, key_path, data, full_size, headers, metadata):
+        logger.debug("multipart_upload '%s' '%s' '%s'" % (key_path, data, headers))
         part_num = 0
         part_pos = 0
         part_queue = Queue.Queue()
@@ -1375,40 +1378,43 @@ class YAS3FS(LoggingMixIn, Operations):
             part_queue.put([ part_num, PartOfBytesIO(data, part_pos, part_size) ])
             part_pos += part_size
             logger.debug("part from %i for %i" % (part_pos, part_size))
-        logger.debug("initiate_multipart_upload '%s' '%s'" % (key.name, headers))
-        mpu = self.s3_bucket.initiate_multipart_upload(key.name, headers=headers)
+        logger.debug("initiate_multipart_upload '%s' '%s'" % (key_path, headers))
+        mpu = self.s3_bucket.initiate_multipart_upload(key_path, headers=headers, metadata=metadata)
         num_threads = min(part_num, self.multipart_num)
         for i in range(num_threads):
-            t = threading.Thread(target=self.part_upload, args=(mpu.id, part_queue))
+#            t = threading.Thread(target=self.part_upload, args=(mpu.id, part_queue))
+            t = threading.Thread(target=self.part_upload, args=(mpu, part_queue))
             t.demon = True
             t.start()
             logger.debug("multipart_upload thread '%i' started" % i)
-        logger.debug("multipart_upload all threads started '%s' '%s' '%s'" %(key, data, headers))
+        logger.debug("multipart_upload all threads started '%s' '%s' '%s'" % (key_path, data, headers))
         part_queue.join()
+        logger.debug("multipart_upload all threads joined '%s' '%s' '%s'" % (key_path, data, headers))
         if len(mpu.get_all_parts()) == part_num:
             mpu.complete_upload()
-            key = self.s3_bucket.get_key(key.name) # Check cached value???
-            ### Set metadata
+            new_key = self.s3_bucket.get_key(key_path) # Check cached value???
         else:
             mpu.cancel_upload()
-        logger.debug("multipart_upload all threads joined '%s' '%s' '%s'" %(key, data, headers))
+            new_key = None
+        return new_key
 
-    def part_upload(self, mpu_id, part_queue):
+#    def part_upload(self, mpu_id, part_queue):
+    def part_upload(self, mpu, part_queue):
         logger.debug("new thread!")
-        for mpu in self.s3_bucket.get_all_multipart_uploads():
-            if mpu.id == mpu_id:
-                logger.debug("multi part id found '%s'" % mpu_id)
-                try:
-                    while (True):
-                        logger.debug("trying to get a part from the queue")
-                        [ num, part ] = part_queue.get(False)
-                        logger.debug("begin upload of part %i" % num)
-                        mpu.upload_part_from_file(fp=part, part_num=num) # Manage retries???
-                        logger.debug("end upload of part %i" % num)
-                        part_queue.task_done()
-                except Queue.Empty:
-                    logger.debug("the queue is empty")
-
+#        for mpu in self.s3_bucket.get_all_multipart_uploads():
+#            if mpu.id == mpu_id:
+#        logger.debug("multi part id found '%s'" % mpu_id)
+        try:
+            while (True):
+                logger.debug("trying to get a part from the queue")
+                [ num, part ] = part_queue.get(False)
+                logger.debug("begin upload of part %i" % num)
+                mpu.upload_part_from_file(fp=part, part_num=num) # Manage retries???
+                logger.debug("end upload of part %i" % num)
+                part_queue.task_done()
+        except Queue.Empty:
+            logger.debug("the queue is empty")
+            
     def chmod(self, path, mode):
         logger.debug("chmod '%s' '%i'" % (path, mode))
         if self.cache.has(path) and self.cache.is_empty(path):
