@@ -511,6 +511,9 @@ class YAS3FS(LoggingMixIn, Operations):
             self.http_listen_path = '/sns'
             self.http_listen_url = "http://%s:%i%s" % (self.hostname, self.sns_http_port, self.http_listen_path)
 
+        if self.multipart_size < 5242880:
+            errorAndExit("The minimum size for multipart upload supported by S3 is 5MB")
+
         signal.signal(signal.SIGINT, self.handler)
 
     def init(self, path):
@@ -612,6 +615,8 @@ class YAS3FS(LoggingMixIn, Operations):
         logger.debug("invalidate_cache '%s' '%s'" % (path, md5))
         with self.cache.lock:
             self.cache.delete(path, 'key')
+            self.cache.delete(path, 'attr')
+            self.cache.delete(path, 'xattr')
             if self.cache.has(path, 'data'):
                 if self.cache.has(path, 'data-range'):
                     self.cache.delete(path, 'data-range')
@@ -740,22 +745,25 @@ class YAS3FS(LoggingMixIn, Operations):
     def add_to_parent_readdir(self, path):
         logger.debug("add_to_parent_readdir '%s'" % (path))
         (parent_path, dir) = os.path.split(path)
+        logger.debug("parent_path '%s'" % (parent_path))
         with self.cache.lock:
             dirs = self.cache.get(parent_path, 'readdir')
             if dirs != None and dirs.count(dir) == 0:
                 dirs.append(dir)
 
     def remove_from_parent_readdir(self, path):
-        logger.debug("remove_to_parent_readdir '%s'" % (path))
+        logger.debug("remove_from_parent_readdir '%s'" % (path))
         (parent_path, dir) = os.path.split(path)
+        logger.debug("parent_path '%s'" % (parent_path))
         with self.cache.lock:
             dirs = self.cache.get(parent_path, 'readdir')
             if dirs != None and dirs.count(dir) > 0:
                 dirs.remove(dir)
 
     def reset_parent_readdir(self, path):
-        logger.debug("reset_to_parent_readdir '%s'" % (path))
+        logger.debug("reset_parent_readdir '%s'" % (path))
         (parent_path, dir) = os.path.split(path)
+        logger.debug("parent_path '%s'" % (parent_path))
         self.cache.delete(parent_path, 'readdir')
 
     def join_prefix(self, path):
@@ -1509,7 +1517,7 @@ class YAS3FS(LoggingMixIn, Operations):
            (minimum 512)."""
         return {
             "f_namemax" : 512,
-            "f_bsize" : 128 * 1024,
+            "f_bsize" : 1024 * 1024,
             "f_blocks" : 1024 * 1024 * 1024,
             "f_bfree" : 1024 * 1024 * 1024,
             "f_bavail" : 1024 * 1024 * 1024,
@@ -1564,9 +1572,9 @@ In an EC2 instance a IAM role can be used to give access to S3/SNS/SQS resources
     parser.add_option("--new-queue", action="store_true", dest="new_queue", default=False,
                       help="create a new SQS queue that is deleted on unmount (overrides '--queue', queue name is BUCKET-PATH-ID with alphanumeric characters only)")
     parser.add_option("--queue-wait", dest="queue_wait_time",
-                      help="SQS queue wait time in seconds (using long polling, 0 to disable, default is %default seconds)", metavar="N", default=0)
+                      help="SQS queue wait time in seconds (using long polling, 0 to disable, default is %default seconds)", metavar="N", default=20)
     parser.add_option("--queue-polling", dest="queue_polling_interval",
-                      help="SQS queue polling interval in seconds (default is %default seconds)", metavar="N", default=1)
+                      help="SQS queue polling interval in seconds (default is %default seconds)", metavar="N", default=0)
     parser.add_option("--cache-entries", dest="cache_entries",
                       help="max number of entries to cache (default is %default entries)", metavar="N", default=1000000)
     parser.add_option("--cache-mem-size", dest="cache_mem_size",
@@ -1587,7 +1595,7 @@ In an EC2 instance a IAM role can be used to give access to S3/SNS/SQS resources
     parser.add_option("--prefetch", action="store_true", dest="prefetch", default=False,
                       help="start downloading file content as soon as the file is discovered")
     parser.add_option("--multipart-size", dest="multipart_size",
-                      help="size of parts to use for multipart upload in KB (default and minimum allowed value is %default KB)", metavar="N", default=5120)
+                      help="size of parts to use for multipart upload in KB (default value and minimum allowed is %default KB)", metavar="N", default=5120)
     parser.add_option("--multipart-num", dest="multipart_num",
                       help="max number of parallel multipart uploads per file (0 to disable multipart upload, default is %default)", metavar="N", default=4)
     parser.add_option("--id", dest="id",
