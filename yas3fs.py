@@ -563,9 +563,11 @@ class YAS3FS(LoggingMixIn, Operations):
 
         if self.http_listen_thread:
             self.httpd.shutdown() # To stop HTTP listen thread
+            self.http_listen_thread.join() 
             self.sns.unsubscribe(self.http_subscription)
         if self.queue_listen_thread:
             self.sqs_queue_name = None # To stop queue listen thread
+            self.queue_listen_thread.join()
             self.sns.unsubscribe(self.sqs_subscription)
             if self.new_queue:
                 self.sqs.delete_queue(self.queue, force_deletion=True)
