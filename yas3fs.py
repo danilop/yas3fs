@@ -130,9 +130,10 @@ class FSCache():
         self.stores = [ 'data-mem', 'data-disk' ]
         self.lock = threading.RLock()
         self.data_size_lock = threading.Lock()
+        self.data_lock = threading.Lock() # To use seek and read without interruptions
         self.reset_all()
     def reset_all(self):
-        with self.lock:
+         with self.lock:
             self.entries = {} # This will leave disk cache (if any) on place, is this ok???
             self.lru = LinkedList()
             self.size = {}
@@ -260,11 +261,11 @@ class FSCache():
         if isinstance(data, io.BytesIO):
             return data.getvalue()
         elif isinstance(data, io.FileIO):
-            data.seek(0) # Go to the beginning
-            return data.read()
+            with self.data_lock:
+                data.seek(0) # Go to the beginning
+                return data.read()
         else:
             raise "data object unknown"
-
  
 class SNS_HTTPServer(BaseHTTPServer.HTTPServer):
     """ HTTP Server to receive SNS notifications via HTTP """
@@ -369,7 +370,7 @@ class PartOfBytesIO():
             with PartOfBytesIO.lock:
                 self.base.seek(self.start + self.pos)
                 s = self.base.read(n)
-                self.pos += len(s)
+            self.pos += len(s)
             return s
         else:
             return self.readall()
@@ -1077,8 +1078,9 @@ class YAS3FS(LoggingMixIn, Operations):
                         (interval, next_interval, event) = self.cache.get(path, 'data-range')
                     else:
                         return
-                    data.seek(pos)
-                    data.write(bytes)
+                    with self.cache.data_lock:
+                        data.seek(pos)
+                        data.write(bytes)
                     length = len(bytes)
                     new_interval = [pos, pos + length - 1]
                     pos += length
@@ -1245,7 +1247,7 @@ class YAS3FS(LoggingMixIn, Operations):
 	self.cache.set(path, 'change', True)
 	self.set_metadata(path, 'attr', attr)
 	self.set_metadata(path, 'xattr', {})
-	self.cache.set(path, 'data', io.BytesIO(''))
+	self.cache.set(path, 'data', io.BytesIO())
 	self.add_to_parent_readdir(path)
 	self.publish(['mknod', path])
 	return 0
@@ -1306,8 +1308,9 @@ class YAS3FS(LoggingMixIn, Operations):
             data_range[2].wait()
 	# update atime just in the cache ???
         sio = self.cache.get(path, 'data')
-        sio.seek(offset)
-        return sio.read(length)
+        with self.cache.data_lock:
+            sio.seek(offset)
+            return sio.read(length)
 
     def write(self, path, data, offset, fh=None):
         logger.debug("write '%s' '%i' '%i' '%s'" % (path, len(data), offset, fh))
@@ -1322,8 +1325,9 @@ class YAS3FS(LoggingMixIn, Operations):
             data_range[2].wait()
 	with self.cache.lock:
             sio = self.cache.get(path, 'data')
-            sio.seek(offset)
-            sio.write(data)
+            with self.cache.data_lock:
+                sio.seek(offset)
+                sio.write(data)
             self.cache.set(path, 'change', True)
 	    now = str(time.time())
 	    attr = self.get_metadata(path, 'attr')
@@ -1353,14 +1357,18 @@ class YAS3FS(LoggingMixIn, Operations):
             self.set_metadata(path, 'xattr', xattr, k)
             type = mimetypes.guess_type(path)[0] or 'application/octet-stream'
             data = self.cache.get(path, 'data')
-            data.seek(0)
+            data.seek(0) # Do I need this???
             if k.size == None:
                 old_size = 0
             else:
                 old_size = k.size
             written = False
             if self.multipart_num > 0:
-                full_size = len(data.getvalue()) # Something better here ???
+
+                if isinstance(data, io.BytesIO):
+                    full_size = len(data.getvalue()) # Something better here ???
+                elif isinstance(data, io.FileIO):
+                    full_size = os.path.getsize(self.cache_filename(path))
                 if full_size > self.multipart_size:
                     k = self.multipart_upload(k.name, data, full_size, headers={'Content-Type': type}, metadata=k.metadata)
                     written = True
