@@ -45,6 +45,7 @@ a distributed cache synchronized by <a href="http://aws.amazon.com/sns/">Amazon 
 <li>It works on Linux and Mac OS X.</li>
 <li>For maximum speed all data read from S3 is cached locally on the node, in memory or on disk, depending of the file size.</li>
 <li>Parallel multi-part downloads are used if there are reads in the middle of the file (e.g. for streaming).</li>
+<li>Parallel multi-part uploads are used for files larger than a specified size.</li>
 <li>With buffering enabled (the default) files can be accessed during the download from S3 (e.g. for streaming).</li>
 <li>It can be used on more than one node to create a "shared" file system (i.e. a yas3fs "cluster").</li>
 <li>
@@ -114,7 +115,6 @@ sudo easy_install pip
 sudo pip install fusepy
 git clone git://github.com/danilop/yas3fs.git
 cd yas3fs
-chmod u+x yas3fs.py
 ./yas3fs.py -h # See the usage
 sudo sed -i'' 's/^# user_allow_other/user_allow_other/' /etc/fuse.conf # uncomment user_allow_other
 mkdir LOCAL-PATH
@@ -127,7 +127,6 @@ mkdir LOCAL-PATH
 sudo pip install --upgrade boto fusepy
 git clone git://github.com/danilop/yas3fs.git
 cd yas3fs
-chmod u+x yas3fs.py
 ./yas3fs.py -h # See the usage
 sudo sed -i'' 's/^# user_allow_other/user_allow_other/' /etc/fuse.conf # uncomment user_allow_other
 sudo chmod a+r /etc/fuse.conf # make it readable by anybody, it is not the default on Ubuntu
@@ -148,7 +147,6 @@ sudo easy_install boto
 sudo easy_install fusepy
 git clone git://github.com/danilop/yas3fs.git
 cd yas3fs
-chmod u+x yas3fs.py
 ./yas3fs.py -h # See the usage
 mkdir LOCAL-PATH
 ./yas3fs.py LOCAL-PATH --url s3://BUCKET/PATH --topic TOPIC-ARN --new-queue --region eu-west-1
