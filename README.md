@@ -11,6 +11,7 @@ a distributed cache synchronized by [Amazon SNS](http://aws.amazon.com/sns/) not
 * It works on Linux and Mac OS X.
 * For maximum speed all data read from S3 is cached locally on the node, in memory or on disk, depending of the file size.
 * Parallel multi-part downloads are used if there are reads in the middle of the file (e.g. for streaming).
+* Parallel multi-part uploads are used for files larger than a specified size.
 * With buffering enabled (the default) files can be accessed during the download from S3 (e.g. for streaming).
 * It can be used on more than one node to create a "shared" file system (i.e. a yas3fs "cluster").
 * [SNS](http://aws.amazon.com/sns/) notifications are used to update other nodes in the cluster that something has changed on S3 and they need to invalidate their cache.
