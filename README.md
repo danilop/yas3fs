@@ -263,7 +263,7 @@ To change the maximum number of parallel threads to use for multipart uploads to
 
     [ "all", "multipart", "num", 16 ]
 
-You can even change dinamically the S3 URL (i.e. the bucket and/or the path prefix) that are mounted:
+You can even change dinamically the mounted S3 URL (i.e. the bucket and/or the path prefix):
 
     [ "all", "url", "s3://BUCKET/PATH" ]
 
