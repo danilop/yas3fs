@@ -1614,7 +1614,7 @@ In an EC2 instance a IAM role can be used to give access to S3/SNS/SQS resources
     parser.add_option("--prefetch", action="store_true", dest="prefetch", default=False,
                       help="start downloading file content as soon as the file is discovered")
     parser.add_option("--multipart-size", dest="multipart_size",
-                      help="size of parts to use for multipart upload in KB (default value and minimum allowed is %default KB)", metavar="N", default=5120)
+                      help="size of parts to use for multipart upload in KB (default value is %default KB, the minimum allowed is 5120 KB)", metavar="N", default=10240)
     parser.add_option("--multipart-num", dest="multipart_num",
                       help="max number of parallel multipart uploads per file (0 to disable multipart upload, default is %default)", metavar="N", default=4)
     parser.add_option("--id", dest="id",

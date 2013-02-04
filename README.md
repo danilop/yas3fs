@@ -134,6 +134,7 @@ To unmount the file system on a Mac you can use `umount`.
     It works on Linux and Mac OS X.
     For maximum speed all data read from S3 is cached locally on the node, in memory or on disk, depending of the file size.
     Parallel multi-part downloads are used if there are reads in the middle of the file (e.g. for streaming).
+    Parallel multi-part uploads are used for files larger than a specified size.
     With buffering enabled (the default) files can be accessed during the download from S3 (e.g. for streaming).
     It can be used on more than one node to create a "shared" file system (i.e. a yas3fs "cluster").
     SNS notifications are used to update other nodes in the cluster that something has changed on S3 and they need to invalidate their cache.
@@ -156,11 +157,11 @@ To unmount the file system on a Mac you can use `umount`.
       --queue=NAME         SQS queue name, a new queue is created if it doesn't
 			   exist
       --new-queue          create a new SQS queue that is deleted on unmount
-			   (overrides '--queue', queue name is yas3fs-BUCKET-PATH-ID
-			   with alphanumeric characters only)
+			   (overrides '--queue', queue name is BUCKET-PATH-ID with
+			   alphanumeric characters only)
       --queue-wait=N       SQS queue wait time in seconds (using long polling, 0
-			   to disable, default is 0 seconds)
-      --queue-polling=N    SQS queue polling interval in seconds (default is 1
+			   to disable, default is 20 seconds)
+      --queue-polling=N    SQS queue polling interval in seconds (default is 0
 			   seconds)
       --cache-entries=N    max number of entries to cache (default is 1000000
 			   entries)
@@ -178,6 +179,11 @@ To unmount the file system on a Mac you can use `umount`.
 			   attr/xattr
       --prefetch           start downloading file content as soon as the file is
 			   discovered
+      --multipart-size=N   size of parts to use for multipart upload in KB
+			   (default value is 10240 KB, the minimum allowed is 5120
+			   KB)
+      --multipart-num=N    max number of parallel multipart uploads per file (0 to
+			   disable multipart upload, default is 4)
       --id=ID              a unique ID identifying this node in a cluster
 			   (hostname, queue name or UUID Version 1 as per RFC 4122
 			   are used if not provided)
