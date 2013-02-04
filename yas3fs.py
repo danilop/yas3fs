@@ -531,7 +531,7 @@ class YAS3FS(LoggingMixIn, Operations):
             self.queue_listen_thread = threading.Thread(target=self.listen_for_changes_over_sqs)
             self.queue_listen_thread.daemon = True
             self.queue_listen_thread.start()
-            logger.debug('Subscribing %s to %s' % (self.queue, self.sns_topic_arn))
+            logger.debug("Subscribing '%s' to '%s'" % (self.sqs_queue_name, self.sns_topic_arn))
             response = self.sns.subscribe_sqs_queue(self.sns_topic_arn, self.queue)
             self.sqs_subscription = response['SubscribeResponse']['SubscribeResult']['SubscriptionArn']
             logger.debug('SNS SQS subscription = %s' % self.sqs_subscription)
