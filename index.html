@@ -329,7 +329,17 @@ you can publish (the size is in MB as in the corresponding command line option):
 <pre><code>[ "all", "prefetch", "on" ]
 </code></pre>
 
-<p>You can even change dinamically the S3 URL (i.e. the bucket and/or the path prefix) that are mounted:</p>
+<p>To change the multipart upload size to 100MB:</p>
+
+<pre><code>[ "all", "multipart", "size", 102400 ]
+</code></pre>
+
+<p>To change the maximum number of parallel threads to use for multipart uploads to 16:</p>
+
+<pre><code>[ "all", "multipart", "num", 16 ]
+</code></pre>
+
+<p>You can even change dinamically the mounted S3 URL (i.e. the bucket and/or the path prefix):</p>
 
 <pre><code>[ "all", "url", "s3://BUCKET/PATH" ]
 </code></pre>
