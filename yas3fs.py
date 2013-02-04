@@ -706,6 +706,11 @@ class YAS3FS(LoggingMixIn, Operations):
                     self.prefetch = True
                 elif c[2] == 'off':
                     self.prefetch = False
+            elif c[1] == 'multipart':
+                if c[2] == 'size' and c[3] >= 5120:
+                    self.multipart_size = c[3] * 1024
+                elif c[2] == 'num' and c[3] >= 0:
+                    self.multipart_num = c[3]
 
     def publish_changes(self):
         while self.sns_topic_arn:

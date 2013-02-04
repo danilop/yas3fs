@@ -255,6 +255,14 @@ Similarly, to activate download prefetch on all nodes you can use:
 
     [ "all", "prefetch", "on" ]
 
+To change the multipart upload size to 100MB:
+
+    [ "all", "multipart", "size", 102400 ]
+
+To change the maximum number of parallel threads to use for multipart uploads to 16:
+
+    [ "all", "multipart", "num", 16 ]
+
 You can even change dinamically the S3 URL (i.e. the bucket and/or the path prefix) that are mounted:
 
     [ "all", "url", "s3://BUCKET/PATH" ]
