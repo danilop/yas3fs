@@ -126,7 +126,8 @@ class LinkedList():
 
 class FSCache():
     """ File System Cache """
-    def __init__(self):
+    def __init__(self, cache_path=None):
+        self.cache_path = cache_path
         self.stores = [ 'data-mem', 'data-disk' ]
         self.lock = threading.RLock()
         self.data_size_lock = threading.Lock()
@@ -141,6 +142,8 @@ class FSCache():
                 self.size[type] = 0
     def get_memory_usage(self):
         return len(self.entries), self.size['data-mem'], self.size['data-disk']
+    def get_cache_filename(self, path):
+        return self.cache_path + path # path begins with '/'                                                                                      
     def add(self, path):
         with self.lock:
             if not self.has(path):
@@ -162,7 +165,7 @@ class FSCache():
                                 if type in self.entries[path]:
                                     self.update_size(path, -self.entries[path][type])
                                     if type == 'data-disk':
-                                        filename = self.cache_filename(path)
+                                        filename = self.get_cache_filename(path)
                                         try:
                                             os.unlink(filename) # File *should* be there
                                         except IOError:
@@ -384,9 +387,6 @@ class YAS3FS(LoggingMixIn, Operations):
         ### self.http_listen_path_length = 30
 
         # Initialization
-        self.cache = FSCache()
-        self.publish_queue = Queue.Queue()
-
         global debug
         debug = options.debug
 
@@ -422,11 +422,6 @@ class YAS3FS(LoggingMixIn, Operations):
         logger.info("Cache memory size (in bytes): '%i'" % self.cache_mem_size)
         self.cache_disk_size = int(options.cache_disk_size) * (1024 * 1024) # To convert MB to bytes
         logger.info("Cache disk size (in bytes): '%i'" % self.cache_mem_size)
-        if options.cache_path == '':
-            self.cache_path = '/tmp/yas3fs/' + self.s3_bucket_name + '/' + self.s3_prefix
-        else:
-            self.cache_path = options.cache_path
-        logger.info("Cache path (on disk): '%s'" % self.cache_path)
         self.cache_on_disk = int(options.cache_on_disk) * (1024 * 1024) # To convert MB to bytes
         logger.info("Cache on disk if file size greater than (in bytes): '%i'" % self.cache_on_disk)
         self.cache_check_interval = int(options.cache_check_interval) # seconds
@@ -451,6 +446,15 @@ class YAS3FS(LoggingMixIn, Operations):
         logger.info("Multipart size: '%s'" % str(self.multipart_size))
         self.multipart_num = options.multipart_num
         logger.info("Multipart number (of threads): '%s'" % str(self.multipart_num))
+
+        # Internal Initialization
+        if options.cache_path == '':
+            cache_path = '/tmp/yas3fs/' + self.s3_bucket_name + '/' + self.s3_prefix
+        else:
+            cache_path = options.cache_path
+        logger.info("Cache path (on disk): '%s'" % cache_path)
+        self.cache = FSCache(cache_path)
+        self.publish_queue = Queue.Queue()
 
         # AWS Initialization
         try:
@@ -492,7 +496,7 @@ class YAS3FS(LoggingMixIn, Operations):
             if self.new_queue:
                 pattern = re.compile('[\W_]+') # Alphanumeric characters only, to be used for pattern.sub('', s)
                 self.sqs_queue_name = '-'.join( pattern.sub('', s) for s in
-                                                [ self.s3_bucket_name, self.s3_prefix, self.unique_id ] )
+                                                [ 'yas3fs', self.s3_bucket_name, self.s3_prefix, self.unique_id ] )
                 self.queue = None
             else:
                 self.queue =  self.sqs.lookup(self.sqs_queue_name)
@@ -563,14 +567,21 @@ class YAS3FS(LoggingMixIn, Operations):
 
         if self.http_listen_thread:
             self.httpd.shutdown() # To stop HTTP listen thread
+            logger.debug("waiting for HTTP listen thread to shutdown...")
             self.http_listen_thread.join() 
+            logger.debug("HTTP listen thread ended")
             self.sns.unsubscribe(self.http_subscription)
+            logger.debug("Unsubscribed SNS HTTP endpoint")
         if self.queue_listen_thread:
             self.sqs_queue_name = None # To stop queue listen thread
+            logger.debug("waiting for SQS listen thread to shutdown...")
             self.queue_listen_thread.join()
+            logger.debug("SQS listen thread ended")
             self.sns.unsubscribe(self.sqs_subscription)
+            logger.debug("Unsubscribed SNS SQS endpoint")
             if self.new_queue:
                 self.sqs.delete_queue(self.queue, force_deletion=True)
+                logger.debug("New queue deleted")
         if self.sns_topic_arn:
             self.sns_topic_arn = None # To stop publish thread
         if  self.cache_entries:
@@ -600,7 +611,7 @@ class YAS3FS(LoggingMixIn, Operations):
         logger.info("Listening on queue: '%s'" % self.queue.name)
         while self.sqs_queue_name:
             if self.queue_wait_time > 0:
-                # Using SQS long polling, needs boto > 2.6.0
+                # Using SQS long polling, needs boto >= 2.7.0
                 messages = self.queue.get_messages(10, wait_time_seconds=self.queue_wait_time)
             else:
                 messages = self.queue.get_messages(10)
@@ -612,7 +623,8 @@ class YAS3FS(LoggingMixIn, Operations):
                     self.sync_cache(changes)
                     m.delete()
             else:
-                time.sleep(self.queue_polling_interval)
+                if self.queue_polling_interval > 0:
+                    time.sleep(self.queue_polling_interval)
 
     def invalidate_cache(self, path, md5=None):
         logger.debug("invalidate_cache '%s' '%s'" % (path, md5))
@@ -774,9 +786,6 @@ class YAS3FS(LoggingMixIn, Operations):
             return path[1:] # Remove beginning "/"
         else:
             return self.s3_prefix + path
-
-    def cache_filename(self, path):
-        return self.cache_path + path # path begins with '/'
 
     def get_key(self, path):
         key = self.cache.get(path, 'key')
@@ -999,7 +1008,7 @@ class YAS3FS(LoggingMixIn, Operations):
                         data_range[2].set()
                 return True
             elif k.size > self.cache_on_disk and not self.cache.has(path, 'data'):
-                filename = self.cache_filename(path)
+                filename = self.cache.get_cache_filename(path)
                 if os.path.isfile(filename):
                     data = io.FileIO(filename, mode='rb+')
                     content = data.read()
@@ -1021,7 +1030,7 @@ class YAS3FS(LoggingMixIn, Operations):
             if k.size <= self.cache_on_disk:
                 data = io.BytesIO()
             else:
-                filename = self.cache_filename(path)
+                filename = self.cache.get_cache_filename(path)
                 dirname = os.path.dirname(filename)
                 try:
                     os.makedirs(dirname)
@@ -1370,7 +1379,7 @@ class YAS3FS(LoggingMixIn, Operations):
                 if isinstance(data, io.BytesIO):
                     full_size = len(data.getvalue()) # Something better here ???
                 elif isinstance(data, io.FileIO):
-                    full_size = os.path.getsize(self.cache_filename(path))
+                    full_size = os.path.getsize(self.cache.get_cache_filename(path))
                 if full_size > self.multipart_size:
                     k = self.multipart_upload(k.name, data, full_size, headers={'Content-Type': type}, metadata=k.metadata)
                     written = True
