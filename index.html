@@ -112,7 +112,7 @@ within an <a href="http://aws.amazon.com/autoscaling/">Auto Scaling</a> group.</
 <pre><code>sudo yum -y install fuse fuse-libs
 sudo yum -y install git # You need to install git on S3-backed AMI
 sudo easy_install pip
-sudo pip install fusepy
+sudo pip install -U boto fusepy
 git clone git://github.com/danilop/yas3fs.git
 cd yas3fs
 ./yas3fs.py -h # See the usage
@@ -124,7 +124,7 @@ mkdir LOCAL-PATH
 <p><strong>On EC2 with Ubuntu Server 12.04.1 LTS</strong></p>
 
 <pre><code>sudo aptitude install fuse-utils libfuse2 python-pip
-sudo pip install --upgrade boto fusepy
+sudo pip install -U boto fusepy
 git clone git://github.com/danilop/yas3fs.git
 cd yas3fs
 ./yas3fs.py -h # See the usage
@@ -296,7 +296,7 @@ you can send the following notification to the SNS topic (assuming there is no n
 <pre><code>[ "all", "reset" ]
 </code></pre>
 
-<p>To send the notification tou can use the SNS web console.</p>
+<p>To send the notification you can use the SNS web console or any command line tool that supports SNS, such as <a href="http://aws.amazon.com/cli/">AWS CLI</a>.</p>
 
 <p>In the same way, if you uploaded a new file (or updated an old one) directly on S3 
 you can invalidate the caches of all the nodes in the yas3fs cluster for that <code>path</code> sending this SNS notification:</p>
