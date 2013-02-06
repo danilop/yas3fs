@@ -185,8 +185,6 @@ To unmount the file system on a Mac you can use `umount`.
       --multipart-num=N    max number of parallel multipart uploads per file (0 to
                            disable multipart upload, default is 4)
       --id=ID              a unique ID identifying this node in a cluster
-                           (hostname, queue name or UUID Version 1 as per RFC 4122
-                           are used if not provided)
       --log=FILE           the filename to use for logs
       --mkdir              create mountpoint if not found (create intermediate
                            directories as required)
