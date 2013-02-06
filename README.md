@@ -75,7 +75,7 @@ If you want to do a quick test here's the installation procedure depending on th
     sudo yum -y install fuse fuse-libs
     sudo yum -y install git # You need to install git on S3-backed AMI
     sudo easy_install pip
-    sudo pip install fusepy
+    sudo pip install -U boto fusepy
     git clone git://github.com/danilop/yas3fs.git
     cd yas3fs
     ./yas3fs.py -h # See the usage
@@ -86,7 +86,7 @@ If you want to do a quick test here's the installation procedure depending on th
 **On EC2 with Ubuntu Server 12.04.1 LTS**
 
     sudo aptitude install fuse-utils libfuse2 python-pip
-    sudo pip install --upgrade boto fusepy
+    sudo pip install -U boto fusepy
     git clone git://github.com/danilop/yas3fs.git
     cd yas3fs
     ./yas3fs.py -h # See the usage
