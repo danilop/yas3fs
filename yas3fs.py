@@ -468,7 +468,13 @@ class YAS3FS(LoggingMixIn, Operations):
         except boto.exception.S3ResponseError:
             errorAndExit("S3 bucket not found")
 
-        self.unique_id = options.id or self.hostname or self.sqs_queue_name or str(uuid.uuid1())
+        pattern = re.compile('[\W_]+') # Alphanumeric characters only, to be used for pattern.sub('', s)
+
+        unique_id_list = []
+        if options.id:
+            unique_id_list.append(options.id)
+        unique_id_list.append(str(uuid.uuid1()))
+        self.unique_id = '-'.join(pattern.sub('', s) for s in unique_id_list)
         logger.info("Unique node ID: '%s'" % self.unique_id)
                 
         if self.sns_topic_arn:
@@ -494,9 +500,10 @@ class YAS3FS(LoggingMixIn, Operations):
             if not self.sqs:
                 errorAndExit("no SQS connection")
             if self.new_queue:
-                pattern = re.compile('[\W_]+') # Alphanumeric characters only, to be used for pattern.sub('', s)
-                self.sqs_queue_name = '-'.join( pattern.sub('', s) for s in
-                                                [ 'yas3fs', self.s3_bucket_name, self.s3_prefix, self.unique_id ] )
+                self.sqs_queue_name = '-'.join([ 'yas3fs',
+                                               pattern.sub('', self.s3_bucket_name),
+                                               pattern.sub('', self.s3_prefix),
+                                               self.unique_id ])
                 self.queue = None
             else:
                 self.queue =  self.sqs.lookup(self.sqs_queue_name)
@@ -1623,7 +1630,7 @@ In an EC2 instance a IAM role can be used to give access to S3/SNS/SQS resources
     parser.add_option("--multipart-num", dest="multipart_num",
                       help="max number of parallel multipart uploads per file (0 to disable multipart upload, default is %default)", metavar="N", default=4)
     parser.add_option("--id", dest="id",
-                      help="a unique ID identifying this node in a cluster (hostname, queue name or UUID Version 1 as per RFC 4122 are used if not provided)", metavar="ID")
+                      help="a unique ID identifying this node in a cluster", metavar="ID")
     parser.add_option("--log", dest="logfile",
                       help="the filename to use for logs", metavar="FILE", default="")
     parser.add_option("--mkdir", action="store_true", dest="mkdir", default=False,
