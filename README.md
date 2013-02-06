@@ -227,7 +227,7 @@ you can send the following notification to the SNS topic (assuming there is no n
 
     [ "all", "reset" ]
 
-To send the notification tou can use the SNS web console.
+To send the notification you can use the SNS web console or any command line tool that supports SNS, such as [AWS CLI](http://aws.amazon.com/cli/).
 
 In the same way, if you uploaded a new file (or updated an old one) directly on S3 
 you can invalidate the caches of all the nodes in the yas3fs cluster for that `path` sending this SNS notification:
