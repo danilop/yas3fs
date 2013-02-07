@@ -445,7 +445,9 @@ class YAS3FS(LoggingMixIn, Operations):
         self.multipart_size = int(options.multipart_size) * 1024
         logger.info("Multipart size: '%s'" % str(self.multipart_size))
         self.multipart_num = options.multipart_num
-        logger.info("Multipart number (of threads): '%s'" % str(self.multipart_num))
+        logger.info("Multipart maximum number of parallel threads: '%s'" % str(self.multipart_num))
+        self.multipart_retries = options.multipart_retries
+        logger.info("Multipart maximum number of retries per part: '%s'" % str(self.multipart_retries))
 
         # Internal Initialization
         if options.cache_path == '':
@@ -525,6 +527,8 @@ class YAS3FS(LoggingMixIn, Operations):
 
         if self.multipart_size < 5242880:
             errorAndExit("The minimum size for multipart upload supported by S3 is 5MB")
+        if self.multipart_retries < 1:
+            errorAndExit("The number of retries for multipart uploads cannot be less than 1")
 
         signal.signal(signal.SIGINT, self.handler)
 
@@ -553,9 +557,9 @@ class YAS3FS(LoggingMixIn, Operations):
         else:
             self.http_listen_thread = None
 
-        self.memory_thread = threading.Thread(target=self.check_memory_usage)
-        self.memory_thread.daemon = True
-        self.memory_thread.start()
+        self.check_cache_thread = threading.Thread(target=self.check_cache_size)
+        self.check_cache_thread.daemon = True
+        self.check_cache_thread.start()
 
     def handler(signum, frame):
         self.destroy('/')
@@ -591,18 +595,13 @@ class YAS3FS(LoggingMixIn, Operations):
                 logger.debug("New queue deleted")
         if self.sns_topic_arn:
             self.sns_topic_arn = None # To stop publish thread
+            logger.debug("waiting for SNS publish thread to shutdown...")
+            self.publish_thread.join()
         if  self.cache_entries:
             self.cache_entries = 0 # To stop memory thread
+            logger.debug("waiting for check cache thread to shutdown...")
+            self.check_cache_thread.join()
         
-        #if self.publish_thread:
-        #    self.publish_thread.join()
-        #if self.http_listen_thread:
-        #    self.http_listen_thread.join()
-        #if self.queue_listen_thread:
-        #    self.queue_listen_thread.join()
-        #if self.memory_thread:
-        #    self.memory_thread.join()
-
         self.flush_all_cache()
 
     def listen_for_changes_over_http(self):
@@ -722,7 +721,7 @@ class YAS3FS(LoggingMixIn, Operations):
     def publish_changes(self):
         while self.sns_topic_arn:
             try:
-                message = self.publish_queue.get(True, 10) # 10 seconds time-out
+                message = self.publish_queue.get(True, 1) # 1 second time-out
                 message.insert(0, self.unique_id)
                 full_message = json.dumps(message)
                 self.sns.publish(self.sns_topic_arn, full_message.encode('ascii'))
@@ -734,8 +733,8 @@ class YAS3FS(LoggingMixIn, Operations):
         logger.debug("publish '%s'" % (message))
         self.publish_queue.put(message)
 
-    def check_memory_usage(self):
-        logger.debug("check_memory_usage")
+    def check_cache_size(self):
+        logger.debug("check_cache_size")
         while self.cache_entries:
             num_entries, mem_size, disk_size = self.cache.get_memory_usage()
             logger.debug("num_entries, mem_size, disk_size: %i, %i, %i" % (num_entries, mem_size, disk_size))
@@ -1387,13 +1386,13 @@ class YAS3FS(LoggingMixIn, Operations):
                 old_size = k.size
             written = False
             if self.multipart_num > 0:
-
                 if isinstance(data, io.BytesIO):
                     full_size = len(data.getvalue()) # Something better here ???
                 elif isinstance(data, io.FileIO):
                     full_size = os.path.getsize(self.cache.get_cache_filename(path))
                 if full_size > self.multipart_size:
-                    k = self.multipart_upload(k.name, data, full_size, headers={'Content-Type': type}, metadata=k.metadata)
+                    k = self.multipart_upload(k.name, data, full_size,
+                                              headers={'Content-Type': type}, metadata=k.metadata)
                     written = True
             if not written:
                 k.set_contents_from_file(data, headers={'Content-Type': type})
@@ -1421,7 +1420,6 @@ class YAS3FS(LoggingMixIn, Operations):
         mpu = self.s3_bucket.initiate_multipart_upload(key_path, headers=headers, metadata=metadata)
         num_threads = min(part_num, self.multipart_num)
         for i in range(num_threads):
-#            t = threading.Thread(target=self.part_upload, args=(mpu.id, part_queue))
             t = threading.Thread(target=self.part_upload, args=(mpu, part_queue))
             t.demon = True
             t.start()
@@ -1437,19 +1435,24 @@ class YAS3FS(LoggingMixIn, Operations):
             new_key = None
         return new_key
 
-#    def part_upload(self, mpu_id, part_queue):
     def part_upload(self, mpu, part_queue):
         logger.debug("new thread!")
-#        for mpu in self.s3_bucket.get_all_multipart_uploads():
-#            if mpu.id == mpu_id:
-#        logger.debug("multi part id found '%s'" % mpu_id)
         try:
             while (True):
                 logger.debug("trying to get a part from the queue")
                 [ num, part ] = part_queue.get(False)
-                logger.debug("begin upload of part %i" % num)
-                mpu.upload_part_from_file(fp=part, part_num=num) # Manage retries???
-                logger.debug("end upload of part %i" % num)
+                retry = 0
+                for retry in range(self.multipart_retries):
+                    logger.debug("begin upload of part %i retry %i" % (num, retry))
+                    try:
+                        mpu.upload_part_from_file(fp=part, part_num=num) # Manage retries???
+                    except:
+                        logger.info("error during multipart upload part %i retry %i: %s"
+                                    % (num, retry, sys.exc_info()[0]))
+                        pass
+                    else:
+                        break
+                logger.debug("end upload of part %i retry %i" % (num, retry))
                 part_queue.task_done()
         except Queue.Empty:
             logger.debug("the queue is empty")
@@ -1625,10 +1628,12 @@ In an EC2 instance a IAM role can be used to give access to S3/SNS/SQS resources
                       help="don't write user metadata on S3 to persist file system attr/xattr")
     parser.add_option("--prefetch", action="store_true", dest="prefetch", default=False,
                       help="start downloading file content as soon as the file is discovered")
-    parser.add_option("--multipart-size", dest="multipart_size",
+    parser.add_option("--mp-size", dest="multipart_size",
                       help="size of parts to use for multipart upload in KB (default value is %default KB, the minimum allowed is 5120 KB)", metavar="N", default=10240)
-    parser.add_option("--multipart-num", dest="multipart_num",
+    parser.add_option("--mp-num", dest="multipart_num",
                       help="max number of parallel multipart uploads per file (0 to disable multipart upload, default is %default)", metavar="N", default=4)
+    parser.add_option("--mp-retries", dest="multipart_retries",
+                      help="max number of retries to upload a part (default is %default)", metavar="N", default=3)
     parser.add_option("--id", dest="id",
                       help="a unique ID identifying this node in a cluster", metavar="ID")
     parser.add_option("--log", dest="logfile",
