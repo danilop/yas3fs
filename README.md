@@ -262,6 +262,10 @@ To change the maximum number of parallel threads to use for multipart uploads to
 
     [ "all", "multipart", "num", 16 ]
 
+To change the maximum number of retries for multipart uploads to 10:
+
+    [ "all", "multipart", "retries", 10 ]
+
 You can even change dinamically the mounted S3 URL (i.e. the bucket and/or the path prefix):
 
     [ "all", "url", "s3://BUCKET/PATH" ]

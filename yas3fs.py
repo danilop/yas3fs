@@ -717,6 +717,8 @@ class YAS3FS(LoggingMixIn, Operations):
                     self.multipart_size = c[3] * 1024
                 elif c[2] == 'num' and c[3] >= 0:
                     self.multipart_num = c[3]
+                elif c[2] == 'retries' and c[3] >= 1:
+                    self.multipart_retries = c[3]
 
     def publish_changes(self):
         while self.sns_topic_arn:
