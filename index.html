@@ -113,10 +113,10 @@ within an <a href="http://aws.amazon.com/autoscaling/">Auto Scaling</a> group.</
 sudo yum -y install git # You need to install git on S3-backed AMI
 sudo easy_install pip
 sudo pip install -U boto fusepy
+sudo sed -i'' 's/^# *user_allow_other/user_allow_other/' /etc/fuse.conf # uncomment user_allow_other
 git clone git://github.com/danilop/yas3fs.git
 cd yas3fs
 ./yas3fs.py -h # See the usage
-sudo sed -i'' 's/^# user_allow_other/user_allow_other/' /etc/fuse.conf # uncomment user_allow_other
 mkdir LOCAL-PATH
 ./yas3fs.py LOCAL-PATH --url s3://BUCKET/PATH --topic TOPIC-ARN --new-queue --region eu-west-1
 </code></pre>
@@ -125,10 +125,10 @@ mkdir LOCAL-PATH
 
 <pre><code>sudo aptitude install fuse-utils libfuse2 python-pip
 sudo pip install -U boto fusepy
+sudo sed -i'' 's/^# *user_allow_other/user_allow_other/' /etc/fuse.conf # uncomment user_allow_other
 git clone git://github.com/danilop/yas3fs.git
 cd yas3fs
 ./yas3fs.py -h # See the usage
-sudo sed -i'' 's/^# user_allow_other/user_allow_other/' /etc/fuse.conf # uncomment user_allow_other
 sudo chmod a+r /etc/fuse.conf # make it readable by anybody, it is not the default on Ubuntu
 mkdir LOCAL-PATH
 ./yas3fs.py LOCAL-PATH --url s3://BUCKET/PATH --topic TOPIC-ARN --new-queue --region eu-west-1
@@ -220,14 +220,13 @@ Options:
                        attr/xattr
   --prefetch           start downloading file content as soon as the file is
                        discovered
-  --multipart-size=N   size of parts to use for multipart upload in KB
+  --mp-size=N          size of parts to use for multipart upload in KB
                        (default value is 10240 KB, the minimum allowed is 5120
                        KB)
-  --multipart-num=N    max number of parallel multipart uploads per file (0 to
+  --mp-num=N           max number of parallel multipart uploads per file (0 to
                        disable multipart upload, default is 4)
+  --mp-retries=N       max number of retries in uploading a part (default is 3)
   --id=ID              a unique ID identifying this node in a cluster
-                       (hostname, queue name or UUID Version 1 as per RFC 4122
-                       are used if not provided)
   --log=FILE           the filename to use for logs
   --mkdir              create mountpoint if not found (create intermediate
                        directories as required)
@@ -337,6 +336,11 @@ you can publish (the size is in MB as in the corresponding command line option):
 <p>To change the maximum number of parallel threads to use for multipart uploads to 16:</p>
 
 <pre><code>[ "all", "multipart", "num", 16 ]
+</code></pre>
+
+<p>To change the maximum number of retries for multipart uploads to 10:</p>
+
+<pre><code>[ "all", "multipart", "retries", 10 ]
 </code></pre>
 
 <p>You can even change dinamically the mounted S3 URL (i.e. the bucket and/or the path prefix):</p>
