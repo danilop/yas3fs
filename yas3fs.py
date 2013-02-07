@@ -1633,7 +1633,7 @@ In an EC2 instance a IAM role can be used to give access to S3/SNS/SQS resources
     parser.add_option("--mp-num", dest="multipart_num",
                       help="max number of parallel multipart uploads per file (0 to disable multipart upload, default is %default)", metavar="N", default=4)
     parser.add_option("--mp-retries", dest="multipart_retries",
-                      help="max number of retries to upload a part (default is %default)", metavar="N", default=3)
+                      help="max number of retries in uploading a part (default is %default)", metavar="N", default=3)
     parser.add_option("--id", dest="id",
                       help="a unique ID identifying this node in a cluster", metavar="ID")
     parser.add_option("--log", dest="logfile",

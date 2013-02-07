@@ -76,10 +76,10 @@ If you want to do a quick test here's the installation procedure depending on th
     sudo yum -y install git # You need to install git on S3-backed AMI
     sudo easy_install pip
     sudo pip install -U boto fusepy
+    sudo sed -i'' 's/^# *user_allow_other/user_allow_other/' /etc/fuse.conf # uncomment user_allow_other
     git clone git://github.com/danilop/yas3fs.git
     cd yas3fs
     ./yas3fs.py -h # See the usage
-    sudo sed -i'' 's/^# *user_allow_other/user_allow_other/' /etc/fuse.conf # uncomment user_allow_other
     mkdir LOCAL-PATH
     ./yas3fs.py LOCAL-PATH --url s3://BUCKET/PATH --topic TOPIC-ARN --new-queue --region eu-west-1
 
@@ -87,10 +87,10 @@ If you want to do a quick test here's the installation procedure depending on th
 
     sudo aptitude install fuse-utils libfuse2 python-pip
     sudo pip install -U boto fusepy
+    sudo sed -i'' 's/^# *user_allow_other/user_allow_other/' /etc/fuse.conf # uncomment user_allow_other
     git clone git://github.com/danilop/yas3fs.git
     cd yas3fs
     ./yas3fs.py -h # See the usage
-    sudo sed -i'' 's/^# *user_allow_other/user_allow_other/' /etc/fuse.conf # uncomment user_allow_other
     sudo chmod a+r /etc/fuse.conf # make it readable by anybody, it is not the default on Ubuntu
     mkdir LOCAL-PATH
     ./yas3fs.py LOCAL-PATH --url s3://BUCKET/PATH --topic TOPIC-ARN --new-queue --region eu-west-1
@@ -125,7 +125,7 @@ To unmount the file system on a Mac you can use `umount`.
 ### Full Usage
 
     yas3fs.py -h
-    
+
     Usage: yas3fs.py <mountpoint> [options]
 
     YAS3FS (Yet Another S3-backed File System) is a Filesystem in Userspace (FUSE) interface to Amazon S3.
@@ -146,48 +146,49 @@ To unmount the file system on a Mac you can use `umount`.
     Options:
       -h, --help           show this help message and exit
       --url=URL            the S3 path to mount in s3://BUCKET/PATH format, PATH
-                           can be empty, can contain subfolders and is created on
-                           first mount if not found in the BUCKET
+			   can be empty, can contain subfolders and is created on
+			   first mount if not found in the BUCKET
       --region=REGION      AWS region to use for SNS/SQS (default is us-east-1)
       --topic=ARN          SNS topic ARN
       --hostname=HOST      hostname to listen to SNS HTTP notifications
       --ec2-hostname       get public hostname from EC2 instance metadata
-                           (overrides '--hostname')
+			   (overrides '--hostname')
       --port=N             TCP port to listen to SNS HTTP notifications
       --queue=NAME         SQS queue name, a new queue is created if it doesn't
-                           exist
+			   exist
       --new-queue          create a new SQS queue that is deleted on unmount
-                           (overrides '--queue', queue name is BUCKET-PATH-ID with
-                           alphanumeric characters only)
+			   (overrides '--queue', queue name is BUCKET-PATH-ID with
+			   alphanumeric characters only)
       --queue-wait=N       SQS queue wait time in seconds (using long polling, 0
-                           to disable, default is 20 seconds)
+			   to disable, default is 20 seconds)
       --queue-polling=N    SQS queue polling interval in seconds (default is 0
-                           seconds)
+			   seconds)
       --cache-entries=N    max number of entries to cache (default is 1000000
-                           entries)
+			   entries)
       --cache-mem-size=N   max size of the memory cache in MB (default is 1024 MB)
       --cache-disk-size=N  max size of the disk cache in MB (default is 10240 MB)
       --cache-path=PATH    local path to use for disk cache (default is
-                           '/tmp/yas3fs/BUCKET/PATH')
+			   '/tmp/yas3fs/BUCKET/PATH')
       --cache-on-disk=N    use disk (instead of memory) cache for files greater
-                           than the given size in MB (default is 100 MB)
+			   than the given size in MB (default is 100 MB)
       --cache-check=N      interval between cache memory checks in seconds
-                           (default is 10 seconds)
+			   (default is 10 seconds)
       --buffer-size=N      download buffer size in KB (0 to disable buffering,
-                           default is 10240 KB)
+			   default is 10240 KB)
       --no-metadata        don't write user metadata on S3 to persist file system
-                           attr/xattr
+			   attr/xattr
       --prefetch           start downloading file content as soon as the file is
-                           discovered
-      --multipart-size=N   size of parts to use for multipart upload in KB
-                           (default value is 10240 KB, the minimum allowed is 5120
-                           KB)
-      --multipart-num=N    max number of parallel multipart uploads per file (0 to
-                           disable multipart upload, default is 4)
+			   discovered
+      --mp-size=N          size of parts to use for multipart upload in KB
+			   (default value is 10240 KB, the minimum allowed is 5120
+			   KB)
+      --mp-num=N           max number of parallel multipart uploads per file (0 to
+			   disable multipart upload, default is 4)
+      --mp-retries=N       max number of retries in uploading a part (default is 3)
       --id=ID              a unique ID identifying this node in a cluster
       --log=FILE           the filename to use for logs
       --mkdir              create mountpoint if not found (create intermediate
-                           directories as required)
+			   directories as required)
       -f, --foreground     run in foreground
       -d, --debug          print debug information (implies '-f')
 
