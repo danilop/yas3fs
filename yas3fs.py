@@ -579,31 +579,34 @@ class YAS3FS(LoggingMixIn, Operations):
         if self.http_listen_thread:
             self.httpd.shutdown() # To stop HTTP listen thread
             logger.debug("waiting for HTTP listen thread to shutdown...")
-            self.http_listen_thread.join() 
+            self.http_listen_thread.join(5.0) # 5 seconds should be enough   
             logger.debug("HTTP listen thread ended")
             self.sns.unsubscribe(self.http_subscription)
             logger.debug("Unsubscribed SNS HTTP endpoint")
         if self.queue_listen_thread:
             self.sqs_queue_name = None # To stop queue listen thread
             logger.debug("waiting for SQS listen thread to shutdown...")
-            self.queue_listen_thread.join()
+            self.queue_listen_thread.join(self.queue_wait_time + 1.0)
             logger.debug("SQS listen thread ended")
             self.sns.unsubscribe(self.sqs_subscription)
             logger.debug("Unsubscribed SNS SQS endpoint")
             if self.new_queue:
                 self.sqs.delete_queue(self.queue, force_deletion=True)
                 logger.debug("New queue deleted")
+
+        self.flush_all_cache()
+
         if self.sns_topic_arn:
+            while not self.publish_queue.empty():
+                time.sleep(1.0)
             self.sns_topic_arn = None # To stop publish thread
             logger.debug("waiting for SNS publish thread to shutdown...")
-            self.publish_thread.join()
+            self.publish_thread.join(2.0) # 2 seconds should be enough
         if  self.cache_entries:
             self.cache_entries = 0 # To stop memory thread
             logger.debug("waiting for check cache thread to shutdown...")
-            self.check_cache_thread.join()
+            self.check_cache_thread.join(self.cache_check_interval + 1.0)
         
-        self.flush_all_cache()
-
     def listen_for_changes_over_http(self):
         logger.info("Listening on: '%s'" % self.http_listen_rl)
         server_class = SNS_HTTPServer
