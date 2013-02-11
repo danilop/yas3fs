@@ -23,7 +23,7 @@ a distributed cache synchronized by [Amazon SNS](http://aws.amazon.com/sns/) not
 
 ### License
 
-Copyright (c) 2012 Danilo Poccia, http://blog.danilopoccia.net
+Copyright (c) 2012-2013 Danilo Poccia, http://blog.danilopoccia.net
 
 This code is licensed under the The MIT License (MIT). Please see the LICENSE file that accompanies this project for the terms of use.
 
