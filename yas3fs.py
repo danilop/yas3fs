@@ -124,26 +124,134 @@ class LinkedList():
             if self.delete(value):
                 self.append(value)
 
+class FSData():
+    stores = [ 'mem', 'disk' ]
+    unknown_store = "Unknown store"
+    def __init__(self, cache, store=None, path=None):
+        self.cache = cache
+        self.store = store
+        self.path = path
+        self.lock = threading.RLock() # Lock or RLock ???
+        self.props = {}
+        self.size = 0
+        self.etag = None # Something better ???
+        if store == 'mem':
+            self.content = io.BytesIO()
+        elif store == 'disk':
+            filename = self.cache.get_cache_filename(self.path)
+            if os.path.isfile(filename):
+                # There's a file already there
+                self.content = io.FileIO(filename, mode='rb+')
+                self.update_size(os.stat(filename).st_size)
+                self.set('new', None) # Not sure it is the latest version
+                # Now search for an etag file
+                filename = self.cache.get_cache_etags_filename(self.path)
+                if os.path.isfile(filename):
+                   with open(filename, 'r') as etag_file:
+                        self.etag = etag_file.read()
+            else:
+                dirname = os.path.dirname(filename)
+                try:
+                    os.makedirs(dirname)
+                except OSError as exc: # Python >2.5
+                    if exc.errno == errno.EEXIST and os.path.isdir(dirname):
+                        pass
+                    else:
+                        raise
+                self.content = io.FileIO(filename, mode='wb+')
+        else:
+            raise FSData.unknown_store
+    def update_etag(self, new_etag):
+        if new_etag != self.etag:
+            self.etag = new_etag
+            if self.store == 'disk':
+                filename = self.cache.get_cache_etags_filename(self.path)
+                dirname = os.path.dirname(filename)
+                try:
+                    os.makedirs(dirname)
+                except OSError as exc: # Python >2.5
+                    if exc.errno == errno.EEXIST and os.path.isdir(dirname):
+                        pass
+                    else:
+                        raise
+                with open(filename, 'w') as etag_file:
+                    etag_file.write(new_etag)
+    def update_size(self, delta):
+        with self.lock:
+            self.size += delta;
+        with self.cache.data_size_lock:
+            self.cache.size[self.store] += delta
+    def get_content_as_string(self):
+        if self.store == 'mem':
+            return self.content.getvalue()
+        elif self.store == 'disk':
+            with self.lock:
+                self.content.seek(0) # Go to the beginning
+                return self.content.read()
+        else:
+            raise FSData.unknown_store
+    def has(self, prop):
+        if prop in self.props:
+            return True
+        else:
+            return False
+    def get(self, prop):
+        with self.lock:
+            if prop in self.props:
+                return self.props[prop]
+            else:
+                return None
+    def set(self, prop, value):
+        with self.lock:
+            self.props[prop] = value
+    def delete(self, prop=None):
+        with self.lock:
+            if prop == None:
+                if self.store == 'disk':
+                    try:
+                        os.unlink(self.filename)
+                    except IOError:
+                        pass
+                self.update_size(-self.size)
+                range = self.get('range')
+                if range:
+                    range[2].set() # To make downloading threads go on... and then exit
+            elif prop in self.props:
+                del self.props[prop]
+    def inc(self, prop):
+        with self.lock:
+            if prop in self.props:
+                self.set(prop, self.props[prop] + 1)
+            else:
+                self.set(prop, 1)
+    def dec(self, prop):
+        with self.lock:
+            if prop in self.props:
+                if self.props[prop] > 1:
+                    self.set(prop, self.props[prop] - 1)
+                else:
+                    self.delete(prop)
+
 class FSCache():
     """ File System Cache """
     def __init__(self, cache_path=None):
         self.cache_path = cache_path
-        self.stores = [ 'data-mem', 'data-disk' ]
         self.lock = threading.RLock()
         self.data_size_lock = threading.Lock()
-        self.data_lock = threading.Lock() # To use seek and read without interruptions
         self.reset_all()
     def reset_all(self):
          with self.lock:
-            self.entries = {} # This will leave disk cache (if any) on place, is this ok???
-            self.lru = LinkedList()
-            self.size = {}
-            for type in self.stores:
-                self.size[type] = 0
+             self.entries = {} # This will leave disk cache (if any) on place, is this ok???
+             self.lru = LinkedList()
+             self.size = {}
+             for store in FSData.stores:
+                self.size[store] = 0
     def get_memory_usage(self):
-        return len(self.entries), self.size['data-mem'], self.size['data-disk']
+        return [ len(self.entries) ] + [ self.size[store] for store in FSData.stores ]
     def get_cache_filename(self, path):
-        return self.cache_path + path # path begins with '/'                                                                                      
+        return self.cache_path + '/files' + path # path begins with '/'
+    def get_cache_etags_filename(self, path):
+        return self.cache_path + '/etags' + path # path begins with '/'
     def add(self, path):
         with self.lock:
             if not self.has(path):
@@ -153,23 +261,15 @@ class FSCache():
         with self.lock:
             if path in self.entries:
         	if prop == None:
-                    props = sorted(self.entries[path].keys()) # Sorting to have 'data-*' after 'data'
-        	    for prop in props:
-                        self.delete(path, prop)
+        	    for p in self.entries[path].keys():
+                        if p == 'data':
+                            self.entries[path][p].delete() # To clean stuff, e.g. remove cache files
+                        self.delete(path, p)
         	    del self.entries[path]
+                    
         	    self.lru.delete(path)
         	else:
         	    if prop in self.entries[path]:
-                        if prop == 'data':
-                            for type in self.stores:
-                                if type in self.entries[path]:
-                                    self.update_size(path, -self.entries[path][type])
-                                    if type == 'data-disk':
-                                        filename = self.get_cache_filename(path)
-                                        try:
-                                            os.unlink(filename) # File *should* be there
-                                        except IOError:
-                                            pass
         		del self.entries[path][prop]
     def rename(self, path, new_path):
         with self.lock:
@@ -204,28 +304,8 @@ class FSCache():
         with self.lock:
             self.delete(path)
             self.add(path)
-#         self.lru.move_to_the_tail(path) # Move to the tail of the LRU cache
-#         with self.lock:
-#             if path in self.entries:
-#                 props = self.entries[path].keys()
-#         	for prop in props:
-#                     self.delete(path, prop)
-    def inc(self, path, prop):
-        with self.lock:
-            if path in self.entries:
-        	if prop in self.entries[path]:
-        	    self.set(path, prop, self.entries[path][prop] + 1)
-        	else:
-        	    self.set(path, prop, 1)
-    def dec(self, path, prop):
-        with self.lock:
-            if path in self.entries:
-        	if prop in self.entries[path]:
-        	    if self.entries[path][prop] > 1:
-        		self.set(path, prop, self.entries[path][prop] - 1)
-        	    else:
-        		self.delete(path, prop)
     def has(self, path, prop=None):
+        self.lru.move_to_the_tail(path) # Move to the tail of the LRU cache
         if prop == None:
             if path in self.entries:
                 return True
@@ -237,38 +317,10 @@ class FSCache():
             except KeyError:
                 pass
             return False
-    def is_empty(self, path, prop=None): # A wrapper to improve readability
-        return not self.get(path, prop)
-    def get_type(self, path):
-        data = self.get(path, 'data')
-        if isinstance(data, io.BytesIO):
-            return 'data-mem'
-        elif isinstance(data, io.FileIO):
-            return 'data-disk'
-        else:
-            raise "unknown store type"
-    def update_size(self, path, delta): # Type is 'data-mem' or 'data-disk'
-        if delta == 0: # Nothing to do
-            return
-        type = self.get_type(path)
-        with self.data_size_lock:
-            if 'data-size' in self.entries[path]:
-                self.entries[path][type] += delta
-            else:
-                self.entries[path][type] = delta
-            if self.entries[path][type] == 0:
-                del self.entries[path][type]
-            self.size[type] += delta
-    def get_data(self, path):
-        data = self.get(path, 'data')
-        if isinstance(data, io.BytesIO):
-            return data.getvalue()
-        elif isinstance(data, io.FileIO):
-            with self.data_lock:
-                data.seek(0) # Go to the beginning
-                return data.read()
-        else:
-            raise "data object unknown"
+    def is_empty(self, path): # A wrapper to improve readability
+        return self.has(path) and not self.get(path)
+    def is_not_empty(self, path): # A wrapper to improve readability
+        return self.has(path) and self.get(path)
  
 class SNS_HTTPServer(BaseHTTPServer.HTTPServer):
     """ HTTP Server to receive SNS notifications via HTTP """
@@ -348,11 +400,10 @@ class SNS_HTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         logger.debug('http head')
         self.send_response(404)
 
-class PartOfBytesIO():
-    lock = threading.Lock()
-    """ To read just a part of an existing BytesIO, inspired by FileChunkIO """
-    def __init__(self, base, start, length):
-        self.base = base
+class PartOfFSData():
+    """ To read just a part of an existing FSData, inspired by FileChunkIO """
+    def __init__(self, data, start, length):
+        self.data = data
         self.start = start
         self.length = length
         self.pos = 0
@@ -370,9 +421,9 @@ class PartOfBytesIO():
         logger.debug("read '%i' at '%i' starting from '%i' for '%i'" % (n, self.pos, self.start, self.length))
         if n >= 0:
             n = min([n, self.length - self.pos])
-            with PartOfBytesIO.lock:
-                self.base.seek(self.start + self.pos)
-                s = self.base.read(n)
+            with self.data.lock:
+                self.data.content.seek(self.start + self.pos)
+                s = self.data.content.read(n)
             self.pos += len(s)
             return s
         else:
@@ -568,7 +619,8 @@ class YAS3FS(LoggingMixIn, Operations):
         logger.debug("flush_all_cache")
         with self.cache.lock:
             for path in self.cache.entries:
-                if self.cache.has(path, 'change'):
+                data = self.cache.get(path, 'data')
+                if data and data.has('change'):
                     self.flush(path)
  
     def destroy(self, path):
@@ -642,14 +694,10 @@ class YAS3FS(LoggingMixIn, Operations):
             self.cache.delete(path, 'attr')
             self.cache.delete(path, 'xattr')
             if self.cache.has(path, 'data'):
-                if self.cache.has(path, 'data-range'):
-                    self.cache.delete(path, 'data-range')
+                if self.cache.get(path, 'data').has('range'):
                     self.cache.delete(path, 'data')
-                    self.cache.delete(path, 'data-mem') # Do I need this ???
-                    self.cache.delete(path, 'data-disk') # Do I need this ??? 
-                    self.cache.delete(path, 'data-new') # Do I need this ???
                 else:
-                    self.cache.set(path, 'data-new', md5)
+                    self.cache.get(path, 'data').set('new', md5)
             if self.cache.is_empty(path):
                 self.cache.delete(path)
                 self.reset_parent_readdir(path)
@@ -748,7 +796,8 @@ class YAS3FS(LoggingMixIn, Operations):
                 with self.cache.lock:
                     path = self.cache.lru.popleft()
                     logger.debug("purge: %s ?" % path)
-                    if self.cache.get(path, 'open') or self.cache.has(path, 'change'):
+                    data = self.cache.has(path, 'data')
+                    if data and (data.has('open') or data.has('change')):
                         self.cache.lru.append(path)
                     else:
                         logger.debug("purge: yes")
@@ -757,7 +806,8 @@ class YAS3FS(LoggingMixIn, Operations):
             if mem_size > self.cache_mem_size:
                 with self.cache.lock:
                     path = self.cache.lru.popleft()
-                    if not self.cache.has(path, 'data-mem') or self.cache.get(path, 'open') or self.cache.has(path, 'change'):
+                    data = self.cache.get(path, 'data')
+                    if data and (data.store != 'mem' or data.has('open') or data.has('change')):
                         self.cache.lru.append(path)
                     else:
                         self.cache.delete(path)
@@ -765,7 +815,8 @@ class YAS3FS(LoggingMixIn, Operations):
             if disk_size > self.cache_disk_size:
                 with self.cache.lock:
                     path = self.cache.lru.popleft()
-                    if not self.cache.has(path, 'data-disk') or self.cache.get(path, 'open') or self.cache.has(path, 'change'):
+                    data = self.cache.get(path, 'data')
+                    if data and (data.store != 'disk' or data.has('open') or data.has('change')):
                         self.cache.lru.append(path)
                     else:
                         self.cache.delete(path)
@@ -872,7 +923,8 @@ class YAS3FS(LoggingMixIn, Operations):
     def set_metadata(self, path, metadata_name, metadata_values, key=None):
         logger.debug("set_metadata '%s' '%s' '%s' '%s'" % (path, metadata_name, metadata_values, key))
 	self.cache.set(path, metadata_name, metadata_values)
-        if self.write_metadata and (key or not self.cache.has(path, 'change')): # No change in progress, I should write now
+        data = self.cache.get(path, 'data')
+        if self.write_metadata and (key or (data and not data.has('change'))): # No change in progress, I should write now
 	    if not key:
                 key = self.get_key(path)
 	    if key:
@@ -882,7 +934,8 @@ class YAS3FS(LoggingMixIn, Operations):
 		    key.metadata[metadata_name] = s
 		elif metadata_name in key.metadata:
 		    del key.metadata[metadata_name]
-                if not self.cache.has(path, 'change'):
+                if data and not data.has('change'):
+                    logger.debug("writing metadata '%s' '%s' '%s' '%s'" % (path, metadata_name, metadata_values, key))
                     md = key.metadata
                     md['Content-Type'] = key.content_type # Otherwise we loose the Content-Type with Copy
                     key.copy(key.bucket.name, key.name, md, preserve_acl=False) # Do I need to preserve ACL?
@@ -890,7 +943,7 @@ class YAS3FS(LoggingMixIn, Operations):
 
     def getattr(self, path, fh=None):
         logger.debug("getattr -> '%s' '%s'" % (path, fh))
-        if self.cache.has(path) and self.cache.is_empty(path):
+        if self.cache.is_empty(path):
             logger.debug("getattr <- '%s' '%s' ENOENT" % (path, fh))
             raise FuseOSError(errno.ENOENT)
 	attr = self.get_metadata(path, 'attr')
@@ -919,7 +972,7 @@ class YAS3FS(LoggingMixIn, Operations):
     def readdir(self, path, fh=None):
         logger.debug("readdir '%s' '%s'" % (path, fh))
 
-	if self.cache.has(path) and self.cache.is_empty(path):
+	if self.cache.is_empty(path):
             logger.debug("readdir '%s' '%s' ENOENT" % (path, fh))
 	    raise FuseOSError(errno.ENOENT)
 
@@ -945,11 +998,11 @@ class YAS3FS(LoggingMixIn, Operations):
 
     def mkdir(self, path, mode):
         logger.debug("mkdir '%s' '%s'" % (path, mode))
-	if self.cache.has(path) and not self.cache.is_empty(path):
-	    return FuseOSError(errno.EEXIST)
+	if self.cache.is_not_empty(path):
+	    raise FuseOSError(errno.EEXIST)
 	k = self.get_key(path)
 	if k:
-	    return FuseOSError(errno.EEXIST)
+	    raise FuseOSError(errno.EEXIST)
 	now = str(time.time())
 	uid, gid, pid = fuse_get_context()
 	attr = {}
@@ -962,14 +1015,16 @@ class YAS3FS(LoggingMixIn, Operations):
 	attr['st_mode'] = str(int(stat.S_IFDIR | mode))
 	self.cache.delete(path)
 	self.cache.add(path)
-	self.cache.set(path, 'change', True)
+        data = FSData(self.cache, 'mem')
+        self.cache.set(path, 'data', data)
+        data.set('change', True)
 	k = Key(self.s3_bucket)
 	self.set_metadata(path, 'attr', attr, k)
 	self.set_metadata(path, 'xattr', {}, k)
 	k.key = self.join_prefix(path + '/')
 	k.set_contents_from_string('', headers={'Content-Type': 'application/x-directory'})
         self.cache.set(path, 'key', k)
-	self.cache.delete(path, 'change')
+	data.delete('change')
 	self.cache.set(path, 'readdir', ['.', '..']) # the directory is empty
 	if path != '':
             self.add_to_parent_readdir(path)
@@ -978,100 +1033,75 @@ class YAS3FS(LoggingMixIn, Operations):
  
     def symlink(self, path, link):
         logger.debug("symlink '%s' '%s'" % (path, link))
-	if self.cache.has(path) and not self.cache.is_empty(path):
-	    return FuseOSError(errno.EEXIST)
+	if self.cache.is_not_empty(path):
+	    raise FuseOSError(errno.EEXIST)
 	k = self.get_key(path)
 	if k:
-	    return FuseOSError(errno.EEXIST)
+	    raise FuseOSError(errno.EEXIST)
 	now = str(time.time())
 	uid, gid, pid = fuse_get_context()
 	attr = {}
 	attr['st_uid'] = str(int(uid))
 	attr['st_gid'] = str(int(gid))
-	attr['st_atime'] = now
-	attr['st_mtime'] = now
-	attr['st_ctime'] = now
-	attr['st_size'] = len(link)
+	attr['st_ctime'] = now # atime, mtime and size are updated in the following 'write'
 	attr['st_mode'] = str(stat.S_IFLNK | 0755)
 	self.cache.delete(path)
 	self.cache.add(path)
-	self.cache.set(path, 'change', True)
+        data = FSData(self.cache, 'mem')
+        self.cache.set(path, 'data', data)
+        self.write(path, link, 0)
 	k = Key(self.s3_bucket)
 	self.set_metadata(path, 'attr', attr, k)
 	self.set_metadata(path, 'xattr', {}, k)
 	k.key = self.join_prefix(path)
 	k.set_contents_from_string(link, headers={'Content-Type': 'application/x-symlink'})
         self.cache.set(path, 'key', k)
-	self.cache.delete(path, 'change')
+	data.delete('change')
 	self.add_to_parent_readdir(path)
 	self.publish(['symlink', path])
 	return 0
 
     def check_data(self, path): 
         logger.debug("check_data '%s'" % (path))
-	if not self.cache.has(path, 'data') or self.cache.has(path, 'data-new'):
-	    k = self.get_key(path)
+        data = self.cache.get(path, 'data')
+        if not data or data.has('new'):
+            k = self.get_key(path)
             if not k:
 		return False
-            if k.size == 0:
-                data = io.BytesIO()
+            if not data:
+                if k.size <= self.cache_on_disk:
+                    data = FSData(self.cache, 'mem')
+                else:
+                    data = FSData(self.cache, 'disk', path)
                 self.cache.set(path, 'data', data)
-                self.cache.delete(path, 'data-new')
-                with self.cache.lock:
-                    if self.cache.has(path, 'data-range'):
-                        data_range = self.cache.get(path, 'data-range')
-                        self.cache.delete(path, 'data-range')
-                        data_range[2].set()
+            new_etag = data.get('new')
+            etag = k.etag[1:-1]
+            if not new_etag or new_etag == etag:
+                data.delete('new')
+            else: # I'm not sure I got the latest version
+                self.cache.delete(path, 'key')
+                data.set('new', None) # Next time don't check the MD5
+            print "data.etag = '%s' - k.etag = '%s' " % (data.etag, etag)
+            if data.etag == etag:
                 return True
-            elif k.size > self.cache_on_disk and not self.cache.has(path, 'data'):
-                filename = self.cache.get_cache_filename(path)
-                if os.path.isfile(filename):
-                    data = io.FileIO(filename, mode='rb+')
-                    content = data.read()
-                    self.cache.set(path, 'data', data)
-                    self.cache.set(path, 'data-new', None)
-                    self.cache.update_size(path, os.stat(filename).st_size)
-	    if self.cache.has(path, 'data'):
-                new_md5 = self.cache.get(path, 'data-new')
-                md5 = hashlib.md5(self.cache.get_data(path)).hexdigest()
-                etag = k.etag[1:-1]
-                if not new_md5 or new_md5 == etag:
-                    self.cache.delete(path, 'data-new')
-                else: # I'm not sure I got the latest version
-                    self.cache.delete(path, 'key')
-                    self.cache.set(path, 'data-new', None) # Next time don't check the MD5
-		if md5 == etag:
-		    return True
-            self.cache.delete(path, 'attr')
-            if k.size <= self.cache_on_disk:
-                data = io.BytesIO()
-            else:
-                filename = self.cache.get_cache_filename(path)
-                dirname = os.path.dirname(filename)
-                try:
-                    os.makedirs(dirname)
-                except OSError as exc: # Python >2.5
-                    if exc.errno == errno.EEXIST and os.path.isdir(dirname):
-                        pass
-                    else:
-                        raise
-                data = io.FileIO(filename, mode='wb+')
+            print "download!"
+            data.update_size(-data.size) # Can be zero...
             if self.buffer_size > 0:
-                with self.cache.lock:
-                    if self.cache.has(path, 'data-range'):
+                with data.lock:
+                    if data.has('range'):
                         return True
                     interval = Interval()
                     next_interval = Interval()
                     next_interval.add([0, self.buffer_size])
-                    self.cache.set(path, 'data-range', (interval, next_interval, threading.Event()))
-                self.cache.set(path, 'data', data)
+                    data.set('range', (interval, next_interval, threading.Event()))
                 t = threading.Thread(target=self.download_data, args=(path, 0))
                 t.daemon = True
                 t.start()
+                data.update_etag(etag) # Ok here ???
             else:
-                self.cache.set(path, 'data', data)
                 k.get_contents_to_file(data)
-                self.cache.update_size(path, k.size)
+                data.update_size(k.size)
+                data.update_etag(k.etag[1:-1])
 	return True
 
     def download_data(self, path, starting_from):
@@ -1089,8 +1119,8 @@ class YAS3FS(LoggingMixIn, Operations):
             pos = range[0]
             while True:
                 with self.cache.lock:
-                    if self.cache.has(path, 'data-range'):
-                        (interval, next_interval, event) = self.cache.get(path, 'data-range')
+                    if data.has('range'):
+                        (interval, next_interval, event) = data.get('range')
                     else:
                         return
                     new_interval = [pos, pos + self.buffer_size - 1]
@@ -1101,13 +1131,13 @@ class YAS3FS(LoggingMixIn, Operations):
                     key.close()
                     break
                 with self.cache.lock:
-                    if self.cache.has(path, 'data-range'):
-                        (interval, next_interval, event) = self.cache.get(path, 'data-range')
+                    if data.has('range'):
+                        (interval, next_interval, event) = data.get('range')
                     else:
                         return
-                    with self.cache.data_lock:
-                        data.seek(pos)
-                        data.write(bytes)
+                    with data.lock:
+                        data.content.seek(pos)
+                        data.content.write(bytes)
                     length = len(bytes)
                     new_interval = [pos, pos + length - 1]
                     pos += length
@@ -1116,8 +1146,8 @@ class YAS3FS(LoggingMixIn, Operations):
                         logger.debug("download_data overlap '%s' for '%s' [thread '%s']" %
                                      (overlap, new_interval, threading.current_thread().name))
                     interval.add(new_interval)
-                    self.cache.update_size(path, length) # Should I use max from interval ???
-                    self.cache.set(path, 'data-range', (interval, next_interval, threading.Event()))
+                    data.update_size(length) # Should I use max from interval ???
+                    data.set('range', (interval, next_interval, threading.Event()))
                     event.set()
                     if overlap or pos >= key.size: # Check also if pos >= key.size ???
                         key.close()
@@ -1128,10 +1158,10 @@ class YAS3FS(LoggingMixIn, Operations):
         logger.debug("download_data end '%s' %i-%i [thread '%s']" % (path, starting_from, pos, threading.current_thread().name))
 
         with self.cache.lock:
-            if self.cache.has(path, 'data-range'):
-                (interval, next_interval, event) = self.cache.get(path, 'data-range')
+            if data.has('range'):
+                (interval, next_interval, event) = data.get('range')
                 if interval.contains([0, key.size - 1]): # -1 ???
-                    self.cache.delete(path, 'data-range')
+                    data.delete('range')
                     logger.debug("download_data all ended '%s' [thread '%s']" % (path, threading.current_thread().name))
                     event.set()
 
@@ -1140,7 +1170,7 @@ class YAS3FS(LoggingMixIn, Operations):
 
     def readlink(self, path):
         logger.debug("readlink '%s'" % (path))
-	if self.cache.has(path) and self.cache.is_empty(path):
+	if self.cache.is_empty(path):
             logger.debug("readlink '%s' ENONENT" % (path))
 	    raise FuseOSError(errno.ENOENT)
 	self.cache.add(path)
@@ -1149,17 +1179,20 @@ class YAS3FS(LoggingMixIn, Operations):
                 logger.debug("readlink '%s' ENONENT" % (path))
 		raise FuseOSError(errno.ENOENT)
             while True:
-                data_range = self.cache.get(path, 'data-range')
+                data = self.cache.get(path, 'data')
+                if data == None:
+                    raise FuseOSError(errno.ENOENT) # ??? That should not happen
+                data_range = data.get('range')
                 if data_range == None:
                     break
                 data_range[2].wait()
-	    return self.cache.get_data(path)
+	    return data.get_content_as_string()
         logger.debug("readlink '%s' EINVAL" % (path))
 	raise FuseOSError(errno.EINVAL)
  
     def rmdir(self, path):
         logger.debug("rmdir '%s'" % (path))
-	if self.cache.has(path) and self.cache.is_empty(path):
+	if self.cache.is_empty(path):
             logger.debug("rmdir '%s' ENOENT" % (path))
 	    raise FuseOSError(errno.ENOENT)
 	k = self.get_key(path) # Should I use cache here ???
@@ -1180,7 +1213,7 @@ class YAS3FS(LoggingMixIn, Operations):
 
     def truncate(self, path, size):
         logger.debug("truncate '%s' '%i'" % (path, size))
-	if self.cache.has(path) and self.cache.is_empty(path):
+	if self.cache.is_empty(path):
             logger.debug("truncate '%s' '%i' ENOENT" % (path, size))
 	    raise FuseOSError(errno.ENOENT)
 	self.cache.add(path)
@@ -1188,26 +1221,34 @@ class YAS3FS(LoggingMixIn, Operations):
             logger.debug("truncate '%s' '%i' ENOENT" % (path, size))
 	    raise FuseOSError(errno.ENOENT)
         while True:
-            data_range = self.cache.get(path, 'data-range')
+            data = self.cache.get(path, 'data')
+            if data == None:
+                raise FuseOSError(errno.ENOENT) # ??? That should not happen
+            data_range = data.get('range')
             if data_range == None:
                 break
             if data_range[0].contains([0, size]):
-                self.cache.delete(path, 'data-range')
+                data.delete('range')
+                # Release event (set) ???
                 break
             data_range[2].wait()
-        self.cache.get(path, 'data').truncate(size)
+        data.content.truncate(size)
+        now = str(time.time())
 	attr = self.get_metadata(path, 'attr')
         old_size = int(attr['st_size'])
-	self.cache.set(path, 'change', True)
+	data.set('change', True)
         if size != old_size:
             attr['st_size'] = str(size)
-            self.set_metadata(path, 'attr', attr)
+            data.update_size(size - old_size)
+        attr['st_mtime'] = now
+        attr['st_atime'] = now
+        self.set_metadata(path, 'attr', attr)
 	return 0
 
     ### Should work for files in cache but not flushed to S3...
     def rename(self, path, new_path):
         logger.debug("rename '%s' '%s'" % (path, new_path))
-        if self.cache.has(path) and self.cache.is_empty(path):
+        if self.cache.is_empty(path):
             logger.debug("rename '%s' '%s' ENOENT" % (path, new_path))
             raise FuseOSError(errno.ENOENT)
         key = self.get_key(path)
@@ -1251,15 +1292,14 @@ class YAS3FS(LoggingMixIn, Operations):
 
     def mknod(self, path, mode, dev=None):
         logger.debug("mknod '%s' '%i' '%s'" % (path, mode, dev))
-	if self.cache.has(file):
-	    if not self.cache.is_empty(file):
-                logger.debug("mknod '%s' '%i' '%s' EEXIST" % (path, mode, dev))
-		return FuseOSError(errno.EEXIST)
+        if self.cache.is_not_empty(file):
+            logger.debug("mknod '%s' '%i' '%s' EEXIST" % (path, mode, dev))
+            raise FuseOSError(errno.EEXIST)
 	else:
 	    k = self.get_key(path)
 	    if k:
                 logger.debug("mknod '%s' '%i' '%s' EEXIST" % (path, mode, dev))
-		return FuseOSError(errno.EEXIST)
+		raise FuseOSError(errno.EEXIST)
 	    self.cache.add(path)
 	now = str(time.time())
 	uid, gid, pid = fuse_get_context()
@@ -1271,17 +1311,18 @@ class YAS3FS(LoggingMixIn, Operations):
 	attr['st_mtime'] = now
 	attr['st_ctime'] = now
 	attr['st_size'] = '0' # New file
-	self.cache.set(path, 'change', True)
+        data = FSData(self.cache, 'mem') # New files always cache in mem - is it ok ???
+	data.set('change', True)
 	self.set_metadata(path, 'attr', attr)
 	self.set_metadata(path, 'xattr', {})
-	self.cache.set(path, 'data', io.BytesIO())
+	self.cache.set(path, 'data', data)
 	self.add_to_parent_readdir(path)
 	self.publish(['mknod', path])
 	return 0
 
     def unlink(self, path):
         logger.debug("unlink '%s'" % (path))
-	if self.cache.has(path) and self.cache.is_empty(path):
+	if self.cache.is_empty(path):
             logger.debug("unlink '%s' ENOENT" % (path))
 	    raise FuseOSError(errno.ENOENT)
 	k = self.get_key(path)
@@ -1304,64 +1345,65 @@ class YAS3FS(LoggingMixIn, Operations):
 	self.cache.add(path)
 	if not self.check_data(path):
 	    self.mknod(path, flags)
-	self.cache.inc(path, 'open')
-        logger.debug("open '%s' '%i' '%s'" % (path, flags, self.cache.get(path, 'open')))
+	self.cache.get(path, 'data').inc('open')
+        logger.debug("open '%s' '%i' '%s'" % (path, flags, self.cache.get(path, 'data').get('open')))
 	return 0
 
     def release(self, path, flags):
         logger.debug("release '%s' '%i'" % (path, flags))
-        if self.cache.has(path) and self.cache.is_empty(path):
+        if self.cache.is_empty(path):
             logger.debug("release '%s' '%i' ENOENT" % (path, flags))
             raise FuseOSError(errno.ENOENT)
-	self.cache.dec(path, 'open')
-        logger.debug("release '%s' '%i' '%s'" % (path, flags, self.cache.get(path, 'open')))
+        data = self.cache.get(path, 'data')
+        if data:
+            data.dec('open')
+        logger.debug("release '%s' '%i' '%s'" % (path, flags, data.get('open')))
 	return 0
 
     def read(self, path, length, offset, fh=None):
         logger.debug("read '%s' '%i' '%i' '%s'" % (path, length, offset, fh))
-        if not self.cache.has(path) or (self.cache.has(path) and self.cache.is_empty(path)):
+        if not self.cache.has(path) or self.cache.is_empty(path):
             logger.debug("read '%s' '%i' '%i' '%s' ENOENT" % (path, length, offset, fh))
             raise FuseOSError(errno.ENOENT)
         while True:
-            with self.cache.lock:
-                data_range = self.cache.get(path, 'data-range')
-                if data_range == None or data_range[0].contains([offset, offset + length - 1]):
-                    break
-                if not data_range[1].contains([offset, offset]):
-                    data_range[1].add([offset, offset + length - 1]) # To avoid starting the same thread again
-                    t = threading.Thread(target=self.download_data, args=(path, offset))
-                    t.daemon = True
-                    t.start()
+            data_range = self.cache.get(path, 'data').get('range')
+            if data_range == None or data_range[0].contains([offset, offset + length - 1]):
+                break
+            if not data_range[1].contains([offset, offset]):
+                data_range[1].add([offset, offset + length - 1]) # To avoid starting the same thread again
+                t = threading.Thread(target=self.download_data, args=(path, offset))
+                t.daemon = True
+                t.start()
             data_range[2].wait()
 	# update atime just in the cache ???
-        sio = self.cache.get(path, 'data')
-        with self.cache.data_lock:
-            sio.seek(offset)
-            return sio.read(length)
+        data = self.cache.get(path, 'data')
+        with data.lock:
+            data.content.seek(offset)
+            return data.content.read(length)
 
-    def write(self, path, data, offset, fh=None):
-        logger.debug("write '%s' '%i' '%i' '%s'" % (path, len(data), offset, fh))
-        if not self.cache.has(path) or (self.cache.has(path) and self.cache.is_empty(path)):
-            logger.debug("write '%s' '%i' '%i' '%s' ENOENT" % (path, len(data), offset, fh))
+    def write(self, path, new_data, offset, fh=None):
+        logger.debug("write '%s' '%i' '%i' '%s'" % (path, len(new_data), offset, fh))
+        if not self.cache.has(path) or self.cache.is_empty(path):
+            logger.debug("write '%s' '%i' '%i' '%s' ENOENT" % (path, len(new_data), offset, fh))
             raise FuseOSError(errno.ENOENT)
-	length = len(data)
+	length = len(new_data)
         while True:
-            data_range = self.cache.get(path, 'data-range')
+            data_range = self.cache.get(path, 'data').get('range')
             if data_range == None or data_range[0].contains([offset, offset + length - 1]):
                 break
             data_range[2].wait()
-	with self.cache.lock:
-            sio = self.cache.get(path, 'data')
-            with self.cache.data_lock:
-                sio.seek(offset)
-                sio.write(data)
-            self.cache.set(path, 'change', True)
+        data = self.cache.get(path, 'data')
+	with data.lock:
+            data.content.seek(offset)
+            data.content.write(new_data)
+            data.set('change', True)
 	    now = str(time.time())
 	    attr = self.get_metadata(path, 'attr')
             old_size = int(attr['st_size'])
             new_size = max(old_size, offset + length)
             if new_size != old_size:
                 attr['st_size'] = str(new_size)
+                data.update_size(new_size - old_size)
             attr['st_mtime'] = now
             attr['st_atime'] = now
             self.set_metadata(path, 'attr', attr)
@@ -1369,7 +1411,8 @@ class YAS3FS(LoggingMixIn, Operations):
 
     def flush(self, path, fh=None):
         logger.debug("flush '%s' '%s'" % (path, fh))
-        if self.cache.has(path) and not self.cache.is_empty(path) and self.cache.has(path, 'change'):
+        data = self.cache.get(path, 'data')
+        if data and data.has('change'):
             k = self.get_key(path)
             if not k:
                 k = Key(self.s3_bucket)
@@ -1383,26 +1426,23 @@ class YAS3FS(LoggingMixIn, Operations):
             xattr = self.get_metadata(path, 'xattr') # Do something better ???
             self.set_metadata(path, 'xattr', xattr, k)
             type = mimetypes.guess_type(path)[0] or 'application/octet-stream'
-            data = self.cache.get(path, 'data')
-            data.seek(0) # Do I need this???
+            data.content.seek(0) # Do I need this???
             if k.size == None:
                 old_size = 0
             else:
                 old_size = k.size
             written = False
             if self.multipart_num > 0:
-                if isinstance(data, io.BytesIO):
-                    full_size = len(data.getvalue()) # Something better here ???
-                elif isinstance(data, io.FileIO):
-                    full_size = os.path.getsize(self.cache.get_cache_filename(path))
+                full_size = data.size
                 if full_size > self.multipart_size:
                     k = self.multipart_upload(k.name, data, full_size,
                                               headers={'Content-Type': type}, metadata=k.metadata)
+                    self.cache.set(path, 'key', k)
                     written = True
             if not written:
-                k.set_contents_from_file(data, headers={'Content-Type': type})
-            self.cache.update_size(path, k.size - old_size)
-            self.cache.delete(path, 'change')
+                k.set_contents_from_file(data.content, headers={'Content-Type': type})
+            data.update_etag(k.etag[1:-1])
+            data.delete('change')
             self.publish(['flush', path, k.etag[1:-1]])
         return 0
 
@@ -1418,7 +1458,7 @@ class YAS3FS(LoggingMixIn, Operations):
             else:
                 part_size = bytes_left
             part_num += 1
-            part_queue.put([ part_num, PartOfBytesIO(data, part_pos, part_size) ])
+            part_queue.put([ part_num, PartOfFSData(data, part_pos, part_size) ])
             part_pos += part_size
             logger.debug("part from %i for %i" % (part_pos, part_size))
         logger.debug("initiate_multipart_upload '%s' '%s'" % (key_path, headers))
@@ -1433,9 +1473,13 @@ class YAS3FS(LoggingMixIn, Operations):
         part_queue.join()
         logger.debug("multipart_upload all threads joined '%s' '%s' '%s'" % (key_path, data, headers))
         if len(mpu.get_all_parts()) == part_num:
-            mpu.complete_upload()
-            new_key = self.s3_bucket.get_key(key_path) # Check cached value???
+            new_key = mpu.complete_upload()
+            print "complete"
+            print new_key
+            print new_key.etag
+            # new_key = self.s3_bucket.get_key(key_path) # Check cached value???
         else:
+            print "cancel"
             mpu.cancel_upload()
             new_key = None
         return new_key
@@ -1464,7 +1508,7 @@ class YAS3FS(LoggingMixIn, Operations):
             
     def chmod(self, path, mode):
         logger.debug("chmod '%s' '%i'" % (path, mode))
-        if self.cache.has(path) and self.cache.is_empty(path):
+        if self.cache.is_empty(path):
             logger.debug("chmod '%s' '%i' ENOENT" % (path, mode))
             raise FuseOSError(errno.ENOENT)
         attr = self.get_metadata(path, 'attr')
@@ -1476,7 +1520,7 @@ class YAS3FS(LoggingMixIn, Operations):
 
     def chown(self, path, uid, gid):
         logger.debug("chown '%s' '%i' '%i'" % (path, uid, gid))
-        if self.cache.has(path) and self.cache.is_empty(path):
+        if self.cache.is_empty(path):
             logger.debug("chown '%s' '%i' '%i' ENOENT" % (path, uid, gid))
             raise FuseOSError(errno.ENOENT)
         attr = self.get_metadata(path, 'attr')
@@ -1489,7 +1533,7 @@ class YAS3FS(LoggingMixIn, Operations):
 
     def utime(self, path, times=None):
         logger.debug("utime '%s' '%s'" % (path, times))
-        if self.cache.has(path) and self.cache.is_empty(path):
+        if self.cache.is_empty(path):
             logger.debug("utime '%s' '%s' ENOENT" % (path, times))
             raise FuseOSError(errno.ENOENT)
         now = time.time()
@@ -1504,7 +1548,7 @@ class YAS3FS(LoggingMixIn, Operations):
 
     def getxattr(self, path, name, position=0):
         logger.debug("getxattr '%s' '%s' '%i'" % (path, name, position))
-        if self.cache.has(path) and self.cache.is_empty(path):
+        if self.cache.is_empty(path):
             logger.debug("getxattr '%s' '%s' '%i' ENOENT" % (path, name, position))
             raise FuseOSError(errno.ENOENT)
         xattr = self.get_metadata(path, 'xattr')
@@ -1515,7 +1559,7 @@ class YAS3FS(LoggingMixIn, Operations):
 
     def listxattr(self, path):
         logger.debug("listxattr '%s'" % (path))
-        if self.cache.has(path) and self.cache.is_empty(path):
+        if self.cache.is_empty(path):
             logger.debug("listxattr '%s' ENOENT" % (path))
             raise FuseOSError(errno.ENOENT)
         xattr = self.get_metadata(path, 'xattr')
@@ -1523,7 +1567,7 @@ class YAS3FS(LoggingMixIn, Operations):
 
     def removexattr(self, path, name):
         logger.debug("removexattr '%s'" % (path, name))
-        if self.cache.has(path) and self.cache.is_empty(path):
+        if self.cache.is_empty(path):
             logger.debug("removexattr '%s' ENOENT" % (path, name))
             raise FuseOSError(errno.ENOENT)
         xattr = self.get_metadata(path, 'xattr')
@@ -1537,7 +1581,7 @@ class YAS3FS(LoggingMixIn, Operations):
 
     def setxattr(self, path, name, value, options, position=0):
         logger.debug("setxattr '%s' '%s' '%s' '%s' '%i'" % (path, name, value, options, position))
-        if self.cache.has(path) and self.cache.is_empty(path):
+        if self.cache.is_empty(path):
             logger.debug("setxattr '%s' '%s' '%s' '%s' '%i' ENOENT" % (path, name, value, options, position))
             raise FuseOSError(errno.ENOENT)
         xattr = self.get_metadata(path, 'xattr')
