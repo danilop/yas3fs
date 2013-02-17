@@ -1097,7 +1097,6 @@ class YAS3FS(LoggingMixIn, Operations):
                 t = threading.Thread(target=self.download_data, args=(path, 0))
                 t.daemon = True
                 t.start()
-                data.update_etag(etag) # Ok here ???
             else:
                 k.get_contents_to_file(data)
                 data.update_size(k.size)
@@ -1162,6 +1161,7 @@ class YAS3FS(LoggingMixIn, Operations):
                 (interval, next_interval, event) = data.get('range')
                 if interval.contains([0, key.size - 1]): # -1 ???
                     data.delete('range')
+                    data.update_etag(key.etag[1:-1])
                     logger.debug("download_data all ended '%s' [thread '%s']" % (path, threading.current_thread().name))
                     event.set()
 
