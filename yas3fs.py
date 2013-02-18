@@ -23,7 +23,6 @@ import urllib2
 import itertools
 import M2Crypto
 import base64
-import hashlib
 import logging
 import signal
 import io
@@ -162,20 +161,21 @@ class FSData():
         else:
             raise FSData.unknown_store
     def update_etag(self, new_etag):
-        if new_etag != self.etag:
-            self.etag = new_etag
-            if self.store == 'disk':
-                filename = self.cache.get_cache_etags_filename(self.path)
-                dirname = os.path.dirname(filename)
-                try:
-                    os.makedirs(dirname)
-                except OSError as exc: # Python >2.5
-                    if exc.errno == errno.EEXIST and os.path.isdir(dirname):
-                        pass
-                    else:
-                        raise
-                with open(filename, 'w') as etag_file:
-                    etag_file.write(new_etag)
+        with self.lock:
+            if new_etag != self.etag:
+                self.etag = new_etag
+                if self.store == 'disk':
+                    filename = self.cache.get_cache_etags_filename(self.path)
+                    dirname = os.path.dirname(filename)
+                    try:
+                        os.makedirs(dirname)
+                    except OSError as exc: # Python >2.5
+                        if exc.errno == errno.EEXIST and os.path.isdir(dirname):
+                            pass
+                        else:
+                            raise
+                    with open(filename, 'w') as etag_file:
+                        etag_file.write(new_etag)
     def update_size(self, delta):
         with self.lock:
             self.size += delta;
@@ -183,7 +183,8 @@ class FSData():
             self.cache.size[self.store] += delta
     def get_content_as_string(self):
         if self.store == 'mem':
-            return self.content.getvalue()
+            with self.lock:
+                return self.content.getvalue()
         elif self.store == 'disk':
             with self.lock:
                 self.content.seek(0) # Go to the beginning
@@ -191,10 +192,11 @@ class FSData():
         else:
             raise FSData.unknown_store
     def has(self, prop):
-        if prop in self.props:
-            return True
-        else:
-            return False
+        with self.lock:
+            if prop in self.props:
+                return True
+            else:
+                return False
     def get(self, prop):
         with self.lock:
             if prop in self.props:
@@ -208,8 +210,14 @@ class FSData():
         with self.lock:
             if prop == None:
                 if self.store == 'disk':
+                    filename = self.cache.get_cache_filename(self.path)
                     try:
-                        os.unlink(self.filename)
+                        os.unlink(filename)
+                    except IOError:
+                        pass
+                    filename = self.cache.get_cache_etags_filename(self.path)
+                    try:
+                        os.unlink(filename)
                     except IOError:
                         pass
                 self.update_size(-self.size)
@@ -262,14 +270,16 @@ class FSCache():
             if path in self.entries:
         	if prop == None:
         	    for p in self.entries[path].keys():
-                        if p == 'data':
-                            self.entries[path][p].delete() # To clean stuff, e.g. remove cache files
                         self.delete(path, p)
         	    del self.entries[path]
                     
         	    self.lru.delete(path)
         	else:
         	    if prop in self.entries[path]:
+                        if prop == 'data':
+                            data = self.entries[path][prop]
+                            with data.lock:
+                                data.delete() # To clean stuff, e.g. remove cache files
         		del self.entries[path][prop]
     def rename(self, path, new_path):
         with self.lock:
@@ -687,8 +697,8 @@ class YAS3FS(LoggingMixIn, Operations):
                 if self.queue_polling_interval > 0:
                     time.sleep(self.queue_polling_interval)
 
-    def invalidate_cache(self, path, md5=None):
-        logger.debug("invalidate_cache '%s' '%s'" % (path, md5))
+    def invalidate_cache(self, path, etag=None):
+        logger.debug("invalidate_cache '%s' '%s'" % (path, etag))
         with self.cache.lock:
             self.cache.delete(path, 'key')
             self.cache.delete(path, 'attr')
@@ -697,7 +707,7 @@ class YAS3FS(LoggingMixIn, Operations):
                 if self.cache.get(path, 'data').has('range'):
                     self.cache.delete(path, 'data')
                 else:
-                    self.cache.get(path, 'data').set('new', md5)
+                    self.cache.get(path, 'data').set('new', etag)
             if self.cache.is_empty(path):
                 self.cache.delete(path)
                 self.reset_parent_readdir(path)
@@ -1069,7 +1079,7 @@ class YAS3FS(LoggingMixIn, Operations):
             if not k:
 		return False
             if not data:
-                if k.size <= self.cache_on_disk:
+                if k.size < self.cache_on_disk:
                     data = FSData(self.cache, 'mem')
                 else:
                     data = FSData(self.cache, 'disk', path)
@@ -1080,11 +1090,9 @@ class YAS3FS(LoggingMixIn, Operations):
                 data.delete('new')
             else: # I'm not sure I got the latest version
                 self.cache.delete(path, 'key')
-                data.set('new', None) # Next time don't check the MD5
-            print "data.etag = '%s' - k.etag = '%s' " % (data.etag, etag)
+                data.set('new', None) # Next time don't check the Etag
             if data.etag == etag:
                 return True
-            print "download!"
             data.update_size(-data.size) # Can be zero...
             if self.buffer_size > 0:
                 with data.lock:
@@ -1206,7 +1214,7 @@ class YAS3FS(LoggingMixIn, Operations):
                 logger.debug("rmdir '%s' ENOTEMPTY" % (path))
 		raise FuseOSError(errno.ENOTEMPTY)
 	k.delete()
-	self.cache.reset(path) # Cache invalidation
+	self.cache.reset(path) # Cache invaliation
 	self.remove_from_parent_readdir(path)
 	self.publish(['rmdir', path])
 	return 0
@@ -1311,11 +1319,14 @@ class YAS3FS(LoggingMixIn, Operations):
 	attr['st_mtime'] = now
 	attr['st_ctime'] = now
 	attr['st_size'] = '0' # New file
-        data = FSData(self.cache, 'mem') # New files always cache in mem - is it ok ???
+        if self.cache_on_disk > 0:
+            data = FSData(self.cache, 'mem') # New files (almost) always cache in mem - is it ok ???
+        else:
+            data = FSData(self.cache, 'disk', path)
+	self.cache.set(path, 'data', data)
 	data.set('change', True)
 	self.set_metadata(path, 'attr', attr)
 	self.set_metadata(path, 'xattr', {})
-	self.cache.set(path, 'data', data)
 	self.add_to_parent_readdir(path)
 	self.publish(['mknod', path])
 	return 0
@@ -1474,12 +1485,7 @@ class YAS3FS(LoggingMixIn, Operations):
         logger.debug("multipart_upload all threads joined '%s' '%s' '%s'" % (key_path, data, headers))
         if len(mpu.get_all_parts()) == part_num:
             new_key = mpu.complete_upload()
-            print "complete"
-            print new_key
-            print new_key.etag
-            # new_key = self.s3_bucket.get_key(key_path) # Check cached value???
         else:
-            print "cancel"
             mpu.cancel_upload()
             new_key = None
         return new_key
