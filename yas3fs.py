@@ -149,14 +149,7 @@ class FSData():
                    with open(filename, 'r') as etag_file:
                         self.etag = etag_file.read()
             else:
-                dirname = os.path.dirname(filename)
-                try:
-                    os.makedirs(dirname)
-                except OSError as exc: # Python >2.5
-                    if exc.errno == errno.EEXIST and os.path.isdir(dirname):
-                        pass
-                    else:
-                        raise
+                createDirForFile(filename)
                 self.content = io.FileIO(filename, mode='wb+')
         else:
             raise FSData.unknown_store
@@ -166,14 +159,7 @@ class FSData():
                 self.etag = new_etag
                 if self.store == 'disk':
                     filename = self.cache.get_cache_etags_filename(self.path)
-                    dirname = os.path.dirname(filename)
-                    try:
-                        os.makedirs(dirname)
-                    except OSError as exc: # Python >2.5
-                        if exc.errno == errno.EEXIST and os.path.isdir(dirname):
-                            pass
-                        else:
-                            raise
+                    createDirForFile(filename)
                     with open(filename, 'w') as etag_file:
                         etag_file.write(new_etag)
     def update_size(self, delta):
@@ -211,21 +197,31 @@ class FSData():
             if prop == None:
                 if self.store == 'disk':
                     filename = self.cache.get_cache_filename(self.path)
-                    try:
-                        os.unlink(filename)
-                    except IOError:
-                        pass
+                    os.unlink(filename)
+                    removeEmptyDirForFile(filename)
                     filename = self.cache.get_cache_etags_filename(self.path)
-                    try:
-                        os.unlink(filename)
-                    except IOError:
-                        pass
+                    os.unlink(filename)
+                    removeEmptyDirForFile(filename)
                 self.update_size(-self.size)
                 range = self.get('range')
                 if range:
                     range[2].set() # To make downloading threads go on... and then exit
             elif prop in self.props:
                 del self.props[prop]
+    def rename(self, new_path):
+        with self.lock:
+            if self.store == 'disk':
+                filename = self.cache.get_cache_filename(self.path)
+                new_filename = self.cache.get_cache_filename(new_path)
+                createDirForFile(new_filename)
+                os.rename(filename, new_filename)
+                removeEmptyDirForFile(filename)
+                filename = self.cache.get_cache_etags_filename(self.path)
+                new_filename = self.cache.get_cache_etags_filename(new_path)
+                createDirForFile(new_filename)
+                os.rename(filename, new_filename)
+                removeEmptyDirForFile(filename)
+                self.content = io.FileIO(new_filename, mode='wb+')
     def inc(self, prop):
         with self.lock:
             if prop in self.props:
@@ -286,6 +282,10 @@ class FSCache():
             if path in self.entries:
                 self.delete(path, 'key') # Cannot be renamed
                 self.delete(new_path) # Assume overwrite
+                if 'data' in self.entries[path]:
+                    data = self.entries[path]['data']
+                    with data.lock:
+                        data.rename(new_path)
                 self.entries[new_path] = self.entries[path]
                 self.lru.append(new_path)
                 del self.entries[path]
@@ -451,8 +451,9 @@ class YAS3FS(LoggingMixIn, Operations):
         global debug
         debug = options.debug
 
-        self.aws_region = options.region # Not used by S3
+        self.aws_region = options.region
 
+        # Parameters and options handling
         if not options.url:
             errorAndExit("The S3 path to mount in URL format must be provided")
         s3url = urlparse.urlparse(options.url.lower())
@@ -466,7 +467,7 @@ class YAS3FS(LoggingMixIn, Operations):
             errorAndExit("The S3 bucket cannot be empty")
         self.sns_topic_arn = options.topic
         if self.sns_topic_arn:
-            logger.info("AWS region for SNS/SQS: '" + self.aws_region + "'")
+            logger.info("AWS region for S3 endpoint, SNS and SQS: '" + self.aws_region + "'")
             logger.info("SNS topic ARN: '%s'" % self.sns_topic_arn)
         self.sqs_queue_name = options.queue # must be different for each client
         self.new_queue = options.new_queue
@@ -520,8 +521,10 @@ class YAS3FS(LoggingMixIn, Operations):
         self.publish_queue = Queue.Queue()
 
         # AWS Initialization
+        if not self.aws_region in (r.name for r in boto.s3.regions()):
+            errorAndExit("wrong AWS region '%s' for S3" % self.aws_region)
         try:
-            self.s3 = boto.connect_s3() # Not using AWS region for S3, got an error otherwise, depending on the bucket
+            self.s3 = boto.s3.connect_to_region(self.aws_region)
         except boto.exception.NoAuthHandlerFound:
             errorAndExit("no AWS credentials found")
         if not self.s3:
@@ -1288,6 +1291,7 @@ class YAS3FS(LoggingMixIn, Operations):
             if target_path[0] != '/':
                 target_path = '/' + target_path
             self.cache.rename(source_path, target_path)
+            logger.debug("renaming '%s' ('%s') -> '%s' ('%s')" % (source, source_path, target, target_path))
             key = self.s3_bucket.get_key(source)
             if key: # For files in cache but still not flushed to S3
                 md = key.metadata
@@ -1620,6 +1624,24 @@ def errorAndExit(error, exitCode=1):
     logger.error(error + ", use -h for help.")
     exit(exitCode)
 
+def createDirForFile(filename):
+    dirname = os.path.dirname(filename)
+    createDir(dirname)
+
+def createDir(dirname):
+    try:
+        os.makedirs(dirname)
+    except OSError as exc: # Python >2.5                                                                 
+        if exc.errno == errno.EEXIST and os.path.isdir(dirname):
+            pass
+        else:
+            raise
+
+def removeEmptyDirForFile(filename):
+    dirname = os.path.dirname(filename)
+    if not os.listdir(dirname): # to check if the dir is empty
+         os.removedirs(dirname)
+
 if __name__ == '__main__':
 
     usage = """%prog <mountpoint> [options]
@@ -1646,7 +1668,7 @@ In an EC2 instance a IAM role can be used to give access to S3/SNS/SQS resources
                       + "PATH can be empty, can contain subfolders and is created on first mount if not found in the BUCKET",
                       metavar="URL")
     parser.add_option("--region", dest="region",
-                      help="AWS region to use for SNS/SQS (default is %default)",
+                      help="AWS region to use for the S3 endpoint, SNS and SQS (default is %default)",
                       metavar="REGION", default="us-east-1")
     parser.add_option("--topic", dest="topic",
                       help="SNS topic ARN", metavar="ARN")
@@ -1722,13 +1744,7 @@ In an EC2 instance a IAM role can be used to give access to S3/SNS/SQS resources
     mountpoint = args[0]
 
     if options.mkdir:
-        try:
-            os.makedirs(mountpoint)
-        except OSError as exc: # Python >2.5
-            if exc.errno == errno.EEXIST and os.path.isdir(mountpoint):
-                pass
-            else:
-                raise
+        createDir(mountpoint)
 
     if sys.platform == "darwin":
         volume_name = os.path.basename(mountpoint)
