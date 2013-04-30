@@ -1097,7 +1097,7 @@ class YAS3FS(LoggingMixIn, Operations):
             if data.etag == etag:
                 return True
             data.update_size(-data.size) # Can be zero...
-            if self.buffer_size > 0:
+            if self.buffer_size > 0 and data.size > 0:
                 with data.lock:
                     if data.has('range'):
                         return True
@@ -1118,7 +1118,7 @@ class YAS3FS(LoggingMixIn, Operations):
         logger.debug("download_data '%s' %i [thread '%s']" % (path, starting_from, threading.current_thread().name))
 
         data = self.cache.get(path, 'data')
-        key = copy.deepcopy(self.get_key(path)) # Something better ??? I need a local copy ok the key...
+        key = copy.deepcopy(self.get_key(path)) # Something better ??? I need a local copy of the key...
 
         delete_flag = False
 
