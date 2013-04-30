@@ -1125,8 +1125,8 @@ class YAS3FS(LoggingMixIn, Operations):
         try:
             range = [ starting_from, key.size ]
             range_headers = { 'Range' : 'bytes=' + str(range[0]) + '-' + str(range[1]) }
-            key.open_read(headers=range_headers)
             pos = range[0]
+            key.open_read(headers=range_headers)
             while True:
                 with self.cache.lock:
                     if data.has('range'):
@@ -1165,7 +1165,10 @@ class YAS3FS(LoggingMixIn, Operations):
         except boto.exception.S3ResponseError:
             delete_flag = True
 
-        logger.debug("download_data end '%s' %i-%i [thread '%s']" % (path, starting_from, pos, threading.current_thread().name))
+        if delete_flag:
+            logger.debug("download_data end for S3 error '%s' %i [thread '%s']" % (path, starting_from, threading.current_thread().name))
+        else:
+            logger.debug("download_data end '%s' %i-%i [thread '%s']" % (path, starting_from, pos, threading.current_thread().name))
 
         with self.cache.lock:
             if data.has('range'):
