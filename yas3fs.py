@@ -1109,7 +1109,7 @@ class YAS3FS(LoggingMixIn, Operations):
                 t.daemon = True
                 t.start()
             else:
-                k.get_contents_to_file(data)
+                k.get_contents_to_file(data.content)
                 data.update_size(k.size)
                 data.update_etag(k.etag[1:-1])
 	return True
