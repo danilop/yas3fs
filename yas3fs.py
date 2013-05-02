@@ -1148,10 +1148,16 @@ class YAS3FS(LoggingMixIn, Operations):
                     else:
                         return
                     new_interval = [pos, pos + self.buffer_size - 1]
-                    logger.debug ("next_interval contains   new_interval? %s - %s" % (next_interval.contains(new_interval), new_interval))
-                    logger.debug ("next_interval intersects new_interval? %s - %s" % (next_interval.intersects(new_interval), new_interval))
-                    if next_interval.contains(new_interval):
-                        break ### Something better ???
+                    while next_interval.contains(new_interval):
+                        new_starting_from = pos + self.buffer_size
+                        if new_starting_from < up_to:
+                            key.close()
+                            range_headers = { 'Range' : 'bytes=' + str(new_starting_from) + '-' + str(up_to) }
+                            pos = new_starting_from
+                            key.open_read(headers=range_headers)
+                            new_interval = [pos, pos + self.buffer_size - 1]
+                        else:
+                            break ### Something better ???
                     next_interval.add(new_interval)
                     data.set('range', (interval, next_interval, event))
                 bytes = key.resp.read(self.buffer_size)
