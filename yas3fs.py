@@ -203,9 +203,9 @@ class FSData():
                     os.unlink(filename)
                     removeEmptyDirForFile(filename)
                 self.update_size(-self.size)
-                range = self.get('range')
-                if range:
-                    range[2].set() # To make downloading threads go on... and then exit
+                data_range = self.get('range')
+                if data_range:
+                    data_range[2].set() # To make downloading threads go on... and then exit
             elif prop in self.props:
                 del self.props[prop]
     def rename(self, new_path):
@@ -500,6 +500,8 @@ class YAS3FS(LoggingMixIn, Operations):
             logger.info(" TCP port to listen to SNS HTTP notifications: '%i'" % self.sns_http_port)
         self.buffer_size = int(options.buffer_size) * 1024 # To convert KB to bytes
         logger.info("Download buffer size (in KB, 0 to disable buffering): '%i'" % self.buffer_size)
+        self.buffer_prefetch = int(options.buffer_prefetch)
+        logger.info("Number of buffers to prefetch size (0 for no limits): '%i'" % self.buffer_prefetch)
         self.write_metadata = options.write_metadata
         logger.info("Write metadata (file system attr/xattr) on S3: '%s'" % str(self.write_metadata))
         self.prefetch = options.prefetch
@@ -1103,10 +1105,7 @@ class YAS3FS(LoggingMixIn, Operations):
                 with data.lock:
                     if data.has('range'):
                         return True
-                    interval = Interval()
-                    next_interval = Interval()
-                    next_interval.add([0, self.buffer_size])
-                    data.set('range', (interval, next_interval, threading.Event()))
+                    data.set('range', (Interval(), Interval(), threading.Event()))
                 self.start_download_data(path)
             else: # DOwnload at once
                 k.get_contents_to_file(data.content)
@@ -1114,12 +1113,12 @@ class YAS3FS(LoggingMixIn, Operations):
                 data.update_etag(k.etag[1:-1])
 	return True
 
-    def start_download_data(self, path, starting_from=0):
-        t = threading.Thread(target=self.download_data, args=(path, starting_from))
+    def start_download_data(self, path, starting_from=0, number_of_buffers=0):
+        t = threading.Thread(target=self.download_data, args=(path, starting_from, number_of_buffers))
         t.daemon = True
         t.start()
 
-    def download_data(self, path, starting_from):
+    def download_data(self, path, starting_from, number_of_buffers):
         logger.debug("download_data '%s' %i [thread '%s']" % (path, starting_from, threading.current_thread().name))
 
         data = self.cache.get(path, 'data')
@@ -1142,33 +1141,37 @@ class YAS3FS(LoggingMixIn, Operations):
                     next_interval.add(new_interval)
                     data.set('range', (interval, next_interval, event))
                 bytes = key.resp.read(self.buffer_size)
-                if not bytes:
-                    key.close()
-                    break
                 with self.cache.lock:
                     if data.has('range'):
                         (interval, next_interval, event) = data.get('range')
                     else:
                         return # It means something has happended (data deleted or download ended by another thread) and I should do nothing
-                    with data.lock:
-                        data.content.seek(pos)
-                        data.content.write(bytes)
-                    length = len(bytes)
-                    new_interval = [pos, pos + length - 1]
-                    pos += length
-                    overlap = interval.intersects(new_interval)
-                    if overlap:
-                        logger.debug("download_data overlap '%s' for '%s' [thread '%s']" %
-                                     (overlap, new_interval, threading.current_thread().name))
-                    interval.add(new_interval)
-                    data.update_size(length) # Should I use max from interval ??? Does not work in case of orverlap, overestimating size
+                    if not bytes:
+                        length = 0
+                    else:
+                        length = len(bytes)
+                    overlap = False
+                    if length > 0:
+                        with data.lock:
+                            data.content.seek(pos)
+                            data.content.write(bytes)
+                        new_interval = [pos, pos + length - 1]
+                        pos += length
+                        overlap = interval.intersects(new_interval)
+                        interval.add(new_interval)
+                        data.update_size(length) # Should I use max from interval ??? Does not work in case of orverlap, overestimating size
+                        if overlap:
+                            logger.debug("download_data overlap '%s' for '%s' [thread '%s']" %
+                                         (path, new_interval, threading.current_thread().name))
+                    next_interval = copy.deepcopy(interval) # I need a copy of the same interval
                     data.set('range', (interval, next_interval, threading.Event()))
                     event.set()
                     if overlap or pos >= key.size: # Check also if pos >= key.size ???
-                        key.close()
                         break
         except boto.exception.S3ResponseError:
             delete_flag = True
+
+        key.close()
 
         if delete_flag:
             logger.debug("download_data end for S3 error '%s' %i [thread '%s']" % (path, starting_from, threading.current_thread().name))
@@ -1204,7 +1207,9 @@ class YAS3FS(LoggingMixIn, Operations):
                 data_range = data.get('range')
                 if data_range == None:
                     break
+                logger.debug("readlink wait '%s'" % (path))
                 data_range[2].wait()
+                logger.debug("readlink awake '%s'" % (path))
 	    return data.get_content_as_string()
         logger.debug("readlink '%s' EINVAL" % (path))
 	raise FuseOSError(errno.EINVAL)
@@ -1250,7 +1255,9 @@ class YAS3FS(LoggingMixIn, Operations):
                 data.delete('range')
                 data_range[2].set()
                 break
+            logger.debug("truncate wait '%s' '%i'" % (path, size))
             data_range[2].wait()
+            logger.debug("truncate awake '%s' '%i'" % (path, size))
         data.content.truncate(size)
         now = str(time.time())
 	attr = self.get_metadata(path, 'attr')
@@ -1394,8 +1401,11 @@ class YAS3FS(LoggingMixIn, Operations):
             if data_range == None or data_range[0].contains(read_interval):
                 break
             if not data_range[1].contains(read_interval):
-                self.start_download_data(path, offset)
+                number_of_buffers = length / self.buffer_size + self.buffer_prefetch
+                self.start_download_data(path, offset, number_of_buffers)
+            logger.debug("read wait '%s' '%i' '%i' '%s'" % (path, length, offset, fh))
             data_range[2].wait()
+            logger.debug("read awake '%s' '%i' '%i' '%s'" % (path, length, offset, fh))
 	# update atime just in the cache ???
         data = self.cache.get(path, 'data')
         with data.lock:
@@ -1414,8 +1424,11 @@ class YAS3FS(LoggingMixIn, Operations):
             if data_range == None or data_range[0].contains(write_interval):
                 break
             if not data_range[1].contains(write_interval):
-                self.start_download_data(path, offset)
+                number_of_buffers = length / self.buffer_size + self.buffer_prefetch
+                self.start_download_data(path, offset, number_of_buffers)
+            logger.debug("write wait '%s' '%i' '%i' '%s'" % (path, len(new_data), offset, fh))            
             data_range[2].wait()
+            logger.debug("write awake '%s' '%i' '%i' '%s'" % (path, len(new_data), offset, fh))            
         data = self.cache.get(path, 'data')
 	with data.lock:
             data.content.seek(offset)
@@ -1710,6 +1723,8 @@ In an EC2 instance a IAM role can be used to give access to S3/SNS/SQS resources
                       help="interval between cache memory checks in seconds (default is %default seconds)", metavar="N", default=10)
     parser.add_option("--buffer-size", dest="buffer_size",
                       help="download buffer size in KB (0 to disable buffering, default is %default KB)", metavar="N", default=10240)
+    parser.add_option("--buffer-prefetch", dest="buffer_prefetch",
+                      help="number of buffers to prefetch (0 for no limits, default is %default KB)", metavar="N", default=0)
     parser.add_option("--no-metadata", action="store_false", dest="write_metadata", default=True,
                       help="don't write user metadata on S3 to persist file system attr/xattr")
     parser.add_option("--prefetch", action="store_true", dest="prefetch", default=False,
