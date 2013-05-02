@@ -29,6 +29,7 @@ import io
 import re
 import uuid
 import copy
+import math
 
 import boto
 import boto.s3        
@@ -501,7 +502,7 @@ class YAS3FS(LoggingMixIn, Operations):
         self.buffer_size = int(options.buffer_size) * 1024 # To convert KB to bytes
         logger.info("Download buffer size (in KB, 0 to disable buffering): '%i'" % self.buffer_size)
         self.buffer_prefetch = int(options.buffer_prefetch)
-        logger.info("Number of buffers to prefetch size (0 for no limits): '%i'" % self.buffer_prefetch)
+        logger.info("Number of buffers to prefetch: '%i'" % self.buffer_prefetch)
         self.write_metadata = options.write_metadata
         logger.info("Write metadata (file system attr/xattr) on S3: '%s'" % str(self.write_metadata))
         self.prefetch = options.prefetch
@@ -1100,36 +1101,45 @@ class YAS3FS(LoggingMixIn, Operations):
                 return True
             data.update_size(-data.size) # Can be zero...
             if k.size == 0:
+                logger.debug("check_data '%s' nothing to download" % (path))
                 return True # No need to download anything
             elif self.buffer_size > 0: # Use buffers
-                with data.lock:
-                    if data.has('range'):
-                        return True
-                    data.set('range', (Interval(), Interval(), threading.Event()))
-                self.start_download_data(path)
-            else: # DOwnload at once
+                with self.cache.lock:
+                    if not data.has('range'):
+                        data.set('range', (Interval(), Interval(), threading.Event()))
+                ###self.start_download_data(path)
+            else: # Download at once
                 k.get_contents_to_file(data.content)
                 data.update_size(k.size)
                 data.update_etag(k.etag[1:-1])
 	return True
 
-    def start_download_data(self, path, starting_from=0, number_of_buffers=0):
-        t = threading.Thread(target=self.download_data, args=(path, starting_from, number_of_buffers))
+    def start_download_data(self, path, starting_from=0, length=0):
+        logger.debug("start_download_data '%s' %i %i" % (path, starting_from, length))
+        buffered_start = int(starting_from / self.buffer_size) * self.buffer_size
+        buffered_length = starting_from + length - buffered_start
+        number_of_buffers = int(math.ceil(float(buffered_length) / self.buffer_size)) + self.buffer_prefetch
+        logger.debug("buffered %i %i %i" % (buffered_start, buffered_length, number_of_buffers))
+        t = threading.Thread(target=self.download_data, args=(path, buffered_start, number_of_buffers))
         t.daemon = True
         t.start()
 
     def download_data(self, path, starting_from, number_of_buffers):
-        logger.debug("download_data '%s' %i [thread '%s']" % (path, starting_from, threading.current_thread().name))
+        logger.debug("download_data '%s' %i %i [thread '%s']" % (path, starting_from, number_of_buffers, threading.current_thread().name))
 
         data = self.cache.get(path, 'data')
         key = copy.deepcopy(self.get_key(path)) # Something better ??? I need a local copy of the key...
 
         delete_flag = False
 
+        if number_of_buffers == 0:
+            up_to = key.size
+        else:
+            up_to = min (key.size, starting_from + self.buffer_size * number_of_buffers)
+
         try:
-            range = [ starting_from, key.size ]
-            range_headers = { 'Range' : 'bytes=' + str(range[0]) + '-' + str(range[1]) }
-            pos = range[0]
+            range_headers = { 'Range' : 'bytes=' + str(starting_from) + '-' + str(up_to) }
+            pos = starting_from
             key.open_read(headers=range_headers)
             while True:
                 with self.cache.lock:
@@ -1138,6 +1148,10 @@ class YAS3FS(LoggingMixIn, Operations):
                     else:
                         return
                     new_interval = [pos, pos + self.buffer_size - 1]
+                    logger.debug ("next_interval contains   new_interval? %s - %s" % (next_interval.contains(new_interval), new_interval))
+                    logger.debug ("next_interval intersects new_interval? %s - %s" % (next_interval.intersects(new_interval), new_interval))
+                    if next_interval.contains(new_interval):
+                        break ### Something better ???
                     next_interval.add(new_interval)
                     data.set('range', (interval, next_interval, event))
                 bytes = key.resp.read(self.buffer_size)
@@ -1161,12 +1175,12 @@ class YAS3FS(LoggingMixIn, Operations):
                         interval.add(new_interval)
                         data.update_size(length) # Should I use max from interval ??? Does not work in case of orverlap, overestimating size
                         if overlap:
-                            logger.debug("download_data overlap '%s' for '%s' [thread '%s']" %
+                            logger.debug("download_data end for overlap '%s' for '%s' [thread '%s']" %
                                          (path, new_interval, threading.current_thread().name))
                     next_interval = copy.deepcopy(interval) # I need a copy of the same interval
                     data.set('range', (interval, next_interval, threading.Event()))
                     event.set()
-                    if overlap or pos >= key.size: # Check also if pos >= key.size ???
+                    if overlap or pos >= up_to: # Check also if pos >= up_to ???
                         break
         except boto.exception.S3ResponseError:
             delete_flag = True
@@ -1401,8 +1415,7 @@ class YAS3FS(LoggingMixIn, Operations):
             if data_range == None or data_range[0].contains(read_interval):
                 break
             if not data_range[1].contains(read_interval):
-                number_of_buffers = length / self.buffer_size + self.buffer_prefetch
-                self.start_download_data(path, offset, number_of_buffers)
+                self.start_download_data(path, offset, length)
             logger.debug("read wait '%s' '%i' '%i' '%s'" % (path, length, offset, fh))
             data_range[2].wait()
             logger.debug("read awake '%s' '%i' '%i' '%s'" % (path, length, offset, fh))
@@ -1425,7 +1438,7 @@ class YAS3FS(LoggingMixIn, Operations):
                 break
             if not data_range[1].contains(write_interval):
                 number_of_buffers = length / self.buffer_size + self.buffer_prefetch
-                self.start_download_data(path, offset, number_of_buffers)
+                self.start_download_data(path, offset, length)
             logger.debug("write wait '%s' '%i' '%i' '%s'" % (path, len(new_data), offset, fh))            
             data_range[2].wait()
             logger.debug("write awake '%s' '%i' '%i' '%s'" % (path, len(new_data), offset, fh))            
@@ -1720,11 +1733,11 @@ In an EC2 instance a IAM role can be used to give access to S3/SNS/SQS resources
                       help="use disk (instead of memory) cache for files greater than the given size in MB (default is %default MB)",
                       metavar="N", default=100)
     parser.add_option("--cache-check", dest="cache_check_interval",
-                      help="interval between cache memory checks in seconds (default is %default seconds)", metavar="N", default=10)
+                      help="interval between cache memory checks in seconds (default is %default seconds)", metavar="N", default=3)
     parser.add_option("--buffer-size", dest="buffer_size",
                       help="download buffer size in KB (0 to disable buffering, default is %default KB)", metavar="N", default=10240)
     parser.add_option("--buffer-prefetch", dest="buffer_prefetch",
-                      help="number of buffers to prefetch (0 for no limits, default is %default KB)", metavar="N", default=0)
+                      help="number of buffers to prefetch (default is %default KB)", metavar="N", default=0)
     parser.add_option("--no-metadata", action="store_false", dest="write_metadata", default=True,
                       help="don't write user metadata on S3 to persist file system attr/xattr")
     parser.add_option("--prefetch", action="store_true", dest="prefetch", default=False,
@@ -1778,8 +1791,8 @@ In an EC2 instance a IAM role can be used to give access to S3/SNS/SQS resources
                     auto_cache=True,
                     max_read=131072, max_write=131072,
                     auto_xattr=True, volname=volume_name,
-                    noappledouble=True, daemon_timeout=3600,
-                    local=True)
+                    noappledouble=True, daemon_timeout=3600)
+                    ###local=True)
     else:
         fuse = FUSE(YAS3FS(options), mountpoint, fsname="yas3fs",
                     foreground=options.foreground or options.debug,
