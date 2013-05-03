@@ -774,6 +774,8 @@ class YAS3FS(LoggingMixIn, Operations):
             elif c[1] == 'buffer' and c[3] >= 0:
                 if c[2] == 'size':
                     self.buffer_size = int(c[3]) * 1024 # KB
+                elif c[2] == 'prefetch':
+                    self.buffer_prefetch = int(c[3])
             elif c[1] == 'prefetch':
                 if c[2] == 'on':
                     self.prefetch = True
@@ -1755,7 +1757,7 @@ In an EC2 instance a IAM role can be used to give access to S3/SNS/SQS resources
     parser.add_option("--buffer-size", dest="buffer_size",
                       help="download buffer size in KB (0 to disable buffering, default is %default KB)", metavar="N", default=10240)
     parser.add_option("--buffer-prefetch", dest="buffer_prefetch",
-                      help="number of buffers to prefetch (default is %default KB)", metavar="N", default=0)
+                      help="number of buffers to prefetch (default is %default)", metavar="N", default=0)
     parser.add_option("--no-metadata", action="store_false", dest="write_metadata", default=True,
                       help="don't write user metadata on S3 to persist file system attr/xattr")
     parser.add_option("--prefetch", action="store_true", dest="prefetch", default=False,

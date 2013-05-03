@@ -175,6 +175,7 @@ To unmount the file system on a Mac you can use `umount`.
                            (default is 10 seconds)
       --buffer-size=N      download buffer size in KB (0 to disable buffering,
                            default is 10240 KB)
+      --buffer-prefetch=N  number of buffers to prefetch (default is 0)
       --no-metadata        don't write user metadata on S3 to persist file system
                            attr/xattr
       --prefetch           start downloading file content as soon as the file is
@@ -216,7 +217,7 @@ The following `action`(s) are currently implemented:
 * `md` (updated metadata, e.g. attr/xattr): `[ "node_id", "md", "path", "metadata_name" ]`
 * `reset` (reset cache): `[ "node_id", "reset" ]`
 * `cache` (change cache config): `[ "node_id", "cache" , "entries" or "mem" or "disk", new_value ]`
-* `buffer` (change buffer config): `[ "node_id", "buffer", "size", new_value ]`
+* `buffer` (change buffer config): `[ "node_id", "buffer", "size" or "prefetch", new_value ]`
 * `prefetch` (change prefetch config): `[ "node_id", "prefetch", "on" or "off" ]`
 * `url` (change S3 url): `[ "node_id", "url", "s3://BUCKET/PATH" ]`
 
@@ -250,7 +251,11 @@ To change the buffer size used to download the content (and make it available fo
 
     [ "all", "buffer", "size", 256 ]
 
-Similarly, to activate download prefetch on all nodes you can use:
+To change buffer prefetch from the default of 0 to 1 (optimized for sequential access) you can publish:
+
+    [ "all", "buffer", "prefetch", 1 ]
+
+Similarly, to activate download prefetch of all files on all nodes you can use:
 
     [ "all", "prefetch", "on" ]
 
