@@ -57,7 +57,7 @@ a distributed cache synchronized by <a href="http://aws.amazon.com/sns/">Amazon 
 <li>It is written in Python (2.6) using <a href="https://github.com/boto/boto">boto</a> and <a href="https://github.com/terencehonles/fusepy">fusepy</a>.</li>
 </ul><h3>License</h3>
 
-<p>Copyright (c) 2012 Danilo Poccia, <a href="http://blog.danilopoccia.net">http://blog.danilopoccia.net</a></p>
+<p>Copyright (c) 2012-2013 Danilo Poccia, <a href="http://blog.danilopoccia.net">http://blog.danilopoccia.net</a></p>
 
 <p>This code is licensed under the The MIT License (MIT). Please see the LICENSE file that accompanies this project for the terms of use.</p>
 
@@ -65,7 +65,7 @@ a distributed cache synchronized by <a href="http://aws.amazon.com/sns/">Amazon 
 
 <p>This is the logical architecture of yas3fs:</p>
 
-<p><img src="http://danilop.github.com/yas3fs/images/yas3fs.png" alt="yas3fs Logical Architecture"></p>
+<p><img src="http://blog.danilopoccia.net/wp-content/uploads/sites/2/2012/11/yas3fs.png.scaled500.png" alt="yas3fs Logical Architecture"></p>
 
 <p>I strongly suggest to start yas3fs for the first time with the <code>-d</code> (debug) option, to see if there is any error.
 When everything works it can be interrupted (with <code>^C</code>) and restarted to run in background
@@ -216,6 +216,7 @@ Options:
                        (default is 10 seconds)
   --buffer-size=N      download buffer size in KB (0 to disable buffering,
                        default is 10240 KB)
+  --buffer-prefetch=N  number of buffers to prefetch (default is 0)
   --no-metadata        don't write user metadata on S3 to persist file system
                        attr/xattr
   --prefetch           start downloading file content as soon as the file is
@@ -280,7 +281,7 @@ Those are some sample use cases:</p>
 <code>cache</code> (change cache config): <code>[ "node_id", "cache" , "entries" or "mem" or "disk", new_value ]</code>
 </li>
 <li>
-<code>buffer</code> (change buffer config): <code>[ "node_id", "buffer", "size", new_value ]</code>
+<code>buffer</code> (change buffer config): <code>[ "node_id", "buffer", "size" or "prefetch", new_value ]</code>
 </li>
 <li>
 <code>prefetch</code> (change prefetch config): <code>[ "node_id", "prefetch", "on" or "off" ]</code>
@@ -323,7 +324,12 @@ you can publish (the size is in MB as in the corresponding command line option):
 <pre><code>[ "all", "buffer", "size", 256 ]
 </code></pre>
 
-<p>Similarly, to activate download prefetch on all nodes you can use:</p>
+<p>To change buffer prefetch from the default of 0 to 1 (optimized for sequential access) you can publish:</p>
+
+<pre><code>[ "all", "buffer", "prefetch", 1 ]
+</code></pre>
+
+<p>Similarly, to activate download prefetch of all files on all nodes you can use:</p>
 
 <pre><code>[ "all", "prefetch", "on" ]
 </code></pre>
