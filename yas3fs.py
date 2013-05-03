@@ -1106,20 +1106,19 @@ class YAS3FS(LoggingMixIn, Operations):
             elif self.buffer_size > 0: # Use buffers
                 with self.cache.lock:
                     if not data.has('range'):
-                        data.set('range', (Interval(), Interval(), threading.Event()))
-                ###self.start_download_data(path)
+                        data.set('range', (Interval(), Interval(), threading.Event(), Interval()))
             else: # Download at once
                 k.get_contents_to_file(data.content)
                 data.update_size(k.size)
                 data.update_etag(k.etag[1:-1])
 	return True
 
-    def start_download_data(self, path, starting_from=0, length=0):
+    def start_download_data(self, path, starting_from, length):
         logger.debug("start_download_data '%s' %i %i" % (path, starting_from, length))
-        buffered_start = int(starting_from / self.buffer_size) * self.buffer_size
-        buffered_length = starting_from + length - buffered_start
-        number_of_buffers = int(math.ceil(float(buffered_length) / self.buffer_size)) + self.buffer_prefetch
-        logger.debug("buffered %i %i %i" % (buffered_start, buffered_length, number_of_buffers))
+        start_buffer = int(starting_from) / self.buffer_size
+        end_buffer = int(starting_from + length) / self.buffer_size
+        number_of_buffers = 1 + (end_buffer - start_buffer) + self.buffer_prefetch
+        buffered_start = start_buffer * self.buffer_size
         t = threading.Thread(target=self.download_data, args=(path, buffered_start, number_of_buffers))
         t.daemon = True
         t.start()
@@ -1137,33 +1136,39 @@ class YAS3FS(LoggingMixIn, Operations):
         else:
             up_to = min (key.size, starting_from + self.buffer_size * number_of_buffers)
 
+        with self.cache.lock:
+            if data.has('range'):
+                (interval, next_interval, event, requested_interval) = data.get('range')
+                download_interval = [starting_from, up_to]
+                if requested_interval.contains(download_interval):
+                    return # download already requested
+                requested_interval.add(download_interval)
+            else:
+                return
+
         try:
-            range_headers = { 'Range' : 'bytes=' + str(starting_from) + '-' + str(up_to) }
             pos = starting_from
-            key.open_read(headers=range_headers)
             while True:
                 with self.cache.lock:
                     if data.has('range'):
-                        (interval, next_interval, event) = data.get('range')
+                        (interval, next_interval, event, requested_interval) = data.get('range')
                     else:
                         return
-                    new_interval = [pos, pos + self.buffer_size - 1]
-                    while next_interval.contains(new_interval):
-                        new_starting_from = pos + self.buffer_size
-                        if new_starting_from < up_to:
-                            key.close()
-                            range_headers = { 'Range' : 'bytes=' + str(new_starting_from) + '-' + str(up_to) }
-                            pos = new_starting_from
-                            key.open_read(headers=range_headers)
-                            new_interval = [pos, pos + self.buffer_size - 1]
-                        else:
-                            break ### Something better ???
+                    while True:
+                        new_interval = [pos, pos + self.buffer_size - 1]
+                        if not next_interval.contains(new_interval):
+                            break
+                        pos = pos + self.buffer_size
+                    if pos >= up_to:
+                        break
+                    range_headers = { 'Range' : 'bytes=' + str(pos) + '-' + str(pos + self.buffer_size - 1) }
                     next_interval.add(new_interval)
-                    data.set('range', (interval, next_interval, event))
-                bytes = key.resp.read(self.buffer_size)
+
+                bytes = key.get_contents_as_string(headers=range_headers)
+                logger.debug("download_data at %i '%s' %i %i [thread '%s']" % (pos, path, starting_from, number_of_buffers, threading.current_thread().name))
                 with self.cache.lock:
                     if data.has('range'):
-                        (interval, next_interval, event) = data.get('range')
+                        (interval, next_interval, event, requested_interval) = data.get('range')
                     else:
                         return # It means something has happended (data deleted or download ended by another thread) and I should do nothing
                     if not bytes:
@@ -1183,8 +1188,8 @@ class YAS3FS(LoggingMixIn, Operations):
                         if overlap:
                             logger.debug("download_data end for overlap '%s' for '%s' [thread '%s']" %
                                          (path, new_interval, threading.current_thread().name))
-                    next_interval = copy.deepcopy(interval) # I need a copy of the same interval
-                    data.set('range', (interval, next_interval, threading.Event()))
+                    ### Do I need this ??? >> next_interval = copy.deepcopy(interval) # I need a copy of the same interval
+                    data.set('range', (interval, next_interval, threading.Event(), requested_interval))
                     event.set()
                     if overlap or pos >= up_to: # Check also if pos >= up_to ???
                         break
@@ -1200,7 +1205,7 @@ class YAS3FS(LoggingMixIn, Operations):
 
         with self.cache.lock:
             if data.has('range'):
-                (interval, next_interval, event) = data.get('range')
+                (interval, next_interval, event, requested_interval) = data.get('range')
                 if interval.contains([0, key.size - 1]): # -1 ???
                     data.delete('range')
                     data.update_etag(key.etag[1:-1])
@@ -1415,10 +1420,17 @@ class YAS3FS(LoggingMixIn, Operations):
         if not self.cache.has(path) or self.cache.is_empty(path):
             logger.debug("read '%s' '%i' '%i' '%s' ENOENT" % (path, length, offset, fh))
             raise FuseOSError(errno.ENOENT)
-        read_interval = [offset, offset + length - 1]
         while True:
             data_range = self.cache.get(path, 'data').get('range')
-            if data_range == None or data_range[0].contains(read_interval):
+            if data_range == None:
+                break
+            read_interval = [offset, offset + length - 1]
+            if data_range[0].contains(read_interval):
+                prefetch_length = length + self.buffer_size * self.buffer_prefetch
+                prefetch_interval = [offset, offset + prefetch_length - 1]
+                if not data_range[3].contains(prefetch_interval):
+                    logger.debug("download prefetch")
+                    self.start_download_data(path, offset, length)
                 break
             if not data_range[1].contains(read_interval):
                 self.start_download_data(path, offset, length)
