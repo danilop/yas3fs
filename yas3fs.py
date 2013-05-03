@@ -446,6 +446,7 @@ class YAS3FS(LoggingMixIn, Operations):
     """ Main FUSE Operations class for fusepy """
     def __init__(self, options):
         # Some constants
+        self.io_wait = 1.0 # In seconds
         ### self.http_listen_path_length = 30
 
         # Initialization
@@ -1162,10 +1163,12 @@ class YAS3FS(LoggingMixIn, Operations):
                             break
                         pos = pos + self.buffer_size
                     if pos >= up_to:
+                        data.set('range', (interval, next_interval, threading.Event(), requested_interval))
+                        event.set()
                         break
-                    range_headers = { 'Range' : 'bytes=' + str(pos) + '-' + str(pos + self.buffer_size - 1) }
                     next_interval.add(new_interval)
 
+                range_headers = { 'Range' : 'bytes=' + str(pos) + '-' + str(pos + self.buffer_size - 1) }
                 bytes = key.get_contents_as_string(headers=range_headers)
                 logger.debug("download_data at %i '%s' %i %i [thread '%s']" % (pos, path, starting_from, number_of_buffers, threading.current_thread().name))
                 with self.cache.lock:
@@ -1190,15 +1193,12 @@ class YAS3FS(LoggingMixIn, Operations):
                         if overlap:
                             logger.debug("download_data end for overlap '%s' for '%s' [thread '%s']" %
                                          (path, new_interval, threading.current_thread().name))
-                    ### Do I need this ??? >> next_interval = copy.deepcopy(interval) # I need a copy of the same interval
                     data.set('range', (interval, next_interval, threading.Event(), requested_interval))
                     event.set()
                     if overlap or pos >= up_to: # Check also if pos >= up_to ???
                         break
         except boto.exception.S3ResponseError:
             delete_flag = True
-
-        key.close()
 
         if delete_flag:
             logger.debug("download_data end for S3 error '%s' %i [thread '%s']" % (path, starting_from, threading.current_thread().name))
@@ -1235,7 +1235,7 @@ class YAS3FS(LoggingMixIn, Operations):
                 if data_range == None:
                     break
                 logger.debug("readlink wait '%s'" % (path))
-                data_range[2].wait()
+                data_range[2].wait(self.io_wait)
                 logger.debug("readlink awake '%s'" % (path))
 	    return data.get_content_as_string()
         logger.debug("readlink '%s' EINVAL" % (path))
@@ -1283,7 +1283,7 @@ class YAS3FS(LoggingMixIn, Operations):
                 data_range[2].set()
                 break
             logger.debug("truncate wait '%s' '%i'" % (path, size))
-            data_range[2].wait()
+            data_range[2].wait(self.io_wait)
             logger.debug("truncate awake '%s' '%i'" % (path, size))
         data.content.truncate(size)
         now = str(time.time())
@@ -1437,7 +1437,7 @@ class YAS3FS(LoggingMixIn, Operations):
             if not data_range[1].contains(read_interval):
                 self.start_download_data(path, offset, length)
             logger.debug("read wait '%s' '%i' '%i' '%s'" % (path, length, offset, fh))
-            data_range[2].wait()
+            data_range[2].wait(self.io_wait)
             logger.debug("read awake '%s' '%i' '%i' '%s'" % (path, length, offset, fh))
 	# update atime just in the cache ???
         data = self.cache.get(path, 'data')
@@ -1467,7 +1467,7 @@ class YAS3FS(LoggingMixIn, Operations):
                 number_of_buffers = length / self.buffer_size + self.buffer_prefetch
                 self.start_download_data(path, offset, length)
             logger.debug("write wait '%s' '%i' '%i' '%s'" % (path, len(new_data), offset, fh))            
-            data_range[2].wait()
+            data_range[2].wait(self.io_wait)
             logger.debug("write awake '%s' '%i' '%i' '%s'" % (path, len(new_data), offset, fh))            
         data = self.cache.get(path, 'data')
 	with data.lock:
