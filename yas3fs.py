@@ -1815,8 +1815,8 @@ In an EC2 instance a IAM role can be used to give access to S3/SNS/SQS resources
         fuse = FUSE(YAS3FS(options), mountpoint, fsname="yas3fs",
                     foreground=options.foreground or options.debug,
                     default_permissions=True, allow_other=True,
-                    auto_cache=True,
-                    max_read=131072, max_write=131072,
+                    auto_cache=True, atime=False,
+                    max_read=131072, max_write=131072, max_readahead=131072,
                     auto_xattr=True, volname=volume_name,
                     noappledouble=True, daemon_timeout=3600)
                     # local=True) # local option is quite unstable
@@ -1824,6 +1824,6 @@ In an EC2 instance a IAM role can be used to give access to S3/SNS/SQS resources
         fuse = FUSE(YAS3FS(options), mountpoint, fsname="yas3fs",
                     foreground=options.foreground or options.debug,
                     default_permissions=True, allow_other=True,
-                    auto_cache=True,
+                    auto_cache=True, atime=False,
                     big_writes=True, # Not working on OS X
-                    max_read=131072, max_write=131072)
+                    max_read=131072, max_write=131072, max_readahead=131072)
