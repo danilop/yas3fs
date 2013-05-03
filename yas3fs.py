@@ -1451,10 +1451,17 @@ class YAS3FS(LoggingMixIn, Operations):
             logger.debug("write '%s' '%i' '%i' '%s' ENOENT" % (path, len(new_data), offset, fh))
             raise FuseOSError(errno.ENOENT)
 	length = len(new_data)
-        write_interval = [offset, offset + length - 1]
         while True:
             data_range = self.cache.get(path, 'data').get('range')
-            if data_range == None or data_range[0].contains(write_interval):
+            if data_range == None:
+                break
+            write_interval = [offset, offset + length - 1]
+            if data_range[0].contains(write_interval):
+                prefetch_length = length + self.buffer_size * self.buffer_prefetch
+                prefetch_interval = [offset, offset + prefetch_length - 1]
+                if not data_range[3].contains(prefetch_interval):
+                    logger.debug("download prefetch")
+                    self.start_download_data(path, offset, length)
                 break
             if not data_range[1].contains(write_interval):
                 number_of_buffers = length / self.buffer_size + self.buffer_prefetch
