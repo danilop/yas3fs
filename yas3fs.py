@@ -1117,11 +1117,14 @@ class YAS3FS(LoggingMixIn, Operations):
                 data.update_etag(k.etag[1:-1])
 	return True
 
-    def start_download_data(self, path, starting_from, length):
+    def start_download_data(self, path, starting_from=0, length=0):
         logger.debug("start_download_data '%s' %i %i" % (path, starting_from, length))
         start_buffer = int(starting_from) / self.buffer_size
         end_buffer = int(starting_from + length) / self.buffer_size
-        number_of_buffers = 1 + (end_buffer - start_buffer) + self.buffer_prefetch
+        if length == 0:
+            number_of_buffers = 0
+        else:
+            number_of_buffers = 1 + (end_buffer - start_buffer) + self.buffer_prefetch
         buffered_start = start_buffer * self.buffer_size
         t = threading.Thread(target=self.download_data, args=(path, buffered_start, number_of_buffers))
         t.daemon = True
@@ -1456,17 +1459,7 @@ class YAS3FS(LoggingMixIn, Operations):
             data_range = self.cache.get(path, 'data').get('range')
             if data_range == None:
                 break
-            write_interval = [offset, offset + length - 1]
-            if data_range[0].contains(write_interval):
-                prefetch_length = length + self.buffer_size * self.buffer_prefetch
-                prefetch_interval = [offset, offset + prefetch_length - 1]
-                if not data_range[3].contains(prefetch_interval):
-                    logger.debug("download prefetch")
-                    self.start_download_data(path, offset, length)
-                break
-            if not data_range[1].contains(write_interval):
-                number_of_buffers = length / self.buffer_size + self.buffer_prefetch
-                self.start_download_data(path, offset, length)
+            self.start_download_data(path)
             logger.debug("write wait '%s' '%i' '%i' '%s'" % (path, len(new_data), offset, fh))            
             data_range[2].wait(self.io_wait)
             logger.debug("write awake '%s' '%i' '%i' '%s'" % (path, len(new_data), offset, fh))            
