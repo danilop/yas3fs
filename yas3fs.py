@@ -873,10 +873,11 @@ class YAS3FS(LoggingMixIn, Operations):
         else:
             return self.s3_prefix + path
 
-    def get_key(self, path):
-        key = self.cache.get(path, 'key')
-        if key:
-            return key
+    def get_key(self, path, cache=True):
+        if cache:
+            key = self.cache.get(path, 'key')
+            if key:
+                return key
         key = self.s3_bucket.get_key(self.join_prefix(path))
         if not key:
             key = self.s3_bucket.get_key(self.join_prefix(path + '/'))
@@ -1514,7 +1515,7 @@ class YAS3FS(LoggingMixIn, Operations):
                 if full_size > self.multipart_size:
                     k = self.multipart_upload(k.name, data, full_size,
                                               headers={'Content-Type': type}, metadata=k.metadata)
-                    self.cache.set(path, 'key', k)
+                    k = self.get_key(path, cache=False)
                     written = True
             if not written:
                 k.set_contents_from_file(data.content, headers={'Content-Type': type})
