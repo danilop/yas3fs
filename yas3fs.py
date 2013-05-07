@@ -29,7 +29,7 @@ import io
 import re
 import uuid
 import copy
-import math
+import traceback
 
 import boto
 import boto.s3        
@@ -1120,10 +1120,10 @@ class YAS3FS(LoggingMixIn, Operations):
     def start_download_data(self, path, starting_from=0, length=0):
         logger.debug("start_download_data '%s' %i %i" % (path, starting_from, length))
         start_buffer = int(starting_from) / self.buffer_size
-        end_buffer = int(starting_from + length) / self.buffer_size
         if length == 0:
             number_of_buffers = 0
         else:
+            end_buffer = int(starting_from + length - 1) / self.buffer_size
             number_of_buffers = 1 + (end_buffer - start_buffer) + self.buffer_prefetch
         buffered_start = start_buffer * self.buffer_size
         t = threading.Thread(target=self.download_data, args=(path, buffered_start, number_of_buffers))
@@ -1134,14 +1134,15 @@ class YAS3FS(LoggingMixIn, Operations):
         logger.debug("download_data '%s' %i %i [thread '%s']" % (path, starting_from, number_of_buffers, threading.current_thread().name))
 
         data = self.cache.get(path, 'data')
-        key = copy.deepcopy(self.get_key(path)) # Something better ??? I need a local copy of the key...
+        # key = self.get_key(path)
+        key = copy.deepcopy(self.get_key(path))
 
         delete_flag = False
 
         if number_of_buffers == 0:
-            up_to = key.size
+            up_to = key.size - 1
         else:
-            up_to = min (key.size, starting_from + self.buffer_size * number_of_buffers)
+            up_to = min (key.size - 1, starting_from + self.buffer_size * number_of_buffers - 1)
 
         with self.cache.lock:
             if data.has('range'):
@@ -1151,7 +1152,7 @@ class YAS3FS(LoggingMixIn, Operations):
                     return # download already requested
                 requested_interval.add(download_interval)
             else:
-                return
+                return # Nothing to do...
 
         try:
             pos = starting_from
@@ -1161,18 +1162,19 @@ class YAS3FS(LoggingMixIn, Operations):
                         (interval, next_interval, event, requested_interval) = data.get('range')
                     else:
                         return
-                    while True:
+                    while pos <= up_to:
                         new_interval = [pos, pos + self.buffer_size - 1]
                         if not next_interval.contains(new_interval):
                             break
                         pos = pos + self.buffer_size
-                    if pos >= up_to:
+                    if pos > up_to:
                         data.set('range', (interval, next_interval, threading.Event(), requested_interval))
                         event.set()
                         break
                     next_interval.add(new_interval)
 
                 range_headers = { 'Range' : 'bytes=' + str(pos) + '-' + str(pos + self.buffer_size - 1) }
+                logger.debug("download_data range '%s' '%s' [thread '%s']" % (path, range_headers, threading.current_thread().name))
                 bytes = key.get_contents_as_string(headers=range_headers)
                 logger.debug("download_data at %i '%s' %i %i [thread '%s']" % (pos, path, starting_from, number_of_buffers, threading.current_thread().name))
                 with self.cache.lock:
@@ -1191,16 +1193,12 @@ class YAS3FS(LoggingMixIn, Operations):
                             data.content.write(bytes)
                         new_interval = [pos, pos + length - 1]
                         pos += length
-                        overlap = interval.intersects(new_interval)
                         interval.add(new_interval)
                         data.update_size(length) # Should I use max from interval ??? Does not work in case of orverlap, overestimating size
-                        if overlap:
-                            logger.debug("download_data end for overlap '%s' for '%s' [thread '%s']" %
-                                         (path, new_interval, threading.current_thread().name))
-                    data.set('range', (interval, next_interval, threading.Event(), requested_interval))
-                    event.set()
-                    if overlap or pos >= up_to: # Check also if pos >= up_to ???
-                        break
+                        data.set('range', (interval, next_interval, threading.Event(), requested_interval))
+                        event.set()
+                        if pos > up_to: # Do I need this?
+                            break
         except boto.exception.S3ResponseError:
             delete_flag = True
 
@@ -1219,6 +1217,7 @@ class YAS3FS(LoggingMixIn, Operations):
                     event.set()
 
         if delete_flag:
+            logger.debug("download_data delete '%s' %i [thread '%s']" % (path, starting_from, threading.current_thread().name))
             self.cache.delete(path) # Something went wrong...
 
     def readlink(self, path):
@@ -1698,8 +1697,7 @@ def removeEmptyDirForFile(filename):
     if not os.listdir(dirname): # to check if the dir is empty
          os.removedirs(dirname)
 
-if __name__ == '__main__':
-
+def main():
     usage = """%prog <mountpoint> [options]
 
 YAS3FS (Yet Another S3-backed File System) is a Filesystem in Userspace (FUSE) interface to Amazon S3.
@@ -1782,9 +1780,6 @@ In an EC2 instance a IAM role can be used to give access to S3/SNS/SQS resources
 
     (options, args) = parser.parse_args()
 
-    logging.basicConfig()
-    logger = logging.getLogger('yas3fs')
-
     if options.logfile != '':
         logHandler = logging.handlers.RotatingFileHandler(options.logfile, maxBytes=1024*1024, backupCount=10)
         logger.addHandler(logHandler)
@@ -1819,5 +1814,16 @@ In an EC2 instance a IAM role can be used to give access to S3/SNS/SQS resources
                     foreground=options.foreground or options.debug,
                     default_permissions=True, allow_other=True,
                     auto_cache=True, atime=False,
-                    big_writes=True, # Not working on OS X
+                    big_writes=True, # Not working on OS Xyes
                     max_read=131072, max_write=131072, max_readahead=131072)
+
+if __name__ == '__main__':
+
+    logging.basicConfig()
+    logger = logging.getLogger('yas3fs')
+
+    try:
+        main()
+    except Exception as e:
+        logger.exception(e)
+        raise
