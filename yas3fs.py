@@ -1135,14 +1135,15 @@ class YAS3FS(LoggingMixIn, Operations):
 
         data = self.cache.get(path, 'data')
         # key = self.get_key(path)
-        key = copy.deepcopy(self.get_key(path))
+	mydata = threading.local()
+        mydata.key = copy.deepcopy(self.get_key(path))
 
         delete_flag = False
 
         if number_of_buffers == 0:
-            up_to = key.size - 1
+            up_to = mydata.key.size - 1
         else:
-            up_to = min (key.size - 1, starting_from + self.buffer_size * number_of_buffers - 1)
+            up_to = min (mydata.key.size - 1, starting_from + self.buffer_size * number_of_buffers - 1)
 
         with self.cache.lock:
             if data.has('range'):
@@ -1173,9 +1174,9 @@ class YAS3FS(LoggingMixIn, Operations):
                         break
                     next_interval.add(new_interval)
 
-                range_headers = { 'Range' : 'bytes=' + str(pos) + '-' + str(pos + self.buffer_size - 1) }
-                logger.debug("download_data range '%s' '%s' [thread '%s']" % (path, range_headers, threading.current_thread().name))
-                bytes = key.get_contents_as_string(headers=range_headers)
+                mydata.range_headers = { 'Range' : 'bytes=' + str(pos) + '-' + str(pos + self.buffer_size - 1) }
+                logger.debug("download_data range '%s' '%s' [thread '%s']" % (path, mydata.range_headers, threading.current_thread().name))
+                bytes = mydata.key.get_contents_as_string(headers=mydata.range_headers)
                 logger.debug("download_data at %i '%s' %i %i [thread '%s']" % (pos, path, starting_from, number_of_buffers, threading.current_thread().name))
                 with self.cache.lock:
                     if data.has('range'):
@@ -1200,19 +1201,20 @@ class YAS3FS(LoggingMixIn, Operations):
                         if pos > up_to: # Do I need this?
                             break
         except boto.exception.S3ResponseError:
+            logger.debug("download_data end for S3 error '%s' %i [thread '%s']" % (path, starting_from, threading.current_thread().name))
+            delete_flag = True
+        except:
+	    logger.debug("download_data end for unknown error '%s' %i [thread '%s']" % (path, starting_from, threading.current_thread().name))
             delete_flag = True
 
-        if delete_flag:
-            logger.debug("download_data end for S3 error '%s' %i [thread '%s']" % (path, starting_from, threading.current_thread().name))
-        else:
-            logger.debug("download_data end '%s' %i-%i [thread '%s']" % (path, starting_from, pos, threading.current_thread().name))
+        logger.debug("download_data end '%s' %i-%i [thread '%s']" % (path, starting_from, pos, threading.current_thread().name))
 
         with self.cache.lock:
             if data.has('range'):
                 (interval, next_interval, event, requested_interval) = data.get('range')
-                if interval.contains([0, key.size - 1]): # -1 ???
+                if interval.contains([0, mydata.key.size - 1]): # -1 ???
                     data.delete('range')
-                    data.update_etag(key.etag[1:-1])
+                    data.update_etag(mydata.key.etag[1:-1])
                     logger.debug("download_data all ended '%s' [thread '%s']" % (path, threading.current_thread().name))
                     event.set()
 
