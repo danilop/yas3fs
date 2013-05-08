@@ -2,14 +2,16 @@
 
 FILEPATH=$1
 
+FILELIST=`find $FILEPATH -type f`
+NUMFILES=`echo "$FILELIST"|wc -l`
+
 while :
 do
 
-    NUMFILES=`find $FILEPATH -type f|wc -l`
-    N=`echo "$NUMFILES * $RANDOM / 32767"|bc`
+    N=`echo "1 + ($NUMFILES * $RANDOM / 32767)"|bc`
     echo "File Number is $N out of $NUMFILES"
 
-    FILENAME=`find $FILEPATH -type f|sed -n ${N}p`
+    FILENAME=`echo "$FILELIST"|sed -n ${N}p`
     echo "File name is: $FILENAME"
 
     SIZE=`cat $FILENAME|wc -c`
