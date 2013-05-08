@@ -151,9 +151,23 @@ class FSData():
                         self.etag = etag_file.read()
             else:
                 createDirForFile(filename)
-                self.content = io.FileIO(filename, mode='wb+')
+                open(filename, 'w').close() # To create an empty file (and overwrite a previous file)
         else:
             raise FSData.unknown_store
+    def open(self):
+        with self.lock:
+            if not self.has('open'):
+                if self.store == 'disk':
+                    filename = self.cache.get_cache_filename(self.path)
+                    self.content = io.FileIO(filename, mode='rb+')
+            self.inc('open')
+    def close(self):
+        with self.lock:
+            self.dec('open')
+            if not self.has('open'):
+                if self.store == 'disk':
+                    self.content.close()
+                    self.content = None
     def update_etag(self, new_etag):
         with self.lock:
             if new_etag != self.etag:
@@ -1138,8 +1152,6 @@ class YAS3FS(LoggingMixIn, Operations):
 	mydata = threading.local()
         mydata.key = copy.deepcopy(self.get_key(path))
 
-        delete_flag = False
-
         if number_of_buffers == 0:
             up_to = mydata.key.size - 1
         else:
@@ -1155,57 +1167,60 @@ class YAS3FS(LoggingMixIn, Operations):
             else:
                 return # Nothing to do...
 
-        try:
-            pos = starting_from
-            while True:
-                with self.cache.lock:
-                    if data.has('range'):
-                        (interval, next_interval, event, requested_interval) = data.get('range')
-                    else:
-                        return
-                    while pos <= up_to:
-                        new_interval = [pos, pos + self.buffer_size - 1]
-                        if not next_interval.contains(new_interval):
-                            break
-                        pos = pos + self.buffer_size
-                    if pos > up_to:
-                        data.set('range', (interval, next_interval, threading.Event(), requested_interval))
-                        event.set()
+        pos = starting_from
+        while True:
+            with self.cache.lock:
+                if data.has('range'):
+                    (interval, next_interval, event, requested_interval) = data.get('range')
+                else:
+                    return
+                while pos <= up_to:
+                    new_interval = [pos, pos + self.buffer_size - 1]
+                    if not next_interval.contains(new_interval):
                         break
-                    next_interval.add(new_interval)
+                    pos = pos + self.buffer_size
+                if pos > up_to:
+                    data.set('range', (interval, next_interval, threading.Event(), requested_interval))
+                    event.set()
+                    break
+                next_interval.add(new_interval)
 
-                mydata.range_headers = { 'Range' : 'bytes=' + str(pos) + '-' + str(pos + self.buffer_size - 1) }
-                logger.debug("download_data range '%s' '%s' [thread '%s']" % (path, mydata.range_headers, threading.current_thread().name))
-                bytes = mydata.key.get_contents_as_string(headers=mydata.range_headers)
-                logger.debug("download_data at %i '%s' %i %i [thread '%s']" % (pos, path, starting_from, number_of_buffers, threading.current_thread().name))
-                with self.cache.lock:
-                    if data.has('range'):
-                        (interval, next_interval, event, requested_interval) = data.get('range')
-                    else:
-                        return # It means something has happended (data deleted or download ended by another thread) and I should do nothing
-                    if not bytes:
-                        length = 0
-                    else:
-                        length = len(bytes)
-                    overlap = False
-                    if length > 0:
-                        with data.lock:
-                            data.content.seek(pos)
-                            data.content.write(bytes)
-                        new_interval = [pos, pos + length - 1]
-                        pos += length
-                        interval.add(new_interval)
-                        data.update_size(length) # Should I use max from interval ??? Does not work in case of orverlap, overestimating size
-                        data.set('range', (interval, next_interval, threading.Event(), requested_interval))
-                        event.set()
-                        if pos > up_to: # Do I need this?
-                            break
-        except boto.exception.S3ResponseError:
-            logger.debug("download_data end for S3 error '%s' %i [thread '%s']" % (path, starting_from, threading.current_thread().name))
-            delete_flag = True
-        except:
-	    logger.debug("download_data end for unknown error '%s' %i [thread '%s']" % (path, starting_from, threading.current_thread().name))
-            delete_flag = True
+            mydata.range_headers = { 'Range' : 'bytes=' + str(pos) + '-' + str(pos + self.buffer_size - 1) }
+            logger.debug("download_data range '%s' '%s' [thread '%s']" % (path, mydata.range_headers, threading.current_thread().name))
+
+            retry = True
+            while retry:
+                try:
+                    bytes = mydata.key.get_contents_as_string(headers=mydata.range_headers)
+                    retry = False
+                except Exception as e:
+                    logger.info("download_data error '%s' [thread '%s'] -> retrying" % (path, threading.current_thread().name))
+                    logger.exception(e)
+                    retry = True
+
+            logger.debug("download_data at %i '%s' %i %i [thread '%s']" % (pos, path, starting_from, number_of_buffers, threading.current_thread().name))
+            with self.cache.lock:
+                if data.has('range'):
+                    (interval, next_interval, event, requested_interval) = data.get('range')
+                else:
+                    return # It means something has happended (data deleted or download ended by another thread) and I should do nothing
+                if not bytes:
+                    length = 0
+                else:
+                    length = len(bytes)
+                overlap = False
+                if length > 0:
+                    with data.lock:
+                        data.content.seek(pos)
+                        data.content.write(bytes)
+                    new_interval = [pos, pos + length - 1]
+                    pos += length
+                    interval.add(new_interval)
+                    data.update_size(length) # Should I use max from interval ??? Does not work in case of orverlap, overestimating size
+                    data.set('range', (interval, next_interval, threading.Event(), requested_interval))
+                    event.set()
+                    if pos > up_to: # Do I need this?
+                        break
 
         logger.debug("download_data end '%s' %i-%i [thread '%s']" % (path, starting_from, pos, threading.current_thread().name))
 
@@ -1217,10 +1232,6 @@ class YAS3FS(LoggingMixIn, Operations):
                     data.update_etag(mydata.key.etag[1:-1])
                     logger.debug("download_data all ended '%s' [thread '%s']" % (path, threading.current_thread().name))
                     event.set()
-
-        if delete_flag:
-            logger.debug("download_data delete '%s' %i [thread '%s']" % (path, starting_from, threading.current_thread().name))
-            self.cache.delete(path) # Something went wrong...
 
     def readlink(self, path):
         logger.debug("readlink '%s'" % (path))
@@ -1407,7 +1418,9 @@ class YAS3FS(LoggingMixIn, Operations):
 	self.cache.add(path)
 	if not self.check_data(path):
 	    self.mknod(path, flags)
-	self.cache.get(path, 'data').inc('open')
+        with self.cache.lock:
+            data = self.cache.get(path, 'data')
+            data.open()
         logger.debug("open '%s' '%i' '%s'" % (path, flags, self.cache.get(path, 'data').get('open')))
 	return 0
 
@@ -1416,10 +1429,10 @@ class YAS3FS(LoggingMixIn, Operations):
         if self.cache.is_empty(path):
             logger.debug("release '%s' '%i' ENOENT" % (path, flags))
             raise FuseOSError(errno.ENOENT)
-        data = self.cache.get(path, 'data')
-        if data:
-            data.dec('open')
-        logger.debug("release '%s' '%i' '%s'" % (path, flags, data.get('open')))
+        with self.cache.lock:
+            data = self.cache.get(path, 'data')
+            data.close()
+        logger.debug("release '%s' '%i' '%s'" % (path, flags, self.cache.get(path, 'data').get('open')))
 	return 0
 
     def read(self, path, length, offset, fh=None):
