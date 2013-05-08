@@ -142,7 +142,7 @@ class FSData():
             if os.path.isfile(filename):
                 # There's a file already there
                 self.content = io.FileIO(filename, mode='rb+')
-                self.update_size(os.stat(filename).st_size)
+                self.update_size()
                 self.set('new', None) # Not sure it is the latest version
                 # Now search for an etag file
                 filename = self.cache.get_cache_etags_filename(self.path)
@@ -177,9 +177,13 @@ class FSData():
                     createDirForFile(filename)
                     with open(filename, 'w') as etag_file:
                         etag_file.write(new_etag)
-    def update_size(self, delta):
+    def get_current_size(self):
+        return self.content.seek(0,2)
+    def update_size(self):
+        current_size = self.get_current_size()
+        delta = current_size - self.size
         with self.lock:
-            self.size += delta;
+            self.size = current_size;
         with self.cache.data_size_lock:
             self.cache.size[self.store] += delta
     def get_content_as_string(self):
@@ -217,7 +221,7 @@ class FSData():
                     filename = self.cache.get_cache_etags_filename(self.path)
                     os.unlink(filename)
                     removeEmptyDirForFile(filename)
-                self.update_size(-self.size)
+                self.update_size()
                 data_range = self.get('range')
                 if data_range:
                     data_range[2].set() # To make downloading threads go on... and then exit
@@ -1117,7 +1121,7 @@ class YAS3FS(LoggingMixIn, Operations):
                 data.set('new', None) # Next time don't check the Etag
             if data.etag == etag:
                 return True
-            data.update_size(-data.size) # Can be zero...
+            data.update_size()
             if k.size == 0:
                 logger.debug("check_data '%s' nothing to download" % (path))
                 return True # No need to download anything
@@ -1127,7 +1131,7 @@ class YAS3FS(LoggingMixIn, Operations):
                         data.set('range', (Interval(), Interval(), threading.Event(), Interval()))
             else: # Download at once
                 k.get_contents_to_file(data.content)
-                data.update_size(k.size)
+                data.update_size()
                 data.update_etag(k.etag[1:-1])
 	return True
 
@@ -1216,7 +1220,7 @@ class YAS3FS(LoggingMixIn, Operations):
                     new_interval = [pos, pos + length - 1]
                     pos += length
                     interval.add(new_interval)
-                    data.update_size(length) # Should I use max from interval ??? Does not work in case of orverlap, overestimating size
+                    data.update_size() # Should I use max from interval ??? Does not work in case of orverlap, overestimating size
                     data.set('range', (interval, next_interval, threading.Event(), requested_interval))
                     event.set()
                     if pos > up_to: # Do I need this?
@@ -1308,7 +1312,7 @@ class YAS3FS(LoggingMixIn, Operations):
 	data.set('change', True)
         if size != old_size:
             attr['st_size'] = str(size)
-            data.update_size(size - old_size)
+            data.update_size()
         attr['st_mtime'] = now
         attr['st_atime'] = now
         self.set_metadata(path, 'attr', attr)
@@ -1488,7 +1492,7 @@ class YAS3FS(LoggingMixIn, Operations):
             new_size = max(old_size, offset + length)
             if new_size != old_size:
                 attr['st_size'] = str(new_size)
-                data.update_size(new_size - old_size)
+                data.update_size()
             attr['st_mtime'] = now
             attr['st_atime'] = now
             self.set_metadata(path, 'attr', attr)
