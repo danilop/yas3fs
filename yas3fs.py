@@ -152,6 +152,7 @@ class FSData():
             else:
                 createDirForFile(filename)
                 open(filename, 'w').close() # To create an empty file (and overwrite a previous file)
+                self.content = None # Not open, yet
         else:
             raise FSData.unknown_store
     def open(self):
@@ -178,7 +179,10 @@ class FSData():
                     with open(filename, 'w') as etag_file:
                         etag_file.write(new_etag)
     def get_current_size(self):
-        return self.content.seek(0,2)
+        if self.content:
+            return self.content.seek(0,2)
+        else:
+            return 0 # There's no content...
     def update_size(self):
         current_size = self.get_current_size()
         delta = current_size - self.size
@@ -221,6 +225,7 @@ class FSData():
                     filename = self.cache.get_cache_etags_filename(self.path)
                     os.unlink(filename)
                     removeEmptyDirForFile(filename)
+                self.content = None # If not
                 self.update_size()
                 data_range = self.get('range')
                 if data_range:
@@ -240,7 +245,8 @@ class FSData():
                 createDirForFile(new_filename)
                 os.rename(filename, new_filename)
                 removeEmptyDirForFile(filename)
-                self.content = io.FileIO(new_filename, mode='wb+')
+                if self.content:
+                    self.content = io.FileIO(new_filename, mode='wb+')
     def inc(self, prop):
         with self.lock:
             if prop in self.props:
@@ -1423,8 +1429,7 @@ class YAS3FS(LoggingMixIn, Operations):
 	if not self.check_data(path):
 	    self.mknod(path, flags)
         with self.cache.lock:
-            data = self.cache.get(path, 'data')
-            data.open()
+            self.cache.get(path, 'data').open()
         logger.debug("open '%s' '%i' '%s'" % (path, flags, self.cache.get(path, 'data').get('open')))
 	return 0
 
@@ -1434,8 +1439,7 @@ class YAS3FS(LoggingMixIn, Operations):
             logger.debug("release '%s' '%i' ENOENT" % (path, flags))
             raise FuseOSError(errno.ENOENT)
         with self.cache.lock:
-            data = self.cache.get(path, 'data')
-            data.close()
+            self.cache.get(path, 'data').close()
         logger.debug("release '%s' '%i' '%s'" % (path, flags, self.cache.get(path, 'data').get('open')))
 	return 0
 
