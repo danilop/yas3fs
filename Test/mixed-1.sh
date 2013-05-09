@@ -4,6 +4,7 @@ TESTPATH=$1
 
 mkdir -p $TESTPATH
 cd $TESTPATH
+
 echo "Downloading latest tarball of Wordpress ..."
 wget http://wordpress.org/latest.tar.gz
 echo "Listing content ..."
@@ -28,19 +29,3 @@ echo "Listing zip file ..."
 unzip -l wp.zip
 echo "Remiving zip file ..."
 rm wp.zip
-
-echo "Creating 't1' file with current date ..."
-date > t1
-echo "Copying 't1' in 't2' ..."
-cp t1 t2
-for i in `seq 1 1 10`
-do
-    echo "Adding 't1' at the end of 't2' ..."
-    cat t1 >> t2
-    echo "Adding 't2' at the end of 't1' ..."
-    cat t2 >> t1
-done
-echo "Removing 't1' ..."
-rm t1
-echo "Removing 't2' ..."
-rm t2
