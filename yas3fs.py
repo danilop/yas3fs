@@ -937,28 +937,33 @@ class YAS3FS(LoggingMixIn, Operations):
                 s = None
             if metadata_name == 'attr': # Custom exception(s)
                 if key:
-                    metadata_values['st_size'] = str(key.size)
+                    metadata_values['st_size'] = key.size
                 else:
-                    metadata_values['st_size'] = '0'                
+                    metadata_values['st_size'] = 0
                 if not s: # Set default attr to browse any S3 bucket TODO directories
-		    uid, gid, pid = fuse_get_context()
- 		    metadata_values['st_uid'] = str(int(uid))
- 		    metadata_values['st_gid'] = str(int(gid))
+		    uid, gid = get_uid_gid()
+ 		    metadata_values['st_uid'] = uid
+ 		    metadata_values['st_gid'] = gid
                     if key and key.name != '' and key.name[-1] != '/':
-                        metadata_values['st_mode'] = str(stat.S_IFREG | 0755)
+                        metadata_values['st_mode'] = (stat.S_IFREG | 0755)
                     else:
-                        metadata_values['st_mode'] = str(stat.S_IFDIR | 0755)
+                        metadata_values['st_mode'] = (stat.S_IFDIR | 0755)
                     if key and key.last_modified:
-                        now = str(time.mktime(time.strptime(key.last_modified, "%a, %d %b %Y %H:%M:%S %Z")))
+                        now = time.mktime(time.strptime(key.last_modified, "%a, %d %b %Y %H:%M:%S %Z"))
                     else:
-                        now = str(time.time()) # Do something better ??? 
+                        now = get_current_time()
                     metadata_values['st_mtime'] = now
                     metadata_values['st_atime'] = now
                     metadata_values['st_ctime'] = now
 	    if s:
 		for kv in s.split(';'):
 		    k, v = kv.split('=')
-		    metadata_values[k] = v
+                    if v.isdigit():
+                        metadata_values[k] = int(v)
+                    elif v.replace(".", "", 1).isdigit():
+                        metadata_values[k] = float(v)
+                    else:
+                        metadata_values[k] = v
 	    self.cache.add(path)
 	    self.cache.set(path, metadata_name, metadata_values)
         else:
@@ -966,22 +971,26 @@ class YAS3FS(LoggingMixIn, Operations):
         logger.debug("get_metadata <- '%s' '%s' '%s' '%s'" % (path, metadata_name, key, metadata_values))
 	return metadata_values
 
-    def set_metadata(self, path, metadata_name, metadata_values, key=None):
+    def set_metadata(self, path, metadata_name=None, metadata_values=None, key=None):
         logger.debug("set_metadata '%s' '%s' '%s' '%s'" % (path, metadata_name, metadata_values, key))
-	self.cache.set(path, metadata_name, metadata_values)
+        if not metadata_values == None:
+            self.cache.set(path, metadata_name, metadata_values)
         data = self.cache.get(path, 'data')
         if self.write_metadata and (key or (data and not data.has('change'))): # No change in progress, I should write now
 	    if not key:
                 key = self.get_key(path)
 	    if key:
-		if metadata_values:
-		    s = ';'.join(['%s=%s' % (k,v) for k,v in metadata_values.iteritems()
-				  if not (metadata_name == 'attr' and k == 'st_size')])
+		if metadata_name:
+                    values = metadata_values
+                    if values == None:
+                        values = self.cache.get(path, metadata_name)
+		    s = ';'.join(['%s=%s' % (k,v) for k,v in values.iteritems()
+				  if not (metadata_name == 'attr' and k == 'st_size')]) # For the size use the key.size
 		    key.metadata[metadata_name] = s
 		elif metadata_name in key.metadata:
 		    del key.metadata[metadata_name]
                 if data and not data.has('change'):
-                    logger.debug("writing metadata '%s' '%s' '%s' '%s'" % (path, metadata_name, metadata_values, key))
+                    logger.debug("writing metadata '%s' '%s'" % (path, key))
                     md = key.metadata
                     md['Content-Type'] = key.content_type # Otherwise we loose the Content-Type with Copy
                     key.copy(key.bucket.name, key.name, md, preserve_acl=False) # Do I need to preserve ACL?
@@ -997,13 +1006,13 @@ class YAS3FS(LoggingMixIn, Operations):
             logger.debug("getattr <- '%s' '%s' ENOENT" % (path, fh))
             raise FuseOSError(errno.ENOENT)
 	st = {}
-	st['st_mode'] = int(attr['st_mode'])
-	st['st_atime'] = float(attr['st_atime']) # Should I update this ???
-	st['st_mtime'] = float(attr['st_mtime']) # Should I use k.last_modified ???
-	st['st_ctime'] = float(attr['st_ctime'])
-        st['st_uid'] = int(attr['st_uid'])
-        st['st_gid'] = int(attr['st_gid'])
-	st['st_size'] = int(attr['st_size'])
+	st['st_mode'] = attr['st_mode']
+	st['st_atime'] = attr['st_atime'] # Should I update this ???
+	st['st_mtime'] = attr['st_mtime'] # Should I use k.last_modified ???
+	st['st_ctime'] = attr['st_ctime']
+        st['st_uid'] = attr['st_uid']
+        st['st_gid'] = attr['st_gid']
+	st['st_size'] = attr['st_size']
         if stat.S_ISDIR(st['st_mode']) and st['st_size'] == 0:
             st['st_size'] = 4096 # For compatibility...
 	st['st_nlink'] = 1 # Something better TODO ???
@@ -1049,16 +1058,16 @@ class YAS3FS(LoggingMixIn, Operations):
 	k = self.get_key(path)
 	if k:
 	    raise FuseOSError(errno.EEXIST)
-	now = str(time.time())
-	uid, gid, pid = fuse_get_context()
+	now = get_current_time()
+	uid, gid = get_uid_gid()
 	attr = {}
-	attr['st_uid'] = str(int(uid))
-	attr['st_gid'] = str(int(gid))
+	attr['st_uid'] = uid
+	attr['st_gid'] = gid
 	attr['st_atime'] = now
 	attr['st_mtime'] = now
 	attr['st_ctime'] = now
-	attr['st_size'] = '0'
-	attr['st_mode'] = str(int(stat.S_IFDIR | mode))
+	attr['st_size'] = 0
+	attr['st_mode'] = (stat.S_IFDIR | mode)
 	self.cache.delete(path)
 	self.cache.add(path)
         data = FSData(self.cache, 'mem')
@@ -1084,13 +1093,13 @@ class YAS3FS(LoggingMixIn, Operations):
 	k = self.get_key(path)
 	if k:
 	    raise FuseOSError(errno.EEXIST)
-	now = str(time.time())
-	uid, gid, pid = fuse_get_context()
+	now = get_current_time()
+	uid, gid = get_uid_gid()
 	attr = {}
-	attr['st_uid'] = str(int(uid))
-	attr['st_gid'] = str(int(gid))
+	attr['st_uid'] = uid
+	attr['st_gid'] = gid
 	attr['st_ctime'] = now # atime, mtime and size are updated in the following 'write'
-	attr['st_mode'] = str(stat.S_IFLNK | 0755)
+	attr['st_mode'] = (stat.S_IFLNK | 0755)
 	self.cache.delete(path)
 	self.cache.add(path)
         data = FSData(self.cache, 'mem')
@@ -1314,16 +1323,16 @@ class YAS3FS(LoggingMixIn, Operations):
             data_range[2].wait(self.io_wait)
             logger.debug("truncate awake '%s' '%i'" % (path, size))
         data.content.truncate(size)
-        now = str(time.time())
+        now = get_current_time()
 	attr = self.get_metadata(path, 'attr')
-        old_size = int(attr['st_size'])
+        old_size = attr['st_size']
 	data.set('change', True)
         if size != old_size:
-            attr['st_size'] = str(size)
+            attr['st_size'] = size
             data.update_size()
         attr['st_mtime'] = now
         attr['st_atime'] = now
-        self.set_metadata(path, 'attr', attr)
+        ###self.set_metadata(path, 'attr', attr)
 	return 0
 
     ### Should work for files in cache but not flushed to S3...
@@ -1383,16 +1392,16 @@ class YAS3FS(LoggingMixIn, Operations):
                 logger.debug("mknod '%s' '%i' '%s' EEXIST" % (path, mode, dev))
 		raise FuseOSError(errno.EEXIST)
 	    self.cache.add(path)
-	now = str(time.time())
-	uid, gid, pid = fuse_get_context()
+	now = get_current_time()
+	uid, gid = get_uid_gid()
 	attr = {}
-	attr['st_uid'] = str(int(uid))
-	attr['st_gid'] = str(int(gid))
-	attr['st_mode'] = str(stat.S_IFREG | mode)
+	attr['st_uid'] = uid
+	attr['st_gid'] = gid
+	attr['st_mode'] = int(stat.S_IFREG | mode)
 	attr['st_atime'] = now
 	attr['st_mtime'] = now
 	attr['st_ctime'] = now
-	attr['st_size'] = '0' # New file
+	attr['st_size'] = 0 # New file
         if self.cache_on_disk > 0:
             data = FSData(self.cache, 'mem') # New files (almost) always cache in mem - is it ok ???
         else:
@@ -1492,16 +1501,16 @@ class YAS3FS(LoggingMixIn, Operations):
             data.content.seek(offset)
             data.content.write(new_data)
             data.set('change', True)
-	    now = str(time.time())
+	    now = get_current_time()
 	    attr = self.get_metadata(path, 'attr')
-            old_size = int(attr['st_size'])
+            old_size = attr['st_size']
             new_size = max(old_size, offset + length)
             if new_size != old_size:
-                attr['st_size'] = str(new_size)
+                attr['st_size'] = new_size
                 data.update_size()
             attr['st_mtime'] = now
             attr['st_atime'] = now
-            self.set_metadata(path, 'attr', attr)
+            ###self.set_metadata(path, 'attr', attr)
         return length
 
     def flush(self, path, fh=None):
@@ -1513,13 +1522,12 @@ class YAS3FS(LoggingMixIn, Operations):
                 k = Key(self.s3_bucket)
                 k.key = self.join_prefix(path)
                 self.cache.set(path, 'key', k)
-            now = str(time.time())
+            now = get_current_time()
             attr = self.get_metadata(path, 'attr', k)
             attr['st_atime'] = now
             attr['st_mtime'] = now
-            self.set_metadata(path, 'attr', attr, k)
-            xattr = self.get_metadata(path, 'xattr') # Do something better ???
-            self.set_metadata(path, 'xattr', xattr, k)
+            self.set_metadata(path, 'attr', None, k) # To update key metadata before upload to S3
+            self.set_metadata(path, 'xattr', None, k) # To update key metadata before upload to S3
             type = mimetypes.guess_type(path)[0] or 'application/octet-stream'
             data.content.seek(0) # Do I need this???
             if k.size == None:
@@ -1528,7 +1536,7 @@ class YAS3FS(LoggingMixIn, Operations):
                 old_size = k.size
             written = False
             if self.multipart_num > 0:
-                full_size = data.size
+                full_size = attr['st_size']
                 if full_size > self.multipart_size:
                     k = self.multipart_upload(k.name, data, full_size,
                                               headers={'Content-Type': type}, metadata=k.metadata)
@@ -1604,8 +1612,8 @@ class YAS3FS(LoggingMixIn, Operations):
         attr = self.get_metadata(path, 'attr')
         if attr < 0:
             return attr
-        attr['st_mode'] = str(mode)
-        self.set_metadata(path, 'attr', attr)
+        attr['st_mode'] = mode
+        self.set_metadata(path, 'attr')
         return 0
 
     def chown(self, path, uid, gid):
@@ -1616,9 +1624,9 @@ class YAS3FS(LoggingMixIn, Operations):
         attr = self.get_metadata(path, 'attr')
         if attr < 0:
             return attr
-        attr['st_uid'] = str(uid)
-        attr['st_gid'] = str(gid)
-        self.set_metadata(path, 'attr', attr)
+        attr['st_uid'] = uid
+        attr['st_gid'] = gid
+        self.set_metadata(path, 'attr')
         return 0
 
     def utime(self, path, times=None):
@@ -1626,14 +1634,14 @@ class YAS3FS(LoggingMixIn, Operations):
         if self.cache.is_empty(path):
             logger.debug("utime '%s' '%s' ENOENT" % (path, times))
             raise FuseOSError(errno.ENOENT)
-        now = time.time()
+        now = get_current_time()
         atime, mtime = times if times else (now, now)
         attr = self.get_metadata(path, 'attr')
         if attr < 0:
             return attr
         attr['st_atime'] = atime
         attr['st_mtime'] = mtime
-        self.set_metadata(path, 'attr', attr)
+        self.set_metadata(path, 'attr')
         return 0
 
     def getxattr(self, path, name, position=0):
@@ -1663,7 +1671,7 @@ class YAS3FS(LoggingMixIn, Operations):
         xattr = self.get_metadata(path, 'xattr')
         try:
             del xattr[name]
-            self.set_metadata(path, 'xattr', xattr)
+            self.set_metadata(path, 'xattr')
         except KeyError:
             logger.debug("removexattr '%s' should ENOATTR" % (path, name))
             return '' # Should return ENOATTR
@@ -1678,7 +1686,7 @@ class YAS3FS(LoggingMixIn, Operations):
         if xattr < 0:
             return xattr
         xattr[name] = value
-        self.set_metadata(path, 'xattr', xattr)
+        self.set_metadata(path, 'xattr')
         return 0
 
     def statfs(self, path):
@@ -1721,6 +1729,13 @@ def removeEmptyDirForFile(filename):
     dirname = os.path.dirname(filename)
     if not os.listdir(dirname): # to check if the dir is empty
          os.removedirs(dirname)
+
+def get_current_time():
+    return time.mktime(time.gmtime())
+
+def get_uid_gid():
+    uid, gid, pid = fuse_get_context()
+    return int(uid), int(gid)
 
 def main():
     usage = """%prog <mountpoint> [options]
