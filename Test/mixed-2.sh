@@ -9,7 +9,7 @@ echo "Creating 't1' file with current date ..."
 date > t1
 echo "Copying 't1' in 't2' ..."
 cp t1 t2
-N=10
+N=12
 for i in `seq 1 1 $N`
 do
     echo "Iteration # $i of $N"
