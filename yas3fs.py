@@ -245,8 +245,9 @@ class FSData():
                 createDirForFile(new_filename)
                 os.rename(filename, new_filename)
                 removeEmptyDirForFile(filename)
+                self.path = new_path
                 if self.content:
-                    self.content = io.FileIO(new_filename, mode='wb+')
+                    self.content = io.FileIO(new_filename, mode='rb+')
     def inc(self, prop):
         with self.lock:
             if prop in self.props:
@@ -826,8 +827,9 @@ class YAS3FS(LoggingMixIn, Operations):
                 pass
                 
     def publish(self, message):
-        logger.debug("publish '%s'" % (message))
-        self.publish_queue.put(message)
+        if self.sns_topic_arn:
+            logger.debug("publish '%s'" % (message))
+            self.publish_queue.put(message)
 
     def check_cache_size(self):
         logger.debug("check_cache_size")
