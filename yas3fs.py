@@ -1155,7 +1155,7 @@ class YAS3FS(LoggingMixIn, Operations):
     def start_download_data(self, path, starting_from=0, length=0):
         logger.debug("start_download_data '%s' %i %i" % (path, starting_from, length))
         start_buffer = int(starting_from) / self.buffer_size
-        if length == 0:
+        if length == 0: # Means to the end of file
             number_of_buffers = 0
         else:
             end_buffer = int(starting_from + length - 1) / self.buffer_size
@@ -1174,7 +1174,7 @@ class YAS3FS(LoggingMixIn, Operations):
         if number_of_buffers == 0:
             up_to = mydata.key.size - 1
         else:
-            up_to = min(mydata.key.size - 1, starting_from + self.buffer_size * number_of_buffers - 1)
+            up_to = min(mydata.key.size, starting_from + self.buffer_size * number_of_buffers) - 1
 
         with self.cache.lock:
             data = self.cache.get(path, 'data')
@@ -1278,6 +1278,7 @@ class YAS3FS(LoggingMixIn, Operations):
                 data_range = data.get('range')
                 if data_range == None:
                     break
+                self.start_download_data(path)
                 logger.debug("readlink wait '%s'" % (path))
                 data_range[2].wait(self.io_wait)
                 logger.debug("readlink awake '%s'" % (path))
