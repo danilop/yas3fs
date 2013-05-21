@@ -1303,6 +1303,9 @@ class YAS3FS(LoggingMixIn, Operations):
                             pos += length
                             if pos > up_to: # Do I need this?
                                 break
+                        else:
+                            logger.debug("download_data %i bytes '%s' [thread '%s'] no content" % (length, path, threading.current_thread().name))
+                            break
 
         logger.debug("download_data end '%s' %i-%i [thread '%s']" % (path, starting_from, pos, threading.current_thread().name))
 
