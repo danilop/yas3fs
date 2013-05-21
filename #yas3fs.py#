@@ -1230,7 +1230,7 @@ class YAS3FS(LoggingMixIn, Operations):
     def download_data(self, path, starting_from, number_of_buffers):
         logger.debug("download_data '%s' %i %i [thread '%s']" % (path, starting_from, number_of_buffers, threading.current_thread().name))
 
-        key = copy.deepcopy(self.get_key(path))
+        key = self.get_key(path)
 
         if number_of_buffers == 0:
             up_to = key.size - 1
