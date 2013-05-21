@@ -133,7 +133,7 @@ class FSRange():
         self.event = threading.Event()
         self.lock = threading.RLock()
     def wait(self):
-        self.event.wait()
+        self.event.wait(1.0)
     def wake(self, again=True):
         with self.lock:
             e = self.event
@@ -1521,8 +1521,8 @@ class YAS3FS(LoggingMixIn, Operations):
         if not self.cache.has(path) or self.cache.is_empty(path):
             logger.debug("read '%s' '%i' '%i' '%s' ENOENT" % (path, length, offset, fh))
             raise FuseOSError(errno.ENOENT)
-        data = self.cache.get(path, 'data')
         while True:
+            data = self.cache.get(path, 'data')
             data_range = data.get('range')
             if data_range == None:
                 logger.debug("read '%s' '%i' '%i' '%s' no range" % (path, length, offset, fh))                
