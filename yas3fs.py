@@ -1237,15 +1237,6 @@ class YAS3FS(LoggingMixIn, Operations):
         else:
             up_to = min(key.size, starting_from + self.buffer_size * number_of_buffers) - 1
 
-        with self.cache.lock:
-            data = self.cache.get(path, 'data')
-            data_range = data.get('range')
-            if data_range:
-                download_interval = [starting_from, up_to]
-            else:
-                logger.debug("download_data no range (beginning) '%s' [thread '%s']" % (path, threading.current_thread().name))
-                return # Nothing to do...
-
         pos = starting_from
         while True:
             with self.cache.lock:
@@ -1258,6 +1249,7 @@ class YAS3FS(LoggingMixIn, Operations):
                     new_interval = [pos, pos + self.buffer_size - 1]
                     already_ongoing = False
                     if data_range.interval.contains(new_interval):
+                        logger.debug("already downloaded")
                         already_ongoing = True
                     else:
                         for i in data_range.next_intervals.itervalues():
@@ -1269,7 +1261,7 @@ class YAS3FS(LoggingMixIn, Operations):
                         break
                     pos = pos + self.buffer_size
                 if pos > up_to:
-                    data_range.wake()
+                    ###data_range.wake()
                     break
                 data_range.next_intervals[threading.current_thread().name] = new_interval
 
