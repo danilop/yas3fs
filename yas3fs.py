@@ -1239,7 +1239,7 @@ class YAS3FS(LoggingMixIn, Operations):
 
         pos = starting_from
         while True:
-            logger("download_data '%s' %i %i [thread '%s'] pos=%i" % (path, starting_from, number_of_buffers, threading.current_thread().name, pos))
+            logger.debug("download_data '%s' %i %i [thread '%s'] pos=%i" % (path, starting_from, number_of_buffers, threading.current_thread().name, pos))
             with self.cache.lock:
                 data = self.cache.get(path, 'data')
                 data_range = data.get('range')
