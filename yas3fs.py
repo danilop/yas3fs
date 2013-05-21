@@ -1257,11 +1257,14 @@ class YAS3FS(LoggingMixIn, Operations):
                 while pos <= up_to:
                     new_interval = [pos, pos + self.buffer_size - 1]
                     already_ongoing = False
-                    for i in data_range.next_intervals.itervalues():
-                        logger.debug("checking interval %s if contains %s" % (i, new_interval))
-                        if i[0] <= new_interval[0] and i[1] >= new_interval[1]:
-                            already_ongoing = True
-                            break
+                    if data_range.interval.contains(new_interval):
+                        already_ongoing = True
+                    else:
+                        for i in data_range.next_intervals.itervalues():
+                            logger.debug("checking interval %s if contains %s" % (i, new_interval))
+                            if i[0] <= new_interval[0] and i[1] >= new_interval[1]:
+                                already_ongoing = True
+                                break
                     if not already_ongoing:
                         break
                     pos = pos + self.buffer_size
