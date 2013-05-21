@@ -1258,7 +1258,7 @@ class YAS3FS(LoggingMixIn, Operations):
                     new_interval = [pos, pos + self.buffer_size - 1]
                     already_ongoing = False
                     for i in data_range.next_intervals.itervalues():
-                        logger.debug("checking interval %s" % i)
+                        logger.debug("checking interval %s if contains %s" % (i, new_interval))
                         if i[0] <= new_interval[0] and i[1] >= new_interval[1]:
                             already_ongoing = True
                             break
