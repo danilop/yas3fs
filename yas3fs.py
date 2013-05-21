@@ -129,7 +129,7 @@ class LinkedList():
 class FSRange():
     def __init__(self):
         self.interval = Interval()
-        self.next_intervals = []
+        self.next_intervals = {}
         self.event = threading.Event()
         self.lock = threading.RLock()
     def wait(self):
@@ -1257,17 +1257,17 @@ class YAS3FS(LoggingMixIn, Operations):
                 while pos <= up_to:
                     new_interval = [pos, pos + self.buffer_size - 1]
                     already_ongoing = False
-                    for i in data_range.next_intervals:
+                    for i in data_range.next_intervals.itervalues():
                         if i.contains(new_interval):
                             already_ongoing = True
                             break
-                    if already_ongoing:
+                    if not already_ongoing:
                         break
                     pos = pos + self.buffer_size
                 if pos > up_to:
                     data_range.wake()
                     break
-                data_range.next_intervals.append(new_interval)
+                data_range.next_intervals[threading.current_thread().name] = new_interval
 
             range_headers = { 'Range' : 'bytes=' + str(pos) + '-' + str(pos + self.buffer_size - 1) }
             logger.debug("download_data range '%s' '%s' [thread '%s']" % (path, range_headers, threading.current_thread().name))
@@ -1286,10 +1286,10 @@ class YAS3FS(LoggingMixIn, Operations):
             with self.cache.lock:
                 data = self.cache.get(path, 'data')
                 data_range = data.get('range')
-                data_range.next_intervals.remove(new_interval)
                 if not data_range:
                     logger.debug("download_data no range (after) '%s' [thread '%s']" % (path, threading.current_thread().name))
                     return # It means something has happended (data deleted or download ended by another thread) and I should do nothing
+                del data_range.next_intervals[threading.current_thread().name]
                 if not bytes:
                     length = 0
                     logger.debug("download_data no bytes '%s' [thread '%s']" % (path, threading.current_thread().name))
