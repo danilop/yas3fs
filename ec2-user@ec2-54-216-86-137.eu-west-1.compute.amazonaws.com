@@ -44,8 +44,6 @@ from boto.s3.key import Key
 
 from fuse import FUSE, FuseOSError, Operations, LoggingMixIn, fuse_get_context
 
-local_data = threading.local() # For thread-safe local variables
-
 class Interval():
     """ Simple integer interval arthmetic."""
     def __init__(self):
@@ -133,13 +131,12 @@ class FSRange():
         self.event = threading.Event()
         self.lock = threading.RLock()
     def wait(self):
-        self.event.wait()
-    def wake(self, again=True):
+        self.event.wait(self.io_wait)
+    def wake(self):
         with self.lock:
             e = self.event
-            if again:
-                self.event = threading.Event()
-            e.set()
+            self.event = threading.Event()
+            e.set()        
 
 class FSData():
     stores = [ 'mem', 'disk' ]
@@ -155,26 +152,21 @@ class FSData():
         if store == 'mem':
             self.content = io.BytesIO()
         elif store == 'disk':
-            previous_file = False
             filename = self.cache.get_cache_filename(self.path)
             if os.path.isfile(filename):
                 # There's a file already there
                 self.content = io.FileIO(filename, mode='rb+')
                 self.update_size()
-                self.content.close()
                 self.set('new', None) # Not sure it is the latest version
                 # Now search for an etag file
-                etag_filename = self.cache.get_cache_etags_filename(self.path)
-                if os.path.isfile(etag_filename):
-                    with open(etag_filename, 'r') as etag_file:
+                filename = self.cache.get_cache_etags_filename(self.path)
+                if os.path.isfile(filename):
+                   with open(filename, 'r') as etag_file:
                         self.etag = etag_file.read()
-                    previous_file = True
-            if not previous_file:
+            else:
                 createDirForFile(filename)
-                logger.debug("creating new cache file '%s'" % filename)
                 open(filename, 'w').close() # To create an empty file (and overwrite a previous file)
-                logger.debug("created new cache file '%s'" % filename)
-            self.content = None # Not open, yet
+                self.content = None # Not open, yet
         else:
             raise FSData.unknown_store
     def open(self):
@@ -253,14 +245,10 @@ class FSData():
                     self.delete(p)
             elif prop in self.props:
                 if prop == 'range':
-                    logger.debug('there is a range to delete')
-                    data_range = self.get(prop)
-                else:
-                    data_range = None
+                    data_range = self.props[prop]
+                    if data_range:
+                        data_range.wake() # To make downloading threads go on... and then exit
                 del self.props[prop]
-                if data_range:
-                    logger.debug('wake after range delete')
-                    data_range.wake(False) # To make downloading threads go on... and then exit
     def rename(self, new_path):
         with self.lock:
             if self.store == 'disk':
@@ -301,7 +289,6 @@ class FSCache():
     def reset_all(self):
          with self.lock:
              self.entries = {} # This will leave disk cache (if any) on place, is this ok???
-             self.locks = {}
              self.lru = LinkedList()
              self.size = {}
              for store in FSData.stores:
@@ -312,17 +299,10 @@ class FSCache():
         return self.cache_path + '/files' + path # path begins with '/'
     def get_cache_etags_filename(self, path):
         return self.cache_path + '/etags' + path # path begins with '/'
-    def get_lock(self, path):
-        with self.lock:
-            if self.has(path):
-                return self.locks[path]
-            else:
-                return None
     def add(self, path):
         with self.lock:
             if not self.has(path):
                 self.entries[path] = {}
-                self.locks[path] = threading.RLock()
                 self.lru.append(path)
     def delete(self, path, prop=None):
         with self.lock:
@@ -331,7 +311,6 @@ class FSCache():
         	    for p in self.entries[path].keys():
                         self.delete(path, p)
         	    del self.entries[path]
-        	    del self.locks[path]
         	    self.lru.delete(path)
         	else:
         	    if prop in self.entries[path]:
@@ -508,9 +487,8 @@ class YAS3FS(LoggingMixIn, Operations):
     """ Main FUSE Operations class for fusepy """
     def __init__(self, options):
         # Some constants
+        self.io_wait = 1.0 # In seconds
         ### self.http_listen_path_length = 30
-        self.download_running = True
-        self.download_sleep = 0.1
 
         # Initialization
         global debug
@@ -563,8 +541,6 @@ class YAS3FS(LoggingMixIn, Operations):
         self.sns_http_port = int(options.port or '0')
         if options.port:
             logger.info(" TCP port to listen to SNS HTTP notifications: '%i'" % self.sns_http_port)
-        self.download_num = int(options.download_num)
-        logger.info("Number of parallel donwloading threads: '%i'" % self.download_num)
         self.buffer_size = int(options.buffer_size) * 1024 # To convert KB to bytes
         logger.info("Download buffer size (in KB, 0 to disable buffering): '%i'" % self.buffer_size)
         self.buffer_prefetch = int(options.buffer_prefetch)
@@ -588,7 +564,6 @@ class YAS3FS(LoggingMixIn, Operations):
         logger.info("Cache path (on disk): '%s'" % cache_path)
         self.cache = FSCache(cache_path)
         self.publish_queue = Queue.Queue()
-        self.download_queue = Queue.Queue()
 
         # AWS Initialization
         if not self.aws_region in (r.name for r in boto.s3.regions()):
@@ -672,12 +647,6 @@ class YAS3FS(LoggingMixIn, Operations):
         self.publish_thread.daemon = True
         self.publish_thread.start()
 
-        self.download_threads = {}
-        for i in range(0, self.download_num):
-            self.download_threads[i] = threading.Thread(target=self.download)
-            self.download_threads[i].deamon = True
-            self.download_threads[i].start()
-
         if self.sqs_queue_name:
             self.queue_listen_thread = threading.Thread(target=self.listen_for_changes_over_sqs)
             self.queue_listen_thread.daemon = True
@@ -716,8 +685,6 @@ class YAS3FS(LoggingMixIn, Operations):
         logger.debug("destroy '%s'" % (path))
         # Cleanup for unmount
         logger.info('file system unmount')
-
-        self.download_running = False
 
         if self.http_listen_thread:
             self.httpd.shutdown() # To stop HTTP listen thread
@@ -1167,48 +1134,42 @@ class YAS3FS(LoggingMixIn, Operations):
 
     def check_data(self, path): 
         logger.debug("check_data '%s'" % (path))
-        with self.cache.get_lock(path):
-            data = self.cache.get(path, 'data')
-            if not data or data.has('new'):
-                k = self.get_key(path)
-                if not k:
-                    return False
-                if not data:
-                    if k.size < self.cache_on_disk:
-                        data = FSData(self.cache, 'mem')
-                    else:
-                        data = FSData(self.cache, 'disk', path)
-                    self.cache.set(path, 'data', data)
-                new_etag = data.get('new')
-                etag = k.etag[1:-1]
-                if not new_etag or new_etag == etag:
-                    data.delete('new')
-                else: # I'm not sure I got the latest version
-                    self.cache.delete(path, 'key')
-                    data.set('new', None) # Next time don't check the Etag
-                if data.etag == etag:
-                    logger.debug("check_data '%s' etag is the same, data is usable" % (path))
-                    return True
+        data = self.cache.get(path, 'data')
+        if not data or data.has('new'):
+            k = self.get_key(path)
+            if not k:
+		return False
+            if not data:
+                if k.size < self.cache_on_disk:
+                    data = FSData(self.cache, 'mem')
+                else:
+                    data = FSData(self.cache, 'disk', path)
+                self.cache.set(path, 'data', data)
+            new_etag = data.get('new')
+            etag = k.etag[1:-1]
+            if not new_etag or new_etag == etag:
+                data.delete('new')
+            else: # I'm not sure I got the latest version
+                self.cache.delete(path, 'key')
+                data.set('new', None) # Next time don't check the Etag
+            if data.etag == etag:
+                return True
+            data.update_size()
+            if k.size == 0:
+                logger.debug("check_data '%s' nothing to download" % (path))
+                return True # No need to download anything
+            elif self.buffer_size > 0: # Use buffers
+                with self.cache.lock:
+                    if not data.has('range'):
+                        data.set('range', FSRange())
+            else: # Download at once
+                k.get_contents_to_file(data.content)
                 data.update_size()
-                if k.size == 0:
-                    logger.debug("check_data '%s' nothing to download" % (path))
-                    return True # No need to download anything
-                elif self.buffer_size > 0: # Use buffers
-                    with self.cache.lock:
-                        if not data.has('range'):
-                            data.set('range', FSRange())
-                    logger.debug("check_data '%s' created empty data object" % (path))
-                else: # Download at once
-                    k.get_contents_to_file(data.content)
-                    data.update_size()
-                    data.update_etag(k.etag[1:-1])
-                    logger.debug("check_data '%s' data downloaded at once" % (path))
-            else:
-                logger.debug("check_data '%s' data already in place" % (path))
-            return True
+                data.update_etag(k.etag[1:-1])
+	return True
 
-    def enqueue_download_data(self, path, starting_from=0, length=0):
-        logger.debug("enqueue_download_data '%s' %i %i" % (path, starting_from, length))
+    def start_download_data(self, path, starting_from=0, length=0):
+        logger.debug("start_download_data '%s' %i %i" % (path, starting_from, length))
         start_buffer = int(starting_from) / self.buffer_size
         if length == 0: # Means to the end of file
             number_of_buffers = 0
@@ -1216,26 +1177,20 @@ class YAS3FS(LoggingMixIn, Operations):
             end_buffer = int(starting_from + length - 1) / self.buffer_size
             number_of_buffers = 1 + (end_buffer - start_buffer)
         buffered_start = start_buffer * self.buffer_size
-        self.download_queue.put((path, buffered_start, number_of_buffers))
-
-    def download(self):
-       while self.download_running:
-            try:
-                (path, buffered_start, number_of_buffers) = self.download_queue.get(True, 1) # 1 second time-out
-                self.download_data(path, buffered_start, number_of_buffers)
-                self.download_queue.task_done()
-            except Queue.Empty:
-                time.sleep(self.download_sleep)
+        t = threading.Thread(target=self.download_data, args=(path, buffered_start, number_of_buffers))
+        t.daemon = True
+        t.start()
 
     def download_data(self, path, starting_from, number_of_buffers):
         logger.debug("download_data '%s' %i %i [thread '%s']" % (path, starting_from, number_of_buffers, threading.current_thread().name))
 
-        key = self.get_key(path)
+	mydata = threading.local()
+        mydata.key = copy.deepcopy(self.get_key(path))
 
         if number_of_buffers == 0:
-            up_to = key.size - 1
+            up_to = mydata.key.size - 1
         else:
-            up_to = min(key.size, starting_from + self.buffer_size * number_of_buffers) - 1
+            up_to = min(mydata.key.size, starting_from + self.buffer_size * number_of_buffers) - 1
 
         with self.cache.lock:
             data = self.cache.get(path, 'data')
@@ -1264,13 +1219,13 @@ class YAS3FS(LoggingMixIn, Operations):
                     break
                 data_range.next_interval.add(new_interval)
 
-            range_headers = { 'Range' : 'bytes=' + str(pos) + '-' + str(pos + self.buffer_size - 1) }
-            logger.debug("download_data range '%s' '%s' [thread '%s']" % (path, range_headers, threading.current_thread().name))
+            mydata.range_headers = { 'Range' : 'bytes=' + str(pos) + '-' + str(pos + self.buffer_size - 1) }
+            logger.debug("download_data range '%s' '%s' [thread '%s']" % (path, mydata.range_headers, threading.current_thread().name))
 
             retry = True
             while retry:
                 try:
-                    bytes = key.get_contents_as_string(headers=range_headers)
+                    bytes = mydata.key.get_contents_as_string(headers=mydata.range_headers)
                     retry = False
                 except Exception as e:
                     logger.info("download_data error '%s' [thread '%s'] -> retrying" % (path, threading.current_thread().name))
@@ -1308,9 +1263,9 @@ class YAS3FS(LoggingMixIn, Operations):
             data = self.cache.get(path, 'data')
             data_range = data.get('range')
             if data_range:
-                if data_range.interval.contains([0, key.size - 1]): # -1 ???
+                if interval.contains([0, mydata.key.size - 1]): # -1 ???
                     data.delete('range')
-                    data.update_etag(key.etag[1:-1])
+                    data.update_etag(mydata.key.etag[1:-1])
                     logger.debug("download_data all ended '%s' [thread '%s']" % (path, threading.current_thread().name))
 
     def readlink(self, path):
@@ -1328,7 +1283,7 @@ class YAS3FS(LoggingMixIn, Operations):
                 raise FuseOSError(errno.ENOENT) # ??? That should not happen
             data_range = data.get('range')
             if data_range:
-                self.enqueue_download_data(path)
+                self.start_download_data(path)
                 while True:
                     logger.debug("readlink wait '%s'" % (path))
                     data_range.wait()
@@ -1393,6 +1348,7 @@ class YAS3FS(LoggingMixIn, Operations):
             data.update_size()
         attr['st_mtime'] = now
         attr['st_atime'] = now
+        ###self.set_metadata(path, 'attr', attr)
 	return 0
 
     ### Should work for files in cache but not flushed to S3...
@@ -1519,11 +1475,9 @@ class YAS3FS(LoggingMixIn, Operations):
         if not self.cache.has(path) or self.cache.is_empty(path):
             logger.debug("read '%s' '%i' '%i' '%s' ENOENT" % (path, length, offset, fh))
             raise FuseOSError(errno.ENOENT)
-        data = self.cache.get(path, 'data')
         while True:
-            data_range = data.get('range')
+            data_range = self.cache.get(path, 'data').get('range')
             if data_range == None:
-                logger.debug("read '%s' '%i' '%i' '%s' no range" % (path, length, offset, fh))                
                 break
             file_size = self.get_key(path).size # Something better ???
             end_interval = min(offset + length, file_size) - 1
@@ -1533,17 +1487,16 @@ class YAS3FS(LoggingMixIn, Operations):
                 end_prefetch_interval = min(end_interval + prefetch_length, file_size) - 1
                 prefetch_interval = [end_interval, end_prefetch_interval]
                 if not data_range.interval.contains(prefetch_interval):
-                    logger.debug("download prefetch")
-                    self.enqueue_download_data(path, end_interval, prefetch_length)
-                logger.debug("read '%s' '%i' '%i' '%s' in range" % (path, length, offset, fh))                
+                    logger.debug("download prefetch") ### XXX Optimize to avoid too many threads !!!
+                    self.start_download_data(path, end_interval, prefetch_length)
                 break
             else:
-                logger.debug("read '%s' '%i' '%i' '%s' out of range" % (path, length, offset, fh))
-                self.enqueue_download_data(path, offset, length)
+                self.start_download_data(path, offset, length)
             logger.debug("read wait '%s' '%i' '%i' '%s'" % (path, length, offset, fh))
             data_range.wait()
             logger.debug("read awake '%s' '%i' '%i' '%s'" % (path, length, offset, fh))
-            # update atime just in the cache ???
+	# update atime just in the cache ???
+        data = self.cache.get(path, 'data')
         with data.lock:
             data.content.seek(offset)
             return data.content.read(length)
@@ -1557,7 +1510,7 @@ class YAS3FS(LoggingMixIn, Operations):
         
         data_range = self.cache.get(path, 'data').get('range')
         if data_range:
-            self.enqueue_download_data(path)
+            self.start_download_data(path)
             while True:
                 logger.debug("write wait '%s' '%i' '%i' '%s'" % (path, len(new_data), offset, fh))            
                 data_range.wait()
@@ -1580,6 +1533,7 @@ class YAS3FS(LoggingMixIn, Operations):
                 data.update_size()
             attr['st_mtime'] = now
             attr['st_atime'] = now
+            ###self.set_metadata(path, 'attr', attr)
         return length
 
     def flush(self, path, fh=None):
@@ -1862,15 +1816,13 @@ In an EC2 instance a IAM role can be used to give access to S3/SNS/SQS resources
                       metavar="N", default=100)
     parser.add_option("--cache-check", dest="cache_check_interval",
                       help="interval between cache memory checks in seconds (default is %default seconds)", metavar="N", default=3)
-    parser.add_option("--download-num", dest="download_num",
-                      help="number of parallel downloads (default is %default)", metavar="N", default=4)
     parser.add_option("--buffer-size", dest="buffer_size",
                       help="download buffer size in KB (0 to disable buffering, default is %default KB)", metavar="N", default=10240)
     parser.add_option("--buffer-prefetch", dest="buffer_prefetch",
                       help="number of buffers to prefetch (default is %default)", metavar="N", default=0)
     parser.add_option("--no-metadata", action="store_false", dest="write_metadata", default=True,
                       help="don't write user metadata on S3 to persist file system attr/xattr")
-    parser.add_option("--prefetch", action="store_true", dest="full_prefetch", default=False,
+    parser.add_option("--prefetch", action="store_true", dest="prefetch", default=False,
                       help="start downloading file content as soon as the file is discovered")
     parser.add_option("--mp-size", dest="multipart_size",
                       help="size of parts to use for multipart upload in KB (default value is %default KB, the minimum allowed is 5120 KB)", metavar="N", default=10240)
@@ -1892,7 +1844,7 @@ In an EC2 instance a IAM role can be used to give access to S3/SNS/SQS resources
     (options, args) = parser.parse_args()
 
     if options.logfile != '':
-        logHandler = logging.handlers.RotatingFileHandler(options.logfile, maxBytes=1024*1024*1024, backupCount=10)
+        logHandler = logging.handlers.RotatingFileHandler(options.logfile, maxBytes=1024*1024, backupCount=10)
         logger.addHandler(logHandler)
 
     if options.debug:
