@@ -1281,11 +1281,15 @@ class YAS3FS(LoggingMixIn, Operations):
             logger.debug("download_data '%s' %i %i [thread '%s'] pos=%i" % (path, starting_from, number_of_buffers, threading.current_thread().name, pos))
             with self.cache.lock:
                 data = self.cache.get(path, 'data')
+                if not data:
+                    logger.debug("download_data no data (before) '%s' [thread '%s']" % (path, threading.current_thread().name))
+                    return
                 data_range = data.get('range')
                 if not data_range:
                     logger.debug("download_data no range (before) '%s' [thread '%s']" % (path, threading.current_thread().name))
                     return
                 while pos <= up_to:
+                    logger.debug("download_data '%s' %i %i [thread '%s'] trying pos=%i up_to=%i (first)" % (path, starting_from, number_of_buffers, threading.current_thread().name, pos, up_to))
                     new_interval = [pos, pos + self.buffer_size - 1]
                     done_or_doing = False
                     if data_range.interval.contains(new_interval): ### Can be removed ???
@@ -1300,7 +1304,7 @@ class YAS3FS(LoggingMixIn, Operations):
                     if not done_or_doing:
                         break
                     pos = pos + self.buffer_size
-                    logger.debug("download_data '%s' %i %i [thread '%s'] trying pos=%i up_to=%i" % (path, starting_from, number_of_buffers, threading.current_thread().name, pos, up_to))
+                    logger.debug("download_data '%s' %i %i [thread '%s'] trying pos=%i up_to=%i (after)" % (path, starting_from, number_of_buffers, threading.current_thread().name, pos, up_to))
                 if pos > up_to:
                     break
                 data_range.next_intervals[threading.current_thread().name] = new_interval
@@ -1321,10 +1325,13 @@ class YAS3FS(LoggingMixIn, Operations):
             logger.debug("download_data at %i '%s' %i %i [thread '%s']" % (pos, path, starting_from, number_of_buffers, threading.current_thread().name))
             with self.cache.lock:
                 data = self.cache.get(path, 'data')
+                if not data:
+                    logger.debug("download_data no data (after) '%s' [thread '%s']" % (path, threading.current_thread().name))
+                    return
                 data_range = data.get('range')
                 if not data_range:
                     logger.debug("download_data no range (after) '%s' [thread '%s']" % (path, threading.current_thread().name))
-                    return # It means something has happended (data deleted or download ended by another thread) and I should do nothing
+                    return
                 del data_range.next_intervals[threading.current_thread().name]
                 if not bytes:
                     length = 0
@@ -1573,9 +1580,10 @@ class YAS3FS(LoggingMixIn, Operations):
                 break
             file_size = self.get_key(path).size # Something better ???
             end_interval = min(offset + length, file_size) - 1
-            read_interval = [offset, max(end_interval, offset)]
             if offset > end_interval:
-                logger.debug("read '%s' '%i' '%i' '%s' offset=%i end_interval=%i" %((path, length, offset, fh, offset, end_interval)))
+                logger.debug("read '%s' '%i' '%i' '%s' offset=%i > end_interval=%i" %((path, length, offset, fh, offset, end_interval)))
+                return '' # Is this ok ???
+            read_interval = [offset, end_interval]
             if data_range.interval.contains(read_interval):
                 prefetch_length = self.buffer_size * self.buffer_prefetch
                 end_prefetch_interval = min(end_interval + prefetch_length, file_size) - 1
