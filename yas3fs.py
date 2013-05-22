@@ -894,14 +894,10 @@ class YAS3FS(LoggingMixIn, Operations):
 
     def check_cache_size(self):
         
-        logger.debug("download/prefetch queues")
-        logger.debug("check_cache_size")
+        logger.debug("check_cache_size + download/prefetch queues")
         while self.cache_entries:
 
             if self.download_running:
-                dq = self.download_queue.qsize()
-                pq = self.prefetch_queue.qsize()
-                logger.debug("dq, pq: %i, %i" % (dq, pq))
                 for i in self.download_threads.keys():
                     if not self.download_threads[i].is_alive():
                         logger.debug("Download thread restarted!")
@@ -916,7 +912,9 @@ class YAS3FS(LoggingMixIn, Operations):
                         self.prefetch_threads[i].start()
 
             num_entries, mem_size, disk_size = self.cache.get_memory_usage()
-            logger.debug("num_entries, mem_size, disk_size: %i, %i, %i" % (num_entries, mem_size, disk_size))
+            dq = self.download_queue.qsize()
+            pq = self.prefetch_queue.qsize()
+            logger.debug("num_entries, mem_size, disk_size, download_queue, prefetch_queue: %i, %i, %i, %i, %i" % (num_entries, mem_size, disk_size, dq, pq))
             purge = False
             if num_entries > self.cache_entries:
                 with self.cache.lock:
@@ -1255,18 +1253,18 @@ class YAS3FS(LoggingMixIn, Operations):
 
     def download(self, prefetch=False):
        while self.download_running:
-            try:
-                if prefetch:
-                    (path, buffered_start, number_of_buffers) = self.prefetch_queue.get(True, 1) # 1 second time-out
-                else:
-                    (path, buffered_start, number_of_buffers) = self.download_queue.get(True, 1) # 1 second time-out
-                self.download_data(path, buffered_start, number_of_buffers)
-                if prefetch:
-                    self.prefetch_queue.task_done()
-                else:
-                    self.download_queue.task_done()
+           try:
+               if prefetch:
+                   (path, buffered_start, number_of_buffers) = self.prefetch_queue.get(True, 1) # 1 second time-out
+               else:
+                   (path, buffered_start, number_of_buffers) = self.download_queue.get(True, 1) # 1 second time-out
+               self.download_data(path, buffered_start, number_of_buffers)
+               if prefetch:
+                   self.prefetch_queue.task_done()
+               else:
+                   self.download_queue.task_done()
             except Queue.Empty:
-                time.sleep(self.download_sleep)
+                pass
 
     def download_data(self, path, starting_from, number_of_buffers):
         logger.debug("download_data '%s' %i %i [thread '%s']" % (path, starting_from, number_of_buffers, threading.current_thread().name))
