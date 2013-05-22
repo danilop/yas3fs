@@ -173,6 +173,8 @@ To unmount the file system on a Mac you can use `umount`.
                            than the given size in MB (default is 100 MB)
       --cache-check=N      interval between cache memory checks in seconds
                            (default is 10 seconds)
+      --download-num=N     number of parallel downloads (default is 4)
+      --prefetch-num=N     number of parallel prefetching downloads (default is 1)
       --buffer-size=N      download buffer size in KB (0 to disable buffering,
                            default is 10240 KB)
       --buffer-prefetch=N  number of buffers to prefetch (default is 0)
