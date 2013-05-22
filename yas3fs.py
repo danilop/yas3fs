@@ -127,13 +127,14 @@ class LinkedList():
                 self.append(value)
 
 class FSRange():
+    io_wait = 3.0 # 3 seconds
     def __init__(self):
         self.interval = Interval()
         self.next_intervals = {}
         self.event = threading.Event()
         self.lock = threading.RLock()
     def wait(self):
-        self.event.wait(1.0)
+        self.event.wait(self.io_wait)
     def wake(self, again=True):
         with self.lock:
             e = self.event
@@ -350,8 +351,10 @@ class FSCache():
                     with data.lock:
                         data.rename(new_path)
                 self.entries[new_path] = self.entries[path]
+                self.locks[new_path] = self.locks[path]
                 self.lru.append(new_path)
                 del self.entries[path]
+                del self.locks[path]
                 self.lru.delete(path)
     def get(self, path, prop=None):
         self.lru.move_to_the_tail(path) # Move to the tail of the LRU cache
