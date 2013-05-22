@@ -204,7 +204,7 @@ class FSData():
             return self.content.seek(0,2)
         else:
             return 0 # There's no content...
-    def update_size(self, final=True):
+    def update_size(self, final=False):
         if final:
             current_size = 0 # The entry is to be deleted
         else:
