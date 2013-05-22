@@ -925,7 +925,7 @@ class YAS3FS(LoggingMixIn, Operations):
                     path = self.cache.lru.popleft()
                     logger.debug("purge: %s ?" % path)
                     data = self.cache.has(path, 'data')
-                    if not data or (data and not data.has('open') and not data.has('change')):
+                    if not data or ((not data.has('open')) and (not data.has('change'))):
                         logger.debug("purge: %s ok" % path)
                         self.cache.delete(path)
                         purge = True
@@ -936,7 +936,7 @@ class YAS3FS(LoggingMixIn, Operations):
                     path = self.cache.lru.popleft()
                     logger.debug("purge: %s ?" % path)
                     data = self.cache.get(path, 'data')
-                    if data and data.store == 'mem' and not data.has('open') and not data.has('change'):
+                    if data and data.store == 'mem' and (not data.has('open')) and (not data.has('change')):
                         logger.debug("purge: %s ok" % path)
                         self.cache.delete(path)
                         purge = True
@@ -947,7 +947,7 @@ class YAS3FS(LoggingMixIn, Operations):
                     path = self.cache.lru.popleft()
                     logger.debug("purge: %s ?" % path)
                     data = self.cache.get(path, 'data')
-                    if data and data.store == 'disk' and not data.has('open') and not data.has('change'):
+                    if data and data.store == 'disk' and (not data.has('open')) and (not data.has('change')):
                         logger.debug("purge: %s ok" % path)
                         self.cache.delete(path)
                         purge = True
