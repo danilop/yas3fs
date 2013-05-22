@@ -940,10 +940,7 @@ class YAS3FS(LoggingMixIn, Operations):
                         logger.debug("purge: %s ok" % path)
                         self.cache.delete(path)
                     else:
-                        if data:
-                            logger.debug("purge: %s KO data? True open? change?" % (path, data.has('open'), data.has('change')))
-                        else:
-                            logger.debug("purge: %s KO data? False" % path)
+                        logger.debug("purge: %s KO data? %s open? %s change? %s" % (path, data != None, data and data.has('open'), data and data.has('change')))
                         self.cache.lru.append(path)
             else:
                 time.sleep(self.cache_check_interval)
