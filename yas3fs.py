@@ -178,21 +178,21 @@ class FSData():
     def get_lock(self):
         return self.cache.get_lock(self.path)
     def open(self):
-        with self.lock:
+        with self.get_lock():
             if not self.has('open'):
                 if self.store == 'disk':
                     filename = self.cache.get_cache_filename(self.path)
                     self.content = io.FileIO(filename, mode='rb+')
             self.inc('open')
     def close(self):
-        with self.lock:
+        with self.get_lock():
             self.dec('open')
             if not self.has('open'):
                 if self.store == 'disk':
                     self.content.close()
                     self.content = None
     def update_etag(self, new_etag):
-        with self.lock:
+        with self.get_lock():
             if new_etag != self.etag:
                 self.etag = new_etag
                 if self.store == 'disk':
@@ -206,42 +206,42 @@ class FSData():
         else:
             return 0 # There's no content...
     def update_size(self, final=False):
-        if final:
-            current_size = 0 # The entry is to be deleted
-        else:
-            current_size = self.get_current_size()
-        delta = current_size - self.size
-        with self.lock:
+        with self.get_lock():
+            if final:
+                current_size = 0 # The entry is to be deleted
+            else:
+                current_size = self.get_current_size()
+            delta = current_size - self.size
             self.size = current_size;
         with self.cache.data_size_lock:
             self.cache.size[self.store] += delta
     def get_content_as_string(self):
         if self.store == 'mem':
-            with self.lock:
+            with self.get_lock():
                 return self.content.getvalue()
         elif self.store == 'disk':
-            with self.lock:
+            with self.get_lock():
                 self.content.seek(0) # Go to the beginning
                 return self.content.read()
         else:
             raise FSData.unknown_store
     def has(self, prop):
-        with self.lock:
+        with self.get_lock():
             if prop in self.props:
                 return True
             else:
                 return False
     def get(self, prop):
-        with self.lock:
+        with self.get_lock():
             if prop in self.props:
                 return self.props[prop]
             else:
                 return None
     def set(self, prop, value):
-        with self.lock:
+        with self.get_lock():
             self.props[prop] = value
     def delete(self, prop=None):
-        with self.lock:
+        with self.get_lock():
             if prop == None:
                 if self.store == 'disk':
                     filename = self.cache.get_cache_filename(self.path)
@@ -267,7 +267,7 @@ class FSData():
                     logger.debug('wake after range delete')
                     data_range.wake(False) # To make downloading threads go on... and then exit
     def rename(self, new_path):
-        with self.lock:
+        with self.get_lock():
             if self.store == 'disk':
                 filename = self.cache.get_cache_filename(self.path)
                 new_filename = self.cache.get_cache_filename(new_path)
@@ -283,13 +283,13 @@ class FSData():
                 if self.content:
                     self.content = io.FileIO(new_filename, mode='rb+')
     def inc(self, prop):
-        with self.lock:
+        with self.get_lock():
             if prop in self.props:
                 self.set(prop, self.props[prop] + 1)
             else:
                 self.set(prop, 1)
     def dec(self, prop):
-        with self.lock:
+        with self.get_lock():
             if prop in self.props:
                 if self.props[prop] > 1:
                     self.set(prop, self.props[prop] - 1)
