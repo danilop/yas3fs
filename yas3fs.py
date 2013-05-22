@@ -143,7 +143,7 @@ class FSRange():
 class FSData():
     stores = [ 'mem', 'disk' ]
     unknown_store = "Unknown store"
-    def __init__(self, cache, store=None, path=None):
+    def __init__(self, cache, store, path):
         self.cache = cache
         self.store = store
         self.path = path
@@ -1149,7 +1149,7 @@ class YAS3FS(LoggingMixIn, Operations):
 	attr['st_mode'] = (stat.S_IFDIR | mode)
 	self.cache.delete(path)
 	self.cache.add(path)
-        data = FSData(self.cache, 'mem')
+        data = FSData(self.cache, 'mem', path)
         self.cache.set(path, 'data', data)
         data.set('change', True)
 	k = Key(self.s3_bucket)
@@ -1181,7 +1181,7 @@ class YAS3FS(LoggingMixIn, Operations):
 	attr['st_mode'] = (stat.S_IFLNK | 0755)
 	self.cache.delete(path)
 	self.cache.add(path)
-        data = FSData(self.cache, 'mem')
+        data = FSData(self.cache, 'mem', path)
         self.cache.set(path, 'data', data)
         self.write(path, link, 0)
 	k = Key(self.s3_bucket)
@@ -1205,7 +1205,7 @@ class YAS3FS(LoggingMixIn, Operations):
                     return False
                 if not data:
                     if k.size < self.cache_on_disk:
-                        data = FSData(self.cache, 'mem')
+                        data = FSData(self.cache, 'mem', path)
                     else:
                         data = FSData(self.cache, 'disk', path)
                     self.cache.set(path, 'data', data)
@@ -1514,7 +1514,7 @@ class YAS3FS(LoggingMixIn, Operations):
 	attr['st_ctime'] = now
 	attr['st_size'] = 0 # New file
         if self.cache_on_disk > 0:
-            data = FSData(self.cache, 'mem') # New files (almost) always cache in mem - is it ok ???
+            data = FSData(self.cache, 'mem', path) # New files (almost) always cache in mem - is it ok ???
         else:
             data = FSData(self.cache, 'disk', path)
 	self.cache.set(path, 'data', data)
