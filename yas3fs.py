@@ -919,40 +919,32 @@ class YAS3FS(LoggingMixIn, Operations):
             dq = self.download_queue.qsize()
             pq = self.prefetch_queue.qsize()
             logger.debug("num_entries, mem_size, disk_size, download_queue, prefetch_queue: %i, %i, %i, %i, %i" % (num_entries, mem_size, disk_size, dq, pq))
+
             purge = False
             if num_entries > self.cache_entries:
                 purge = True
-                with self.cache.lock:
-                    path = self.cache.lru.popleft()
-                    logger.debug("purge: %s ?" % path)
-                    data = self.cache.has(path, 'data')
-                    if not data or ((not data.has('open')) and (not data.has('change'))):
-                        logger.debug("purge: %s ok" % path)
-                        self.cache.delete(path)
-                    else:
-                        self.cache.lru.append(path)
+                store = ''
             if mem_size > self.cache_mem_size:
                 purge = True
-                with self.cache.lock:
-                    path = self.cache.lru.popleft()
-                    logger.debug("purge: %s ?" % path)
-                    data = self.cache.get(path, 'data')
-                    if data and data.store == 'mem' and (not data.has('open')) and (not data.has('change')):
-                        logger.debug("purge: %s ok" % path)
-                        self.cache.delete(path)
-                    else:
-                        self.cache.lru.append(path)
+                store = 'mem'
             if disk_size > self.cache_disk_size:
                 purge = True
-                with self.cache.lock:
-                    path = self.cache.lru.popleft()
-                    logger.debug("purge: %s ?" % path)
-                    data = self.cache.get(path, 'data')
-                    if data and data.store == 'disk' and (not data.has('open')) and (not data.has('change')):
-                        logger.debug("purge: %s ok" % path)
-                        self.cache.delete(path)
+                store = 'disk'
+
+            with self.cache.lock:
+                path = self.cache.lru.popleft()
+                logger.debug("purge: %s ?" % path)
+                data = self.cache.get(path, 'data')
+                if data and (store == '' or data.store == store) and (not data.has('open')) and (not data.has('change')):
+                    logger.debug("purge: %s ok" % path)
+                    self.cache.delete(path)
+                else:
+                    if data:
+                        logger.debug("purge: %s KO data? True open? change?" % (path, data.has('open'), data.has('change')))
                     else:
-                        self.cache.lru.append(path)
+                        logger.debug("purge: %s KO data? False" % path)
+                    self.cache.lru.append(path)
+
             if not purge:
                 time.sleep(self.cache_check_interval)
 
