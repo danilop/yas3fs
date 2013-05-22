@@ -300,7 +300,7 @@ class FSCache():
     def __init__(self, cache_path=None):
         self.cache_path = cache_path
         self.lock = threading.RLock()
-        self.data_size_lock = threading.Lock()
+        self.data_size_lock = threading.RLock()
         self.reset_all()
     def reset_all(self):
          with self.lock:
@@ -1279,7 +1279,7 @@ class YAS3FS(LoggingMixIn, Operations):
         pos = starting_from
         while True:
             logger.debug("download_data '%s' %i %i [thread '%s'] pos=%i" % (path, starting_from, number_of_buffers, threading.current_thread().name, pos))
-            with self.cache.lock:
+            with self.cache.get_lock(path):
                 data = self.cache.get(path, 'data')
                 if not data:
                     logger.debug("download_data no data (before) '%s' [thread '%s']" % (path, threading.current_thread().name))
@@ -1323,7 +1323,7 @@ class YAS3FS(LoggingMixIn, Operations):
                     retry = True
 
             logger.debug("download_data at %i '%s' %i %i [thread '%s']" % (pos, path, starting_from, number_of_buffers, threading.current_thread().name))
-            with self.cache.lock:
+            with self.cache.get_lock(path):
                 data = self.cache.get(path, 'data')
                 if not data:
                     logger.debug("download_data no data (after) '%s' [thread '%s']" % (path, threading.current_thread().name))
