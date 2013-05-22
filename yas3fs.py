@@ -129,11 +129,11 @@ class LinkedList():
 class FSRange():
     def __init__(self):
         self.interval = Interval()
-        self.next_interval = Interval()
+        self.next_intervals = {}
         self.event = threading.Event()
         self.lock = threading.RLock()
     def wait(self):
-        self.event.wait()
+        self.event.wait(1.0)
     def wake(self, again=True):
         with self.lock:
             e = self.event
@@ -1276,17 +1276,9 @@ class YAS3FS(LoggingMixIn, Operations):
         else:
             up_to = min(key.size, starting_from + self.buffer_size * number_of_buffers) - 1
 
-        with self.cache.lock:
-            data = self.cache.get(path, 'data')
-            data_range = data.get('range')
-            if data_range:
-                download_interval = [starting_from, up_to]
-            else:
-                logger.debug("download_data no range (beginning) '%s' [thread '%s']" % (path, threading.current_thread().name))
-                return # Nothing to do...
-
         pos = starting_from
         while True:
+            logger.debug("download_data '%s' %i %i [thread '%s'] pos=%i" % (path, starting_from, number_of_buffers, threading.current_thread().name, pos))
             with self.cache.lock:
                 data = self.cache.get(path, 'data')
                 data_range = data.get('range')
@@ -1295,13 +1287,21 @@ class YAS3FS(LoggingMixIn, Operations):
                     return
                 while pos <= up_to:
                     new_interval = [pos, pos + self.buffer_size - 1]
-                    if not data_range.next_interval.contains(new_interval):
+                    already_ongoing = False
+                    if data_range.interval.contains(new_interval): ### Can be removed ???
+                        logger.debug("already downloaded")
+                        already_ongoing = True
+                    else:
+                        for i in data_range.next_intervals.itervalues():
+                            if i[0] <= new_interval[0] and i[1] >= new_interval[1]:
+                                already_ongoing = True
+                                break
+                    if not already_ongoing:
                         break
                     pos = pos + self.buffer_size
                 if pos > up_to:
-                    data_range.wake()
                     break
-                data_range.next_interval.add(new_interval)
+                data_range.next_intervals[threading.current_thread().name] = new_interval
 
             range_headers = { 'Range' : 'bytes=' + str(pos) + '-' + str(pos + self.buffer_size - 1) }
             logger.debug("download_data range '%s' '%s' [thread '%s']" % (path, range_headers, threading.current_thread().name))
@@ -1323,6 +1323,7 @@ class YAS3FS(LoggingMixIn, Operations):
                 if not data_range:
                     logger.debug("download_data no range (after) '%s' [thread '%s']" % (path, threading.current_thread().name))
                     return # It means something has happended (data deleted or download ended by another thread) and I should do nothing
+                del data_range.next_intervals[threading.current_thread().name]
                 if not bytes:
                     length = 0
                     logger.debug("download_data no bytes '%s' [thread '%s']" % (path, threading.current_thread().name))
@@ -1331,15 +1332,19 @@ class YAS3FS(LoggingMixIn, Operations):
                     logger.debug("download_data %i bytes '%s' [thread '%s']" % (length, path, threading.current_thread().name))
                 if length > 0:
                     with data.lock:
-                        data.content.seek(pos)
-                        data.content.write(bytes)
-                    new_interval = [pos, pos + length - 1]
-                    pos += length
-                    data_range.interval.add(new_interval)
-                    data.update_size()
-                    data_range.wake()
-                    if pos > up_to: # Do I need this?
-                        break
+                        if data.content:
+                            data.content.seek(pos)
+                            data.content.write(bytes)
+                            new_interval = [pos, pos + length - 1]
+                            data_range.interval.add(new_interval)
+                            data.update_size()
+                            data_range.wake()
+                            pos += length
+                            if pos > up_to: # Do I need this?
+                                break
+                        else:
+                            logger.debug("download_data %i bytes '%s' [thread '%s'] no content" % (length, path, threading.current_thread().name))
+                            break
 
         logger.debug("download_data end '%s' %i-%i [thread '%s']" % (path, starting_from, pos, threading.current_thread().name))
 
@@ -1558,8 +1563,8 @@ class YAS3FS(LoggingMixIn, Operations):
         if not self.cache.has(path) or self.cache.is_empty(path):
             logger.debug("read '%s' '%i' '%i' '%s' ENOENT" % (path, length, offset, fh))
             raise FuseOSError(errno.ENOENT)
-        data = self.cache.get(path, 'data')
         while True:
+            data = self.cache.get(path, 'data')
             data_range = data.get('range')
             if data_range == None:
                 logger.debug("read '%s' '%i' '%i' '%s' no range" % (path, length, offset, fh))                
