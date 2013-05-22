@@ -1289,16 +1289,18 @@ class YAS3FS(LoggingMixIn, Operations):
                     new_interval = [pos, pos + self.buffer_size - 1]
                     done_or_doing = False
                     if data_range.interval.contains(new_interval): ### Can be removed ???
-                        logger.debug("already downloaded")
+                        logger.debug("download_data '%s' %i %i [thread '%s'] already downloaded" % (path, starting_from, number_of_buffers, threading.current_thread().name))
                         done_or_doing = True
                     else:
                         for i in data_range.next_intervals.itervalues():
                             if i[0] <= new_interval[0] and i[1] >= new_interval[1]:
+                                logger.debug("download_data '%s' %i %i [thread '%s'] already downloading" % (path, starting_from, number_of_buffers, threading.current_thread().name))
                                 done_or_doing = True
                                 break
                     if not done_or_doing:
                         break
                     pos = pos + self.buffer_size
+                    logger.debug("download_data '%s' %i %i [thread '%s'] trying pos=%i up_to=%i" % (path, starting_from, number_of_buffers, threading.current_thread().name, pos, up_to))
                 if pos > up_to:
                     break
                 data_range.next_intervals[threading.current_thread().name] = new_interval
