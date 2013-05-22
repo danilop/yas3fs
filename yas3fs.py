@@ -937,13 +937,13 @@ class YAS3FS(LoggingMixIn, Operations):
             if purge:
                 with self.cache.lock:
                     path = self.cache.lru.popleft()
-                    logger.debug("purge: %s ?" % path)
+                    logger.debug("purge: '%s' '%s' ?" % (store, path))
                     data = self.cache.get(path, 'data')
                     if data and (store == '' or data.store == store) and (not data.has('open')) and (not data.has('change')):
-                        logger.debug("purge: %s ok" % path)
+                        logger.debug("purge: '%s' '%s' ok" % (store, path))
                         self.cache.delete(path)
                     else:
-                        logger.debug("purge: %s KO data? %s open? %s change? %s" % (path, data != None, data and data.has('open'), data and data.has('change')))
+                        logger.debug("purge: '%s' '%s' KO data? %s open? %s change? %s" % (store, path, data != None, data and data.has('open'), data and data.has('change')))
                         self.cache.lru.append(path)
             else:
                 time.sleep(self.cache_check_interval)
