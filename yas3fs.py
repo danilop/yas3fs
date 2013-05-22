@@ -147,7 +147,6 @@ class FSData():
         self.cache = cache
         self.store = store
         self.path = path
-        self.lock = threading.RLock() # Lock or RLock ???
         self.props = {}
         self.size = 0
         self.etag = None # Something better ???
@@ -176,6 +175,8 @@ class FSData():
             self.content = None # Not open, yet
         else:
             raise FSData.unknown_store
+    def get_lock(self):
+        return self.cache.get_lock(self.path)
     def open(self):
         with self.lock:
             if not self.has('open'):
@@ -342,7 +343,7 @@ class FSCache():
                         if prop in self.entries[path]:
                             if prop == 'data':
                                 data = self.entries[path][prop]
-                                with data.lock:
+                                with data.get_lock():
                                     data.delete() # To clean stuff, e.g. remove cache files
                             del self.entries[path][prop]
     def rename(self, path, new_path):
@@ -353,7 +354,7 @@ class FSCache():
                     self.delete(new_path) # Assume overwrite
                     if 'data' in self.entries[path]:
                         data = self.entries[path]['data']
-                        with data.lock:
+                        with data.get_lock():
                             data.rename(new_path)
                     self.entries[new_path] = self.entries[path]
                     self.locks[new_path] = self.locks[path]
@@ -502,7 +503,7 @@ class PartOfFSData():
         logger.debug("read '%i' at '%i' starting from '%i' for '%i'" % (n, self.pos, self.start, self.length))
         if n >= 0:
             n = min([n, self.length - self.pos])
-            with self.data.lock:
+            with self.data.get_lock():
                 self.data.content.seek(self.start + self.pos)
                 s = self.data.content.read(n)
             self.pos += len(s)
@@ -1340,7 +1341,7 @@ class YAS3FS(LoggingMixIn, Operations):
                     length = len(bytes)
                     logger.debug("download_data %i bytes '%s' [thread '%s']" % (length, path, threading.current_thread().name))
                 if length > 0:
-                    with data.lock:
+                    with data.get_lock():
                         if data.content:
                             data.content.seek(pos)
                             data.content.write(bytes)
@@ -1598,7 +1599,7 @@ class YAS3FS(LoggingMixIn, Operations):
             data_range.wait()
             logger.debug("read awake '%s' '%i' '%i' '%s'" % (path, length, offset, fh))
             # update atime just in the cache ???
-        with data.lock:
+        with data.get_lock():
             data.content.seek(offset)
             return data.content.read(length)
 
@@ -1621,7 +1622,7 @@ class YAS3FS(LoggingMixIn, Operations):
                     break
                 
         data = self.cache.get(path, 'data')
-	with data.lock:
+	with data.get_lock():
             data.content.seek(offset)
             data.content.write(new_data)
             data.set('change', True)
