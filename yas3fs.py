@@ -328,34 +328,36 @@ class FSCache():
     def delete(self, path, prop=None):
         with self.lock:
             if path in self.entries:
-        	if prop == None:
-        	    for p in self.entries[path].keys():
-                        self.delete(path, p)
-        	    del self.entries[path]
-        	    del self.locks[path]
-        	    self.lru.delete(path)
-        	else:
-        	    if prop in self.entries[path]:
-                        if prop == 'data':
-                            data = self.entries[path][prop]
-                            with data.lock:
-                                data.delete() # To clean stuff, e.g. remove cache files
-        		del self.entries[path][prop]
+                with self.get_lock(path):
+                    if prop == None:
+                        for p in self.entries[path].keys():
+                            self.delete(path, p)
+                        del self.entries[path]
+                        del self.locks[path]
+                        self.lru.delete(path)
+                    else:
+                        if prop in self.entries[path]:
+                            if prop == 'data':
+                                data = self.entries[path][prop]
+                                with data.lock:
+                                    data.delete() # To clean stuff, e.g. remove cache files
+                            del self.entries[path][prop]
     def rename(self, path, new_path):
         with self.lock:
             if path in self.entries:
-                self.delete(path, 'key') # Cannot be renamed
-                self.delete(new_path) # Assume overwrite
-                if 'data' in self.entries[path]:
-                    data = self.entries[path]['data']
-                    with data.lock:
-                        data.rename(new_path)
-                self.entries[new_path] = self.entries[path]
-                self.locks[new_path] = self.locks[path]
-                self.lru.append(new_path)
-                del self.entries[path]
-                del self.locks[path]
-                self.lru.delete(path)
+                with self.get_lock(path):
+                    self.delete(path, 'key') # Cannot be renamed
+                    self.delete(new_path) # Assume overwrite
+                    if 'data' in self.entries[path]:
+                        data = self.entries[path]['data']
+                        with data.lock:
+                            data.rename(new_path)
+                    self.entries[new_path] = self.entries[path]
+                    self.locks[new_path] = self.locks[path]
+                    self.lru.append(new_path)
+                    self.lru.delete(path)
+                    del self.entries[path]
+                    del self.locks[path]
     def get(self, path, prop=None):
         self.lru.move_to_the_tail(path) # Move to the tail of the LRU cache
         try:
