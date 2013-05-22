@@ -243,11 +243,13 @@ class FSData():
             if prop == None:
                 if self.store == 'disk':
                     filename = self.cache.get_cache_filename(self.path)
-                    os.unlink(filename)
-                    removeEmptyDirForFile(filename)
-                    filename = self.cache.get_cache_etags_filename(self.path)
-                    os.unlink(filename)
-                    removeEmptyDirForFile(filename)
+                    if os.path.isfile(filename):
+                        os.unlink(filename)
+                        removeEmptyDirForFile(filename)
+                    etag_filename = self.cache.get_cache_etags_filename(self.path)
+                    if os.path.isfile(etag_filename):                    
+                        os.unlink(etag_filename)
+                        removeEmptyDirForFile(etag_filename)
                 self.content = None # If not
                 self.update_size()
                 for p in self.props.keys():
