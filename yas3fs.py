@@ -895,23 +895,22 @@ class YAS3FS(LoggingMixIn, Operations):
         logger.debug("check_cache_size")
         while self.cache_entries:
 
-            dq = self.download_queue.qsize()
-            pq = self.prefetch_queue.qsize()
-            logger.debug("dq, pq: %i, %i" % (dq, pq))
-
-            for t in self.download_threads:
-                if not t.is_alive():
-                    logger.debug("Download thread restarted!")
-                    t = threading.Thread(target=self.download)
-                    t.deamon = True
-                    t.start()
-
-            for t in self.prefetch_threads:
-                if not t.is_alive():
-                    logger.debug("Prefetch thread restarted!")
-                    t = threading.Thread(target=self.download, args=(True,))
-                    t.deamon = True
-                    t.start()
+            if self.download_running:
+                dq = self.download_queue.qsize()
+                pq = self.prefetch_queue.qsize()
+                logger.debug("dq, pq: %i, %i" % (dq, pq))
+                for i in self.download_threads.keys():
+                    if not self.download_threads[i].is_alive():
+                        logger.debug("Download thread restarted!")
+                        self.download_threads[i] = threading.Thread(target=self.download)
+                        self.download_threads[i].deamon = True
+                        self.download_threads[i].start()
+                for i in self.prefetch_threads.keys():
+                    if not self.prefetch_threads[i].is_alive():
+                        logger.debug("Prefetch thread restarted!")
+                        self.prefetch_threads[i] = threading.Thread(target=self.download, args=(True,))
+                        self.prefetch_threads[i].deamon = True
+                        self.prefetch_threads[i].start()
 
             num_entries, mem_size, disk_size = self.cache.get_memory_usage()
             logger.debug("num_entries, mem_size, disk_size: %i, %i, %i" % (num_entries, mem_size, disk_size))
