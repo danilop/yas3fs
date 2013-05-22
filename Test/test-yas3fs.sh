@@ -23,8 +23,8 @@ do
     END=`echo "$START + $RANDOM * ($SIZE - $START) / 32767"|bc`
     echo "End is: $END" 
 
-    echo "Reading $FILENAME form $START to $END ..."
-    cut -b $START-$END "$FILENAME" > /dev/null
-    echo "Done!"
+    echo "Reading $FILENAME from $START to $END ..."
+    LENGTH=`cut -b $START-$END "$FILENAME" | wc -c`
+    echo "Done! $LENGTH bytes read from $START to $END in $FILENAME"
 
 done
