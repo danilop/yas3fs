@@ -1277,7 +1277,7 @@ class YAS3FS(LoggingMixIn, Operations):
             up_to = min(key.size, starting_from + self.buffer_size * number_of_buffers) - 1
 
         pos = starting_from
-        while True:
+        while pos <= up_to:
             logger.debug("download_data '%s' %i %i [thread '%s'] pos=%i" % (path, starting_from, number_of_buffers, threading.current_thread().name, pos))
             with self.cache.get_lock(path):
                 data = self.cache.get(path, 'data')
@@ -1290,7 +1290,7 @@ class YAS3FS(LoggingMixIn, Operations):
                     return
                 while pos <= up_to:
                     logger.debug("download_data '%s' %i %i [thread '%s'] trying pos=%i up_to=%i (first)" % (path, starting_from, number_of_buffers, threading.current_thread().name, pos, up_to))
-                    new_interval = [pos, pos + self.buffer_size - 1]
+                    new_interval = [pos, min(pos + self.buffer_size - 1, up_to)]
                     done_or_doing = False
                     if data_range.interval.contains(new_interval): ### Can be removed ???
                         logger.debug("download_data '%s' %i %i [thread '%s'] already downloaded" % (path, starting_from, number_of_buffers, threading.current_thread().name))
@@ -1309,7 +1309,7 @@ class YAS3FS(LoggingMixIn, Operations):
                     break
                 data_range.next_intervals[threading.current_thread().name] = new_interval
 
-            range_headers = { 'Range' : 'bytes=' + str(pos) + '-' + str(pos + self.buffer_size - 1) }
+            range_headers = { 'Range' : 'bytes=' + str(new_interval[0]) + '-' + str(new_interval[1]) }
             logger.debug("download_data range '%s' '%s' [thread '%s']" % (path, range_headers, threading.current_thread().name))
 
             retry = True
@@ -1349,8 +1349,6 @@ class YAS3FS(LoggingMixIn, Operations):
                             data.update_size()
                             data_range.wake()
                             pos += length
-                            if pos > up_to: # Do I need this?
-                                break
                         else:
                             logger.debug("download_data %i bytes '%s' [thread '%s'] no content" % (length, path, threading.current_thread().name))
                             break
