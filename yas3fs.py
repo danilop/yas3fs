@@ -1263,8 +1263,8 @@ class YAS3FS(LoggingMixIn, Operations):
                    self.prefetch_queue.task_done()
                else:
                    self.download_queue.task_done()
-            except Queue.Empty:
-                pass
+           except Queue.Empty:
+               pass
 
     def download_data(self, path, starting_from, number_of_buffers):
         logger.debug("download_data '%s' %i %i [thread '%s']" % (path, starting_from, number_of_buffers, threading.current_thread().name))
