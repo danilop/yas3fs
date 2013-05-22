@@ -551,7 +551,7 @@ class YAS3FS(LoggingMixIn, Operations):
         self.cache_mem_size = int(options.cache_mem_size) * (1024 * 1024) # To convert MB to bytes
         logger.info("Cache memory size (in bytes): '%i'" % self.cache_mem_size)
         self.cache_disk_size = int(options.cache_disk_size) * (1024 * 1024) # To convert MB to bytes
-        logger.info("Cache disk size (in bytes): '%i'" % self.cache_mem_size)
+        logger.info("Cache disk size (in bytes): '%i'" % self.cache_disk_size)
         self.cache_on_disk = int(options.cache_on_disk) * (1024 * 1024) # To convert MB to bytes
         logger.info("Cache on disk if file size greater than (in bytes): '%i'" % self.cache_on_disk)
         self.cache_check_interval = int(options.cache_check_interval) # seconds
