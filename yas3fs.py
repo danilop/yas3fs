@@ -44,8 +44,6 @@ from boto.s3.key import Key
 
 from fuse import FUSE, FuseOSError, Operations, LoggingMixIn, fuse_get_context
 
-local_data = threading.local() # For thread-safe local variables
-
 class Interval():
     """ Simple integer interval arthmetic."""
     def __init__(self):
@@ -206,8 +204,11 @@ class FSData():
             return self.content.seek(0,2)
         else:
             return 0 # There's no content...
-    def update_size(self):
-        current_size = self.get_current_size()
+    def update_size(self, final=True):
+        if final:
+            current_size = 0 # The entry is to be deleted
+        else:
+            current_size = self.get_current_size()
         delta = current_size - self.size
         with self.lock:
             self.size = current_size;
@@ -251,7 +252,7 @@ class FSData():
                         os.unlink(etag_filename)
                         removeEmptyDirForFile(etag_filename)
                 self.content = None # If not
-                self.update_size()
+                self.update_size(True)
                 for p in self.props.keys():
                     self.delete(p)
             elif prop in self.props:
@@ -1286,16 +1287,16 @@ class YAS3FS(LoggingMixIn, Operations):
                     return
                 while pos <= up_to:
                     new_interval = [pos, pos + self.buffer_size - 1]
-                    already_ongoing = False
+                    done_or_doing = False
                     if data_range.interval.contains(new_interval): ### Can be removed ???
                         logger.debug("already downloaded")
-                        already_ongoing = True
+                        done_or_doing = True
                     else:
                         for i in data_range.next_intervals.itervalues():
                             if i[0] <= new_interval[0] and i[1] >= new_interval[1]:
-                                already_ongoing = True
+                                done_or_doing = True
                                 break
-                    if not already_ongoing:
+                    if not done_or_doing:
                         break
                     pos = pos + self.buffer_size
                 if pos > up_to:
