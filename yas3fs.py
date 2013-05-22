@@ -921,6 +921,7 @@ class YAS3FS(LoggingMixIn, Operations):
             logger.debug("num_entries, mem_size, disk_size, download_queue, prefetch_queue: %i, %i, %i, %i, %i" % (num_entries, mem_size, disk_size, dq, pq))
             purge = False
             if num_entries > self.cache_entries:
+                purge = True
                 with self.cache.lock:
                     path = self.cache.lru.popleft()
                     logger.debug("purge: %s ?" % path)
@@ -928,10 +929,10 @@ class YAS3FS(LoggingMixIn, Operations):
                     if not data or ((not data.has('open')) and (not data.has('change'))):
                         logger.debug("purge: %s ok" % path)
                         self.cache.delete(path)
-                        purge = True
                     else:
                         self.cache.lru.append(path)
             if mem_size > self.cache_mem_size:
+                purge = True
                 with self.cache.lock:
                     path = self.cache.lru.popleft()
                     logger.debug("purge: %s ?" % path)
@@ -939,10 +940,10 @@ class YAS3FS(LoggingMixIn, Operations):
                     if data and data.store == 'mem' and (not data.has('open')) and (not data.has('change')):
                         logger.debug("purge: %s ok" % path)
                         self.cache.delete(path)
-                        purge = True
                     else:
                         self.cache.lru.append(path)
             if disk_size > self.cache_disk_size:
+                purge = True
                 with self.cache.lock:
                     path = self.cache.lru.popleft()
                     logger.debug("purge: %s ?" % path)
@@ -950,7 +951,6 @@ class YAS3FS(LoggingMixIn, Operations):
                     if data and data.store == 'disk' and (not data.has('open')) and (not data.has('change')):
                         logger.debug("purge: %s ok" % path)
                         self.cache.delete(path)
-                        purge = True
                     else:
                         self.cache.lru.append(path)
             if not purge:
