@@ -920,7 +920,7 @@ class YAS3FS(LoggingMixIn, Operations):
             num_entries, mem_size, disk_size = self.cache.get_memory_usage()
             dq = self.download_queue.qsize()
             pq = self.prefetch_queue.qsize()
-            logger.debug("num_entries, mem_size, disk_size, download_queue, prefetch_queue: %i, %i, %i, %i, %i" % (num_entries, mem_size, disk_size, dq, pq))
+            logger.info("num_entries, mem_size, disk_size, download_queue, prefetch_queue: %i, %i, %i, %i, %i" % (num_entries, mem_size, disk_size, dq, pq))
 
             purge = False
             if num_entries > self.cache_entries:
