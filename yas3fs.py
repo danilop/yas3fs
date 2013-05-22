@@ -931,21 +931,21 @@ class YAS3FS(LoggingMixIn, Operations):
                 purge = True
                 store = 'disk'
 
-            with self.cache.lock:
-                path = self.cache.lru.popleft()
-                logger.debug("purge: %s ?" % path)
-                data = self.cache.get(path, 'data')
-                if data and (store == '' or data.store == store) and (not data.has('open')) and (not data.has('change')):
-                    logger.debug("purge: %s ok" % path)
-                    self.cache.delete(path)
-                else:
-                    if data:
-                        logger.debug("purge: %s KO data? True open? change?" % (path, data.has('open'), data.has('change')))
+            if purge:
+                with self.cache.lock:
+                    path = self.cache.lru.popleft()
+                    logger.debug("purge: %s ?" % path)
+                    data = self.cache.get(path, 'data')
+                    if data and (store == '' or data.store == store) and (not data.has('open')) and (not data.has('change')):
+                        logger.debug("purge: %s ok" % path)
+                        self.cache.delete(path)
                     else:
-                        logger.debug("purge: %s KO data? False" % path)
-                    self.cache.lru.append(path)
-
-            if not purge:
+                        if data:
+                            logger.debug("purge: %s KO data? True open? change?" % (path, data.has('open'), data.has('change')))
+                        else:
+                            logger.debug("purge: %s KO data? False" % path)
+                        self.cache.lru.append(path)
+            else:
                 time.sleep(self.cache_check_interval)
 
     def add_to_parent_readdir(self, path):
