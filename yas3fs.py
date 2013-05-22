@@ -301,7 +301,7 @@ class FSCache():
         self.reset_all()
     def reset_all(self):
          with self.lock:
-             self.entries = {} # This will leave disk cache (if any) on place, is this ok???
+             self.entries = {}
              self.locks = {}
              self.lru = LinkedList()
              self.size = {}
@@ -589,7 +589,9 @@ class YAS3FS(LoggingMixIn, Operations):
 
         # Internal Initialization
         if options.cache_path == '':
-            cache_path = '/tmp/yas3fs/' + self.s3_bucket_name + '/' + self.s3_prefix
+            cache_path = '/tmp/yas3fs/' + self.s3_bucket_name
+            if not self.s3_prefix == '':
+                cache_path += '/' + self.s3_prefix
         else:
             cache_path = options.cache_path
         logger.info("Cache path (on disk): '%s'" % cache_path)
@@ -926,25 +928,29 @@ class YAS3FS(LoggingMixIn, Operations):
                     if data and (data.has('open') or data.has('change')):
                         self.cache.lru.append(path)
                     else:
-                        logger.debug("purge: yes")
+                        logger.debug("purge: %s ok" % path)
                         self.cache.delete(path)
                         purge = True
             if mem_size > self.cache_mem_size:
                 with self.cache.lock:
                     path = self.cache.lru.popleft()
+                    logger.debug("purge: %s ?" % path)
                     data = self.cache.get(path, 'data')
                     if data and (data.store != 'mem' or data.has('open') or data.has('change')):
                         self.cache.lru.append(path)
                     else:
+                        logger.debug("purge: %s ok" % path)
                         self.cache.delete(path)
                         purge = True
             if disk_size > self.cache_disk_size:
                 with self.cache.lock:
                     path = self.cache.lru.popleft()
+                    logger.debug("purge: %s ?" % path)
                     data = self.cache.get(path, 'data')
                     if data and (data.store != 'disk' or data.has('open') or data.has('change')):
                         self.cache.lru.append(path)
                     else:
+                        logger.debug("purge: %s ok" % path)
                         self.cache.delete(path)
                         purge = True
             if not purge:
