@@ -565,6 +565,8 @@ class YAS3FS(LoggingMixIn, Operations):
             logger.info(" TCP port to listen to SNS HTTP notifications: '%i'" % self.sns_http_port)
         self.download_num = int(options.download_num)
         logger.info("Number of parallel donwloading threads: '%i'" % self.download_num)
+        self.prefetch_num = int(options.prefetch_num)
+        logger.info("Number of parallel prefetching threads: '%i'" % self.prefetch_num)
         self.buffer_size = int(options.buffer_size) * 1024 # To convert KB to bytes
         logger.info("Download buffer size (in KB, 0 to disable buffering): '%i'" % self.buffer_size)
         self.buffer_prefetch = int(options.buffer_prefetch)
@@ -589,6 +591,7 @@ class YAS3FS(LoggingMixIn, Operations):
         self.cache = FSCache(cache_path)
         self.publish_queue = Queue.Queue()
         self.download_queue = Queue.Queue()
+        self.prefetch_queue = Queue.Queue()
 
         # AWS Initialization
         if not self.aws_region in (r.name for r in boto.s3.regions()):
@@ -677,6 +680,12 @@ class YAS3FS(LoggingMixIn, Operations):
             self.download_threads[i] = threading.Thread(target=self.download)
             self.download_threads[i].deamon = True
             self.download_threads[i].start()
+
+        self.prefetch_threads = {}
+        for i in range(0, self.prefetch_num):
+            self.prefetch_threads[i] = threading.Thread(target=self.download, args=(True,))
+            self.prefetch_threads[i].deamon = True
+            self.prefetch_threads[i].start()
 
         if self.sqs_queue_name:
             self.queue_listen_thread = threading.Thread(target=self.listen_for_changes_over_sqs)
@@ -881,8 +890,29 @@ class YAS3FS(LoggingMixIn, Operations):
             self.publish_queue.put(message)
 
     def check_cache_size(self):
+        
+        logger.debug("download/prefetch queues")
         logger.debug("check_cache_size")
         while self.cache_entries:
+
+            dq = self.download_queue.qsize()
+            pq = self.prefetch_queue.qsize()
+            logger.debug("dq, pq: %i, %i" % (dq, pq))
+
+            for t in self.download_threads:
+                if not t.is_alive():
+                    logger.debug("Download thread restarted!")
+                    t = threading.Thread(target=self.download)
+                    t.deamon = True
+                    t.start()
+
+            for t in self.prefetch_threads:
+                if not t.is_alive():
+                    logger.debug("Prefetch thread restarted!")
+                    t = threading.Thread(target=self.download, args=(True,))
+                    t.deamon = True
+                    t.start()
+
             num_entries, mem_size, disk_size = self.cache.get_memory_usage()
             logger.debug("num_entries, mem_size, disk_size: %i, %i, %i" % (num_entries, mem_size, disk_size))
             purge = False
@@ -1207,7 +1237,7 @@ class YAS3FS(LoggingMixIn, Operations):
                 logger.debug("check_data '%s' data already in place" % (path))
             return True
 
-    def enqueue_download_data(self, path, starting_from=0, length=0):
+    def enqueue_download_data(self, path, starting_from=0, length=0, prefetch=False):
         logger.debug("enqueue_download_data '%s' %i %i" % (path, starting_from, length))
         start_buffer = int(starting_from) / self.buffer_size
         if length == 0: # Means to the end of file
@@ -1216,14 +1246,23 @@ class YAS3FS(LoggingMixIn, Operations):
             end_buffer = int(starting_from + length - 1) / self.buffer_size
             number_of_buffers = 1 + (end_buffer - start_buffer)
         buffered_start = start_buffer * self.buffer_size
-        self.download_queue.put((path, buffered_start, number_of_buffers))
+        if prefetch:
+            self.prefetch_queue.put((path, buffered_start, number_of_buffers))
+        else:
+            self.download_queue.put((path, buffered_start, number_of_buffers))
 
-    def download(self):
+    def download(self, prefetch=False):
        while self.download_running:
             try:
-                (path, buffered_start, number_of_buffers) = self.download_queue.get(True, 1) # 1 second time-out
+                if prefetch:
+                    (path, buffered_start, number_of_buffers) = self.prefetch_queue.get(True, 1) # 1 second time-out
+                else:
+                    (path, buffered_start, number_of_buffers) = self.download_queue.get(True, 1) # 1 second time-out
                 self.download_data(path, buffered_start, number_of_buffers)
-                self.download_queue.task_done()
+                if prefetch:
+                    self.prefetch_queue.task_done()
+                else:
+                    self.download_queue.task_done()
             except Queue.Empty:
                 time.sleep(self.download_sleep)
 
@@ -1534,7 +1573,7 @@ class YAS3FS(LoggingMixIn, Operations):
                 prefetch_interval = [end_interval, end_prefetch_interval]
                 if not data_range.interval.contains(prefetch_interval):
                     logger.debug("download prefetch")
-                    self.enqueue_download_data(path, end_interval, prefetch_length)
+                    self.enqueue_download_data(path, end_interval, prefetch_length, prefetch=True)
                 logger.debug("read '%s' '%i' '%i' '%s' in range" % (path, length, offset, fh))                
                 break
             else:
@@ -1864,6 +1903,8 @@ In an EC2 instance a IAM role can be used to give access to S3/SNS/SQS resources
                       help="interval between cache memory checks in seconds (default is %default seconds)", metavar="N", default=3)
     parser.add_option("--download-num", dest="download_num",
                       help="number of parallel downloads (default is %default)", metavar="N", default=4)
+    parser.add_option("--prefetch-num", dest="prefetch_num",
+                      help="number of parallel prefetching downloads (default is %default)", metavar="N", default=1)
     parser.add_option("--buffer-size", dest="buffer_size",
                       help="download buffer size in KB (0 to disable buffering, default is %default KB)", metavar="N", default=10240)
     parser.add_option("--buffer-prefetch", dest="buffer_prefetch",
