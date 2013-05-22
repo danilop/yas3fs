@@ -925,34 +925,34 @@ class YAS3FS(LoggingMixIn, Operations):
                     path = self.cache.lru.popleft()
                     logger.debug("purge: %s ?" % path)
                     data = self.cache.has(path, 'data')
-                    if data and (data.has('open') or data.has('change')):
-                        self.cache.lru.append(path)
-                    else:
+                    if not data or (data and not data.has('open') and not data.has('change')):
                         logger.debug("purge: %s ok" % path)
                         self.cache.delete(path)
                         purge = True
+                    else:
+                        self.cache.lru.append(path)
             if mem_size > self.cache_mem_size:
                 with self.cache.lock:
                     path = self.cache.lru.popleft()
                     logger.debug("purge: %s ?" % path)
                     data = self.cache.get(path, 'data')
-                    if data and (data.store != 'mem' or data.has('open') or data.has('change')):
-                        self.cache.lru.append(path)
-                    else:
+                    if data and data.store == 'mem' and not data.has.('open') and not data.has('change'):
                         logger.debug("purge: %s ok" % path)
                         self.cache.delete(path)
                         purge = True
+                    else:
+                        self.cache.lru.append(path)
             if disk_size > self.cache_disk_size:
                 with self.cache.lock:
                     path = self.cache.lru.popleft()
                     logger.debug("purge: %s ?" % path)
                     data = self.cache.get(path, 'data')
-                    if data and (data.store != 'disk' or data.has('open') or data.has('change')):
-                        self.cache.lru.append(path)
-                    else:
+                    if data and data.store == 'disk' and not data.has.('open') and not data.has('change'):
                         logger.debug("purge: %s ok" % path)
                         self.cache.delete(path)
                         purge = True
+                    else:
+                        self.cache.lru.append(path)
             if not purge:
                 time.sleep(self.cache_check_interval)
 
