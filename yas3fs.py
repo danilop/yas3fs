@@ -1573,7 +1573,9 @@ class YAS3FS(LoggingMixIn, Operations):
                 break
             file_size = self.get_key(path).size # Something better ???
             end_interval = min(offset + length, file_size) - 1
-            read_interval = [offset, end_interval]
+            read_interval = [offset, max(end_interval, offset)]
+            if offset > end_interval:
+                logger.debug("read '%s' '%i' '%i' '%s' offset=%i end_interval=%i" %((path, length, offset, fh, offset, end_interval))
             if data_range.interval.contains(read_interval):
                 prefetch_length = self.buffer_size * self.buffer_prefetch
                 end_prefetch_interval = min(end_interval + prefetch_length, file_size) - 1
