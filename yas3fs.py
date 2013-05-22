@@ -318,11 +318,10 @@ class FSCache():
     def get_cache_etags_filename(self, path):
         return self.cache_path + '/etags' + path # path begins with '/'
     def get_lock(self, path):
-        with self.lock:
-            if self.has(path):
-                return self.locks[path]
-            else:
-                return None
+        try:
+            return self.locks[path]
+        except KeyError:
+            return None
     def add(self, path):
         with self.lock:
             if not self.has(path):
