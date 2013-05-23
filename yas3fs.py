@@ -518,7 +518,7 @@ class YAS3FS(LoggingMixIn, Operations):
         # Some constants
         ### self.http_listen_path_length = 30
         self.download_running = True
-        self.check_status_interval = 1.0 # Seconds, no need to configure that
+        self.check_status_interval = 5.0 # Seconds, no need to configure that
 
         # Initialization
         global debug
