@@ -21,10 +21,13 @@ do
     echo "Start at: $START"
 
     END=`echo "$START + $RANDOM * ($SIZE - $START) / 32767"|bc`
-    echo "End is: $END" 
+    echo "End is: $END"
+
+    LENGTH=`echo "$END - $START"|bc`
+    echo "Length is: $LENGTH"
 
     echo "Reading $FILENAME from $START to $END ..."
-    LENGTH=`cut -b $START-$END "$FILENAME" | wc -c`
-    echo "Done! $LENGTH bytes read from $START to $END in $FILENAME"
+    READ_LENGTH=`tail -c+$START "$FILENAME"|head -c$LENGTH|wc -c`
+    echo "Done! $READ_LENGTH bytes read out of $LENGTH bytes from $START to $END in $FILENAME"
 
 done
