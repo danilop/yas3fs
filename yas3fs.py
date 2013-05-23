@@ -936,7 +936,7 @@ class YAS3FS(LoggingMixIn, Operations):
 
             if purge:
                 path = self.cache.lru.popleft()
-                with get_lock(path):
+                with self.cache.get_lock(path):
                     logger.debug("purge: '%s' '%s' ?" % (store, path))
                     data = self.cache.get(path, 'data')
                     if data and (store == '' or data.store == store) and (not data.has('open')) and (not data.has('change')):
@@ -1558,7 +1558,7 @@ class YAS3FS(LoggingMixIn, Operations):
         if self.cache.is_empty(path):
             logger.debug("release '%s' '%i' ENOENT" % (path, flags))
             raise FuseOSError(errno.ENOENT)
-        self.cache.get(path, 'data').close()
+            self.cache.get(path, 'data').close()
         logger.debug("release '%s' '%i' '%s'" % (path, flags, self.cache.get(path, 'data').get('open')))
 	return 0
 
