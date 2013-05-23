@@ -716,6 +716,10 @@ class YAS3FS(LoggingMixIn, Operations):
         else:
             self.http_listen_thread = None
 
+        self.check_status = threading.Thread(target=self.check_status)
+        self.check_status.daemon = True
+        self.check_status.start()
+
         self.check_cache_thread = threading.Thread(target=self.check_cache_size)
         self.check_cache_thread.daemon = True
         self.check_cache_thread.start()
