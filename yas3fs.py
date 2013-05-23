@@ -518,7 +518,7 @@ class YAS3FS(LoggingMixIn, Operations):
         # Some constants
         ### self.http_listen_path_length = 30
         self.download_running = True
-        self.download_sleep = 0.1
+        self.check_status_interval = 1.0 # Seconds, no need to configure that
 
         # Initialization
         global debug
@@ -899,33 +899,40 @@ class YAS3FS(LoggingMixIn, Operations):
             logger.debug("publish '%s'" % (message))
             self.publish_queue.put(message)
 
+    def check_status(self):
+        logger.debug("check_status")
+
+        while self.cache_entries:
+
+            num_entries, mem_size, disk_size = self.cache.get_memory_usage()
+            logger.info("num_entries, mem_size, disk_size, download_queue, prefetch_queue: %i, %i, %i, %i, %i"
+                        % (num_entries, mem_size, disk_size, self.download_queue.qsize(), self.prefetch_queue.qsize()))
+
+            if self.download_running:
+                for i in self.download_threads.keys():
+                    if not self.download_threads[i].is_alive():
+                        logger.debug("Download thread restarted!")
+                        self.download_threads[i] = threading.Thread(target=self.download)
+                        self.download_threads[i].deamon = True
+                        self.download_threads[i].start()
+                for i in self.prefetch_threads.keys():
+                    if not self.prefetch_threads[i].is_alive():
+                        logger.debug("Prefetch thread restarted!")
+                        self.prefetch_threads[i] = threading.Thread(target=self.download, args=(True,))
+                        self.prefetch_threads[i].deamon = True
+                        self.prefetch_threads[i].start()
+
+            time.sleep(self.check_status_interval)
+
     def check_cache_size(self):
         
-        logger.debug("check_cache_size + download/prefetch queues")
-        purge = False
+        logger.debug("check_cache_size")
+
         while self.cache_entries:
 
             num_entries, mem_size, disk_size = self.cache.get_memory_usage()
 
-            if not purge:
-                if self.download_running:
-                    for i in self.download_threads.keys():
-                        if not self.download_threads[i].is_alive():
-                            logger.debug("Download thread restarted!")
-                            self.download_threads[i] = threading.Thread(target=self.download)
-                            self.download_threads[i].deamon = True
-                            self.download_threads[i].start()
-                    for i in self.prefetch_threads.keys():
-                        if not self.prefetch_threads[i].is_alive():
-                            logger.debug("Prefetch thread restarted!")
-                            self.prefetch_threads[i] = threading.Thread(target=self.download, args=(True,))
-                            self.prefetch_threads[i].deamon = True
-                            self.prefetch_threads[i].start()
-                    logger.info("num_entries, mem_size, disk_size, download_queue, prefetch_queue: %i, %i, %i, %i, %i"
-                                % (num_entries, mem_size, disk_size, self.download_queue.qsize(), self.prefetch_queue.qsize()))
-            else:
-                purge = False
-
+            purge = False
             if num_entries > self.cache_entries:
                 purge = True
                 store = ''
