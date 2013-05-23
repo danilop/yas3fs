@@ -927,10 +927,10 @@ class YAS3FS(LoggingMixIn, Operations):
             if num_entries > self.cache_entries:
                 purge = True
                 store = ''
-            if mem_size > self.cache_mem_size:
+            elif mem_size > self.cache_mem_size:
                 purge = True
                 store = 'mem'
-            if disk_size > self.cache_disk_size:
+            elif disk_size > self.cache_disk_size:
                 purge = True
                 store = 'disk'
 
@@ -1558,7 +1558,7 @@ class YAS3FS(LoggingMixIn, Operations):
         if self.cache.is_empty(path):
             logger.debug("release '%s' '%i' ENOENT" % (path, flags))
             raise FuseOSError(errno.ENOENT)
-            self.cache.get(path, 'data').close()
+        self.cache.get(path, 'data').close()
         logger.debug("release '%s' '%i' '%s'" % (path, flags, self.cache.get(path, 'data').get('open')))
 	return 0
 
