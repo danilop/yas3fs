@@ -941,7 +941,7 @@ class YAS3FS(LoggingMixIn, Operations):
                     data = self.cache.get(path, 'data')
                     if data and (store == '' or data.store == store) and (not data.has('open')) and (not data.has('change')):
                         logger.debug("purge: '%s' '%s' ok" % (store, path))
-[                        if store == '':
+                        if store == '':
                             self.cache.delete(path)
                         else:
                             self.cache.delete(path, 'data')
