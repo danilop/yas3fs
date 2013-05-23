@@ -321,15 +321,15 @@ class FSCache():
         try:
             return self.locks[path]
         except KeyError:
-            return None
+            return self.lock
     def add(self, path):
-        with self.lock:
+        with self.get_lock(path):
             if not self.has(path):
                 self.entries[path] = {}
                 self.locks[path] = threading.RLock()
                 self.lru.append(path)
     def delete(self, path, prop=None):
-        with self.lock:
+        with self.get_lock(path):
             if path in self.entries:
                 with self.get_lock(path):
                     if prop == None:
@@ -346,7 +346,7 @@ class FSCache():
                                     data.delete() # To clean stuff, e.g. remove cache files
                             del self.entries[path][prop]
     def rename(self, path, new_path):
-        with self.lock:
+        with self.get_lock(path):
             if path in self.entries:
                 with self.get_lock(path):
                     self.delete(path, 'key') # Cannot be renamed
@@ -373,7 +373,7 @@ class FSCache():
             return None
     def set(self, path, prop, value):
         self.lru.move_to_the_tail(path) # Move to the tail of the LRU cache
-        with self.lock:
+        with self.get_lock(path):
             if path in self.entries:
         	if prop in self.entries[path]:
                     self.delete(path, prop)
@@ -382,7 +382,7 @@ class FSCache():
             else:
         	return False
     def reset(self, path):
-        with self.lock:
+        with self.get_lock(path):
             self.delete(path)
             self.add(path)
     def has(self, path, prop=None):
@@ -799,7 +799,7 @@ class YAS3FS(LoggingMixIn, Operations):
 
     def invalidate_cache(self, path, etag=None):
         logger.debug("invalidate_cache '%s' '%s'" % (path, etag))
-        with self.cache.lock:
+        with self.cache.get_lock(path):
             self.cache.delete(path, 'key')
             self.cache.delete(path, 'attr')
             self.cache.delete(path, 'xattr')
@@ -814,7 +814,7 @@ class YAS3FS(LoggingMixIn, Operations):
 
     def delete_cache(self, path):
         logger.debug("delete_cache '%s'" % (path))
-        with self.cache.lock:
+        with self.cache.get_lock(path):
             self.cache.delete(path)
             self.reset_parent_readdir(path)
 
@@ -935,8 +935,8 @@ class YAS3FS(LoggingMixIn, Operations):
                 store = 'disk'
 
             if purge:
-                with self.cache.lock:
-                    path = self.cache.lru.popleft()
+                path = self.cache.lru.popleft()
+                with get_lock(path):
                     logger.debug("purge: '%s' '%s' ?" % (store, path))
                     data = self.cache.get(path, 'data')
                     if data and (store == '' or data.store == store) and (not data.has('open')) and (not data.has('change')):
@@ -952,7 +952,7 @@ class YAS3FS(LoggingMixIn, Operations):
         logger.debug("add_to_parent_readdir '%s'" % (path))
         (parent_path, dir) = os.path.split(path)
         logger.debug("parent_path '%s'" % (parent_path))
-        with self.cache.lock:
+        with self.cache.get_lock(path):
             dirs = self.cache.get(parent_path, 'readdir')
             if dirs != None and dirs.count(dir) == 0:
                 dirs.append(dir)
@@ -961,7 +961,7 @@ class YAS3FS(LoggingMixIn, Operations):
         logger.debug("remove_from_parent_readdir '%s'" % (path))
         (parent_path, dir) = os.path.split(path)
         logger.debug("parent_path '%s'" % (parent_path))
-        with self.cache.lock:
+        with self.cache.get_lock(path):
             dirs = self.cache.get(parent_path, 'readdir')
             if dirs != None and dirs.count(dir) > 0:
                 dirs.remove(dir)
@@ -1224,9 +1224,8 @@ class YAS3FS(LoggingMixIn, Operations):
                     logger.debug("check_data '%s' nothing to download" % (path))
                     return True # No need to download anything
                 elif self.buffer_size > 0: # Use buffers
-                    with self.cache.lock:
-                        if not data.has('range'):
-                            data.set('range', FSRange())
+                    if not data.has('range'):
+                        data.set('range', FSRange())
                     logger.debug("check_data '%s' created empty data object" % (path))
                 else: # Download at once
                     k.get_contents_to_file(data.content)
@@ -1355,7 +1354,7 @@ class YAS3FS(LoggingMixIn, Operations):
 
         logger.debug("download_data end '%s' %i-%i [thread '%s']" % (path, starting_from, pos, threading.current_thread().name))
 
-        with self.cache.lock:
+        with self.cache.get_lock(path):
             data = self.cache.get(path, 'data')
             data_range = data.get('range')
             if data_range:
@@ -1550,8 +1549,7 @@ class YAS3FS(LoggingMixIn, Operations):
 	self.cache.add(path)
 	if not self.check_data(path):
 	    self.mknod(path, flags)
-        with self.cache.lock:
-            self.cache.get(path, 'data').open()
+        self.cache.get(path, 'data').open()
         logger.debug("open '%s' '%i' '%s'" % (path, flags, self.cache.get(path, 'data').get('open')))
 	return 0
 
@@ -1560,8 +1558,7 @@ class YAS3FS(LoggingMixIn, Operations):
         if self.cache.is_empty(path):
             logger.debug("release '%s' '%i' ENOENT" % (path, flags))
             raise FuseOSError(errno.ENOENT)
-        with self.cache.lock:
-            self.cache.get(path, 'data').close()
+        self.cache.get(path, 'data').close()
         logger.debug("release '%s' '%i' '%s'" % (path, flags, self.cache.get(path, 'data').get('open')))
 	return 0
 
