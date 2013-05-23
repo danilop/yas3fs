@@ -902,28 +902,30 @@ class YAS3FS(LoggingMixIn, Operations):
     def check_cache_size(self):
         
         logger.debug("check_cache_size + download/prefetch queues")
+        purge = False
         while self.cache_entries:
 
-            if self.download_running:
-                for i in self.download_threads.keys():
-                    if not self.download_threads[i].is_alive():
-                        logger.debug("Download thread restarted!")
-                        self.download_threads[i] = threading.Thread(target=self.download)
-                        self.download_threads[i].deamon = True
-                        self.download_threads[i].start()
-                for i in self.prefetch_threads.keys():
-                    if not self.prefetch_threads[i].is_alive():
-                        logger.debug("Prefetch thread restarted!")
-                        self.prefetch_threads[i] = threading.Thread(target=self.download, args=(True,))
-                        self.prefetch_threads[i].deamon = True
-                        self.prefetch_threads[i].start()
-
             num_entries, mem_size, disk_size = self.cache.get_memory_usage()
-            dq = self.download_queue.qsize()
-            pq = self.prefetch_queue.qsize()
-            logger.info("num_entries, mem_size, disk_size, download_queue, prefetch_queue: %i, %i, %i, %i, %i" % (num_entries, mem_size, disk_size, dq, pq))
 
-            purge = False
+            if not purge:
+                if self.download_running:
+                    for i in self.download_threads.keys():
+                        if not self.download_threads[i].is_alive():
+                            logger.debug("Download thread restarted!")
+                            self.download_threads[i] = threading.Thread(target=self.download)
+                            self.download_threads[i].deamon = True
+                            self.download_threads[i].start()
+                    for i in self.prefetch_threads.keys():
+                        if not self.prefetch_threads[i].is_alive():
+                            logger.debug("Prefetch thread restarted!")
+                            self.prefetch_threads[i] = threading.Thread(target=self.download, args=(True,))
+                            self.prefetch_threads[i].deamon = True
+                            self.prefetch_threads[i].start()
+                    logger.info("num_entries, mem_size, disk_size, download_queue, prefetch_queue: %i, %i, %i, %i, %i"
+                                % (num_entries, mem_size, disk_size, self.download_queue.qsize(), self.prefetch_queue.qsize()))
+            else:
+                purge = False
+
             if num_entries > self.cache_entries:
                 purge = True
                 store = ''
@@ -946,7 +948,8 @@ class YAS3FS(LoggingMixIn, Operations):
                         else:
                             self.cache.delete(path, 'data')
                     else:
-                        logger.debug("purge: '%s' '%s' KO data? %s open? %s change? %s" % (store, path, data != None, data and data.has('open'), data and data.has('change')))
+                        logger.debug("purge: '%s' '%s' KO data? %s open? %s change? %s"
+                                     % (store, path, data != None, data and data.has('open'), data and data.has('change')))
                         self.cache.lru.append(path)
             else:
                 time.sleep(self.cache_check_interval)
