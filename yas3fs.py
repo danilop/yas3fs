@@ -944,9 +944,10 @@ class YAS3FS(LoggingMixIn, Operations):
                     if data and (store == '' or data.store == store) and (not data.has('open')) and (not data.has('change')):
                         logger.debug("purge: '%s' '%s' ok" % (store, path))
                         if store == '':
-                            self.cache.delete(path)
+                            self.cache.delete(path) # Remove completely from cache
                         else:
-                            self.cache.delete(path, 'data')
+                            self.cache.delete(path, 'data') # Just remove data...
+                            self.cache.lru.append(path) # ...and append again to the RLU list
                     else:
                         logger.debug("purge: '%s' '%s' KO data? %s open? %s change? %s"
                                      % (store, path, data != None, data and data.has('open'), data and data.has('change')))
