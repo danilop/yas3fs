@@ -1358,17 +1358,19 @@ class YAS3FS(LoggingMixIn, Operations):
                     logger.debug("download_data %i bytes '%s' [thread '%s']" % (length, path, threading.current_thread().name))
                 if length > 0:
                     with data.get_lock():
-                        if data.content:
-                            data.content.seek(pos)
-                            data.content.write(bytes)
-                            new_interval = [pos, pos + length - 1]
-                            data_range.interval.add(new_interval)
-                            data.update_size()
-                            data_range.wake()
-                            pos += length
-                        else:
-                            logger.debug("download_data %i bytes '%s' [thread '%s'] no content" % (length, path, threading.current_thread().name))
-                            break
+                        no_content = False
+                        if not data.content: # Usually for prefetches
+                            no_content = True
+                            data.open()
+                        data.content.seek(pos)
+                        data.content.write(bytes)
+                        new_interval = [pos, pos + length - 1]
+                        data_range.interval.add(new_interval)
+                        data.update_size()
+                        data_range.wake()
+                        pos += length
+                        if no_content:
+                            data.close()
 
         logger.debug("download_data end '%s' %i-%i [thread '%s']" % (path, starting_from, pos, threading.current_thread().name))
 
