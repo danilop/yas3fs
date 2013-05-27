@@ -28,6 +28,11 @@ do
 
     echo "Reading $FILENAME from $START to $END ..."
     READ_LENGTH=`tail -c+$START "$FILENAME"|head -c$LENGTH|wc -c`
-    echo "Done! $READ_LENGTH bytes read out of $LENGTH bytes from $START to $END in $FILENAME"
+
+    if (( $LENGTH == $READ_LENGTH )); then
+        echo "Done! $READ_LENGTH bytes read out of $LENGTH bytes from $START to $END in $FILENAME"
+    else
+        echo "Error! $READ_LENGTH bytes read out of $LENGTH bytes from $START to $END in $FILENAME"
+    fi
 
 done
