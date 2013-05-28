@@ -128,7 +128,7 @@ class FSRange():
     io_wait = 3.0 # 3 seconds
     def __init__(self):
         self.interval = Interval()
-        self.ongoing_intervals = {}
+        self.next_intervals = {}
         self.event = threading.Event()
         self.lock = threading.RLock()
     def wait(self):
@@ -686,13 +686,13 @@ class YAS3FS(LoggingMixIn, Operations):
         self.publish_thread.start()
 
         self.download_threads = {}
-        for i in range(self.download_num):
+        for i in range(0, self.download_num):
             self.download_threads[i] = threading.Thread(target=self.download)
             self.download_threads[i].deamon = True
             self.download_threads[i].start()
 
         self.prefetch_threads = {}
-        for i in range(self.prefetch_num):
+        for i in range(0, self.prefetch_num):
             self.prefetch_threads[i] = threading.Thread(target=self.download, args=(True,))
             self.prefetch_threads[i].deamon = True
             self.prefetch_threads[i].start()
@@ -1256,17 +1256,16 @@ class YAS3FS(LoggingMixIn, Operations):
 
     def enqueue_download_data(self, path, starting_from=0, length=0, prefetch=False):
         logger.debug("enqueue_download_data '%s' %i %i" % (path, starting_from, length))
-        start_buffer = int(starting_from / self.buffer_size)
+        start_buffer = int(starting_from) / self.buffer_size
         if length == 0: # Means to the end of file
-            key = self.get_key(path)
-            number_of_buffers = 1 + int((key.size - 1 - starting_from) / self.buffer_size)
+            number_of_buffers = 0
         else:
             end_buffer = int(starting_from + length - 1) / self.buffer_size
             number_of_buffers = 1 + (end_buffer - start_buffer)
-        for i in range(number_of_buffers):
-            start = (start_buffer + i) * self.buffer_size
-            end = start + self.buffer_size - 1
-            option_list = (path, start, end)
+        for i in range(0, number_of_buffers):
+            buffered_start = start_buffer + i * self.buffer_size
+            buffered_end = buffered_start + self.buffer_size - 1
+            option_list = (path, buffered_start, buffered_end)
             if prefetch:
                 self.prefetch_queue.put(option_list)
             else:
@@ -1294,29 +1293,17 @@ class YAS3FS(LoggingMixIn, Operations):
 
         key = copy.deepcopy(self.get_key(path))
 
-        if start > (key.size - 1):
-            logger.debug("download_data EOF '%s' %i-%i [thread '%s']" % (path, start, end, thread_name))
+        new_interval = [start, min(end, key.size - 1)]
+        if data_range.interval.contains(new_interval): ### Can be removed ???
+            logger.debug("download_data '%s' %i-%i [thread '%s'] already downloaded" % (path, start, end, thread_name))
             return
+        else:
+            for i in data_range.next_intervals.itervalues():
+                if i[0] <= new_interval[0] and i[1] >= new_interval[1]:
+                    logger.debug("download_data '%s' %i-%i [thread '%s'] already downloading" % (path, start, end, thread_name))
+                    return
 
-        with self.cache.get_lock(path):
-            data = self.cache.get(path, 'data')
-            if not data:
-                logger.debug("download_data no data (before) '%s' [thread '%s']" % (path, thread_name))
-                return
-            data_range = data.get('range')
-            if not data_range:
-                logger.debug("download_data no range (before) '%s' [thread '%s']" % (path, thread_name))
-                return
-            new_interval = [start, min(end, key.size - 1)]
-            if data_range.interval.contains(new_interval): ### Can be removed ???
-                logger.debug("download_data '%s' %i-%i [thread '%s'] already downloaded" % (path, start, end, thread_name))
-                return
-            else:
-                for i in data_range.ongoing_intervals.itervalues():
-                    if i[0] <= new_interval[0] and i[1] >= new_interval[1]:
-                        logger.debug("download_data '%s' %i-%i [thread '%s'] already downloading" % (path, start, end, thread_name))
-                        return
-            data_range.ongoing_intervals[thread_name] = new_interval
+        data_range.next_intervals[thread_name] = new_interval
 
         range_headers = { 'Range' : 'bytes=' + str(new_interval[0]) + '-' + str(new_interval[1]) }
         logger.debug("download_data range '%s' '%s' [thread '%s']" % (path, range_headers, thread_name))
@@ -1341,7 +1328,7 @@ class YAS3FS(LoggingMixIn, Operations):
                 if not data_range:
                     logger.debug("download_data no range (after) '%s' [thread '%s']" % (path, thread_name))
                     return
-                del data_range.ongoing_intervals[thread_name]
+                del data_range.next_intervals[thread_name]
                 if not bytes:
                     length = 0
                     logger.debug("download_data no bytes '%s' [thread '%s']" % (path, thread_name))
@@ -1354,14 +1341,15 @@ class YAS3FS(LoggingMixIn, Operations):
                         if not data.content: # Usually for prefetches
                             no_content = True
                             data.open()
-                        data.content.seek(start)
+                        data.content.seek(pos)
                         data.content.write(bytes)
-                        new_interval = [start, start + length - 1]
+                        new_interval = [pos, pos + length - 1]
                         data_range.interval.add(new_interval)
                         data.update_size()
+                        data_range.wake()
+                        pos += length
                         if no_content:
                             data.close()
-                        data_range.wake()
 
         logger.debug("download_data end '%s' %i-%i [thread '%s']" % (path, start, end, thread_name))
 
@@ -1591,11 +1579,12 @@ class YAS3FS(LoggingMixIn, Operations):
                 return '' # Is this ok ???
             read_interval = [offset, end_interval]
             if data_range.interval.contains(read_interval):
-                if self.buffer_prefetch:
-                    prefetch_start = end_interval + 1
-                    prefetch_length = self.buffer_size * self.buffer_prefetch
-                    logger.debug("download prefetch '%s' '%i' '%i'" % (path, prefetch_start, prefetch_length))
-                    self.enqueue_download_data(path, prefetch_start, prefetch_length, prefetch=True)
+                prefetch_length = self.buffer_size * self.buffer_prefetch
+                end_prefetch_interval = min(end_interval + prefetch_length, file_size) - 1
+                prefetch_interval = [end_interval, end_prefetch_interval]
+                if not data_range.interval.contains(prefetch_interval):
+                    logger.debug("download prefetch")
+                    self.enqueue_download_data(path, end_interval, prefetch_length, prefetch=True)
                 logger.debug("read '%s' '%i' '%i' '%s' in range" % (path, length, offset, fh))                
                 break
             else:
