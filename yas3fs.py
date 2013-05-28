@@ -1325,16 +1325,18 @@ class YAS3FS(LoggingMixIn, Operations):
         retry = True
         while retry:
             try:
-                n1=dt.datetime.now()
+                if debug:
+                    n1=dt.datetime.now()
                 bytes = key.get_contents_as_string(headers=range_headers)
-                n2=dt.datetime.now()
+                if debug:
+                    n2=dt.datetime.now()
                 retry = False
             except Exception as e:
                 logger.info("download_data error '%s' %i-%i [thread '%s'] -> retrying" % (path, start, end, thread_name))
                 logger.exception(e)
 
-        elapsed = (n2-n1).microseconds/1e6
-
+        if debug:
+            elapsed = (n2-n1).microseconds/1e6
         logger.debug("download_data done '%s' %i-%i [thread '%s'] elapsed %.6f" % (path, start, end, thread_name, elapsed))
 
         with self.cache.get_lock(path):
