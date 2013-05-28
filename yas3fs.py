@@ -1337,7 +1337,7 @@ class YAS3FS(LoggingMixIn, Operations):
 
         if debug:
             elapsed = (n2-n1).microseconds/1e6
-        logger.debug("download_data done '%s' %i-%i [thread '%s'] elapsed %.6f" % (path, start, end, thread_name, elapsed))
+            logger.debug("download_data done '%s' %i-%i [thread '%s'] elapsed %.6f" % (path, start, end, thread_name, elapsed))
 
         with self.cache.get_lock(path):
                 data = self.cache.get(path, 'data')
