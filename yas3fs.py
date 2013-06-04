@@ -891,10 +891,11 @@ class YAS3FS(LoggingMixIn, Operations):
                 self.publish_status()
 
     def publish_status(self):
+        hostname = socket.getfqdn()
         num_entries, mem_size, disk_size = self.cache.get_memory_usage()
         dq = self.download_queue.qsize()
         pq = self.prefetch_queue.qsize()
-        message = [ 'status', num_entries, mem_size, disk_size, dq, pq ]
+        message = [ 'status', hostname, num_entries, mem_size, disk_size, dq, pq ]
         self.publish(message)
 
     def publish_messages(self):

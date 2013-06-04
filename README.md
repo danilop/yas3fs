@@ -283,6 +283,7 @@ To check the status of all the yas3fs instances listening to a topic you can use
 
 To the previous message all yas3fs instances will answer publishing a message on the topic with this content:
 
-    [ "id", "status", number of entries in cache, cache memory size, cache disk size, download queue length, prefetch queue length ]
+    [ "id", "status", hostname, number of entries in cache, cache memory size,
+      cache disk size, download queue length, prefetch queue length ]
 
 Happy File Sharing!
