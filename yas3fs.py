@@ -458,9 +458,9 @@ class SNS_HTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         if verify_evp.verify_final(signature.decode('base64')):
             self.send_response(200)
             if message_type== 'Notification':
-        	changes = message_content['Message']
-        	logger.debug('changes = %s' % changes)
-                self.server.fs.sync_cache(changes)
+        	message = message_content['Message']
+        	logger.debug('message = %s' % message)
+                self.server.fs.process_message(message)
             elif message_type == 'SubscriptionConfirmation':
                 token = message_content['Token']
                 response = self.server.fs.sns.confirm_subscription(self.server.fs.sns_topic_arn, token)
@@ -682,7 +682,7 @@ class YAS3FS(LoggingMixIn, Operations):
 
     def init(self, path):
         logger.debug("init '%s'" % (path))
-        self.publish_thread = threading.Thread(target=self.publish_changes)
+        self.publish_thread = threading.Thread(target=self.publish_messages)
         self.publish_thread.daemon = True
         self.publish_thread.start()
 
@@ -699,7 +699,7 @@ class YAS3FS(LoggingMixIn, Operations):
             self.prefetch_threads[i].start()
 
         if self.sqs_queue_name:
-            self.queue_listen_thread = threading.Thread(target=self.listen_for_changes_over_sqs)
+            self.queue_listen_thread = threading.Thread(target=self.listen_for_messages_over_sqs)
             self.queue_listen_thread.daemon = True
             self.queue_listen_thread.start()
             logger.debug("Subscribing '%s' to '%s'" % (self.sqs_queue_name, self.sns_topic_arn))
@@ -710,7 +710,7 @@ class YAS3FS(LoggingMixIn, Operations):
             self.queue_listen_thread = None
 
         if self.sns_http_port:
-            self.http_listen_thread = threading.Thread(target=self.listen_for_changes_over_http)
+            self.http_listen_thread = threading.Thread(target=self.listen_for_messages_over_http)
             self.http_listen_thread.daemon = True
             self.http_listen_thread.start()
             self.sns.subscribe(self.sns_topic_arn, 'http', self.http_listen_url)
@@ -774,7 +774,7 @@ class YAS3FS(LoggingMixIn, Operations):
             logger.debug("waiting for check cache thread to shutdown...")
             self.check_cache_thread.join(self.cache_check_interval + 1.0)
         
-    def listen_for_changes_over_http(self):
+    def listen_for_messages_over_http(self):
         logger.info("Listening on: '%s'" % self.http_listen_rl)
         server_class = SNS_HTTPServer
         handler_class = SNS_HTTPRequestHandler
@@ -783,7 +783,7 @@ class YAS3FS(LoggingMixIn, Operations):
         self.httpd.set_fs(self)
         self.httpd.serve_forever()
 
-    def listen_for_changes_over_sqs(self):
+    def listen_for_messages_over_sqs(self):
         logger.info("Listening on queue: '%s'" % self.queue.name)
         while self.sqs_queue_name:
             if self.queue_wait_time > 0:
@@ -795,8 +795,8 @@ class YAS3FS(LoggingMixIn, Operations):
             if messages:
                 for m in messages:
                     content = json.loads(m.get_body())
-                    changes = content['Message'].encode('ascii')
-                    self.sync_cache(changes)
+                    message = content['Message'].encode('ascii')
+                    self.process_message(message)
                     m.delete()
             else:
                 if self.queue_polling_interval > 0:
@@ -823,9 +823,9 @@ class YAS3FS(LoggingMixIn, Operations):
             self.cache.delete(path)
             self.reset_parent_readdir(path)
 
-    def sync_cache(self, changes):
-        logger.debug("sync_cache '%s'" % (changes))
-        c = json.loads(changes)
+    def process_message(self, messages):
+        logger.debug("process_message '%s'" % (messages))
+        c = json.loads(messages)
         if not c[0] == self.unique_id: # discard message coming from itself
             if c[1] in ( 'mkdir', 'mknod', 'symlink' ) and c[2] != None:
                 self.delete_cache(c[2])
@@ -887,8 +887,17 @@ class YAS3FS(LoggingMixIn, Operations):
                     self.multipart_num = c[3]
                 elif c[2] == 'retries' and c[3] >= 1:
                     self.multipart_retries = c[3]
+            elif c[1] == 'ping':
+                self.publish_status()
 
-    def publish_changes(self):
+    def publish_status(self):
+        num_entries, mem_size, disk_size = self.cache.get_memory_usage()
+        dq = self.download_queue.qsize()
+        pq = self.prefetch_queue.qsize()
+        message = [ 'status', num_entries, mem_size, disk_size, dq, pq ]
+        self.publish(message)
+
+    def publish_messages(self):
         while self.sns_topic_arn:
             try:
                 message = self.publish_queue.get(True, 1) # 1 second time-out
