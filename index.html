@@ -31,7 +31,8 @@
     <!-- MAIN CONTENT -->
     <div id="main_content_wrap" class="outer">
       <section id="main_content" class="inner">
-        <h3>Yet Another S3-backed File System: yas3fs</h3>
+        <h3>
+<a name="yet-another-s3-backed-file-system-yas3fs" class="anchor" href="#yet-another-s3-backed-file-system-yas3fs"><span class="octicon octicon-link"></span></a>Yet Another S3-backed File System: yas3fs</h3>
 
 <p>YAS3FS (Yet Another S3-backed File System) is a <a href="http://fuse.sourceforge.net">Filesystem in Userspace (FUSE)</a>
 interface to <a href="http://aws.amazon.com/s3/">Amazon S3</a>.
@@ -55,13 +56,15 @@ a distributed cache synchronized by <a href="http://aws.amazon.com/sns/">Amazon 
 <li>AWS credentials can be passed using AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY environmental variables.</li>
 <li>In an <a href="http://aws.amazon.com/ec2/">EC2</a> instance a <a href="http://aws.amazon.com/iam/">IAM</a> role can be used to give access to S3/SNS/SQS resources.</li>
 <li>It is written in Python (2.6) using <a href="https://github.com/boto/boto">boto</a> and <a href="https://github.com/terencehonles/fusepy">fusepy</a>.</li>
-</ul><h3>License</h3>
+</ul><h3>
+<a name="license" class="anchor" href="#license"><span class="octicon octicon-link"></span></a>License</h3>
 
 <p>Copyright (c) 2012-2013 Danilo Poccia, <a href="http://blog.danilopoccia.net">http://blog.danilopoccia.net</a></p>
 
 <p>This code is licensed under the The MIT License (MIT). Please see the LICENSE file that accompanies this project for the terms of use.</p>
 
-<h3>Introduction</h3>
+<h3>
+<a name="introduction" class="anchor" href="#introduction"><span class="octicon octicon-link"></span></a>Introduction</h3>
 
 <p>This is the logical architecture of yas3fs:</p>
 
@@ -96,7 +99,8 @@ you can use the <code>--no-metadata</code> option.</p>
 <p>On EC2 the command line doesn't need any information on the actual server and can easily be used
 within an <a href="http://aws.amazon.com/autoscaling/">Auto Scaling</a> group.</p>
 
-<h3>Quick Installation</h3>
+<h3>
+<a name="quick-installation" class="anchor" href="#quick-installation"><span class="octicon octicon-link"></span></a>Quick Installation</h3>
 
 <p>If you want to do a quick test here's the installation procedure depending on the OS flavor (Linux or Mac):</p>
 
@@ -163,7 +167,8 @@ mkdir LOCAL-PATH
 
 <p>To unmount the file system on a Mac you can use <code>umount</code>.</p>
 
-<h3>Full Usage</h3>
+<h3>
+<a name="full-usage" class="anchor" href="#full-usage"><span class="octicon octicon-link"></span></a>Full Usage</h3>
 
 <pre><code>yas3fs.py -h
 
@@ -237,7 +242,8 @@ Options:
   -d, --debug          print debug information (implies '-f')
 </code></pre>
 
-<h3>Notification Syntax &amp; Use</h3>
+<h3>
+<a name="notification-syntax--use" class="anchor" href="#notification-syntax--use"><span class="octicon octicon-link"></span></a>Notification Syntax &amp; Use</h3>
 
 <p>You can use the SNS topic for other purposes than keeping the cache of the nodes in sync.
 Those are some sample use cases:</p>
@@ -354,6 +360,17 @@ you can publish (the size is in MB as in the corresponding command line option):
 <p>You can even change dinamically the mounted S3 URL (i.e. the bucket and/or the path prefix):</p>
 
 <pre><code>[ "all", "url", "s3://BUCKET/PATH" ]
+</code></pre>
+
+<p>To check the status of all the yas3fs instances listening to a topic you can use:</p>
+
+<pre><code>[ "all", "ping" ]
+</code></pre>
+
+<p>To the previous message all yas3fs instances will answer publishing a message on the topic with this content:</p>
+
+<pre><code>[ "id", "status", hostname, number of entries in cache, cache memory size,
+  cache disk size, download queue length, prefetch queue length ]
 </code></pre>
 
 <p>Happy File Sharing!</p>
