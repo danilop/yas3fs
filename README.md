@@ -215,6 +215,14 @@ It is using the 3000 port by default (e.g. "http://localhost:3000"), but you can
     export PORT=8080
     node yas3fs-console/server.js
 
+Here’s a sample screenshot of the web interface:
+
+![YAS3FS Console screenshot](http://blog.danilopoccia.net/wp-content/uploads/sites/2/2013/06/yas3fs-console.png)
+
+The list of nodes and the attributes are updated dynamically depending on the configuration parameters.
+
+In the future I’d like to add management capabilities as well into the console, such as “cache reset on a node”, or alarms, such as “disk cache is running out of space”.
+
 ### Notification Syntax & Use
 
 You can use the SNS topic for other purposes than keeping the cache of the nodes in sync.
