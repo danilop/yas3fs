@@ -1,0 +1,49 @@
+*
+{
+    font-family: Arial, Helvetica, sans-serif
+}
+
+h1
+{
+    text-align:center;
+    color: midnightblue;
+}
+
+p
+{
+    text-align:center;
+}
+
+table
+{
+    border-collapse: collapse;
+    border-spacing: 10px 50px;
+    width: 100%;
+}
+
+table,th, td
+{
+    border: 1px solid darkgrey;
+    background-color: whitesmoke;
+
+}
+
+th, td
+{
+    text-align: center;
+    vertical-align: center;
+}
+
+th
+{
+    color: midnightblue;
+}
+
+.old {
+    color: grey;
+}
+
+input#topicArn
+{
+    width: 400px;
+}

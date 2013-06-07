@@ -4,6 +4,7 @@ YAS3FS (Yet Another S3-backed File System) is a [Filesystem in Userspace (FUSE)]
 interface to [Amazon S3](http://aws.amazon.com/s3/).
 It was inspired by [s3fs](http://code.google.com/p/s3fs/) but rewritten from scratch to implement
 a distributed cache synchronized by [Amazon SNS](http://aws.amazon.com/sns/) notifications.
+A web console is provided to easily monitor the nodes of cluster.
 
 **This is a personal project. No relation whatsoever exists between this project and my employer.**
 
@@ -194,6 +195,25 @@ To unmount the file system on a Mac you can use `umount`.
                            directories as required)
       -f, --foreground     run in foreground
       -d, --debug          print debug information (implies '-f')
+
+### Web console
+
+A web console to easy monitor the nodes of a cluster (i.e. that are listening to the same SNS topic)
+is in the "yas3fs-console/" subdirectory.
+
+* AWS credentials can be passed using AWS\_ACCESS\_KEY\_ID and AWS\_SECRET\_ACCESS\_KEY environmental variables.
+* In an [EC2](http://aws.amazon.com/ec2/) instance a [IAM](http://aws.amazon.com/iam/) role can be used to give access to S3/SNS/SQS resources.
+
+It is based on [Node.js](http://nodejs.org) and once "node" is [installed](http://nodejs.org/download/) you can run it with:
+
+    git clone git://github.com/danilop/yas3fs.git
+    cd yas3fs
+    node yas3fs-console/server.js
+
+It is using the 3000 port by default (e.g. "http://localhost:3000"), but you can change it using the PORT environmental variable, e.g.:
+
+    export PORT=8080
+    node yas3fs-console/server.js
 
 ### Notification Syntax & Use
 

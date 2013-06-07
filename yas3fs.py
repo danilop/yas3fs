@@ -622,9 +622,9 @@ class YAS3FS(LoggingMixIn, Operations):
 
         unique_id_list = []
         if options.id:
-            unique_id_list.append(options.id)
-        unique_id_list.append(str(uuid.uuid1()))
-        self.unique_id = '-'.join(pattern.sub('', s) for s in unique_id_list)
+            unique_id_list.append(pattern.sub('', options.id))
+        unique_id_list.append(str(uuid.uuid4()))
+        self.unique_id = '-'.join(unique_id_list)
         logger.info("Unique node ID: '%s'" % self.unique_id)
                 
         if self.sns_topic_arn:
@@ -739,27 +739,27 @@ class YAS3FS(LoggingMixIn, Operations):
     def destroy(self, path):
         logger.debug("destroy '%s'" % (path))
         # Cleanup for unmount
-        logger.info('file system unmount')
+        logger.info('File system unmount...')
 
         self.download_running = False
 
         if self.http_listen_thread:
             self.httpd.shutdown() # To stop HTTP listen thread
-            logger.debug("waiting for HTTP listen thread to shutdown...")
+            logger.info("waiting for HTTP listen thread to shutdown...")
             self.http_listen_thread.join(5.0) # 5 seconds should be enough   
-            logger.debug("HTTP listen thread ended")
+            logger.info("HTTP listen thread ended")
             self.sns.unsubscribe(self.http_subscription)
-            logger.debug("Unsubscribed SNS HTTP endpoint")
+            logger.info("Unsubscribed SNS HTTP endpoint")
         if self.queue_listen_thread:
             self.sqs_queue_name = None # To stop queue listen thread
-            logger.debug("waiting for SQS listen thread to shutdown...")
+            logger.info("waiting for SQS listen thread to shutdown...")
             self.queue_listen_thread.join(self.queue_wait_time + 1.0)
-            logger.debug("SQS listen thread ended")
+            logger.info("SQS listen thread ended")
             self.sns.unsubscribe(self.sqs_subscription)
-            logger.debug("Unsubscribed SNS SQS endpoint")
+            logger.info("Unsubscribed SNS SQS endpoint")
             if self.new_queue:
                 self.sqs.delete_queue(self.queue, force_deletion=True)
-                logger.debug("New queue deleted")
+                logger.info("New queue deleted")
 
         self.flush_all_cache()
 
@@ -767,11 +767,11 @@ class YAS3FS(LoggingMixIn, Operations):
             while not self.publish_queue.empty():
                 time.sleep(1.0)
             self.sns_topic_arn = None # To stop publish thread
-            logger.debug("waiting for SNS publish thread to shutdown...")
+            logger.info("waiting for SNS publish thread to shutdown...")
             self.publish_thread.join(2.0) # 2 seconds should be enough
         if  self.cache_entries:
             self.cache_entries = 0 # To stop memory thread
-            logger.debug("waiting for check cache thread to shutdown...")
+            logger.info("waiting for check cache thread to shutdown...")
             self.check_cache_thread.join(self.cache_check_interval + 1.0)
         
     def listen_for_messages_over_http(self):
@@ -1597,11 +1597,15 @@ class YAS3FS(LoggingMixIn, Operations):
             raise FuseOSError(errno.ENOENT)
         while True:
             data = self.cache.get(path, 'data')
+            if not data:
+                logget.debug("read '%s' '%i' '%i' '%s' no data" % (path, length, offset, fh))  
+                return '' # Something better ???
             data_range = data.get('range')
             if data_range == None:
-                logger.debug("read '%s' '%i' '%i' '%s' no range" % (path, length, offset, fh))                
+                logger.debug("read '%s' '%i' '%i' '%s' no range" % (path, length, offset, fh))
                 break
-            file_size = self.get_key(path).size # Something better ???
+	    attr = self.get_metadata(path, 'attr')
+            file_size = attr['st_size']
             end_interval = min(offset + length, file_size) - 1
             if offset > end_interval:
                 logger.debug("read '%s' '%i' '%i' '%s' offset=%i > end_interval=%i" %((path, length, offset, fh, offset, end_interval)))
@@ -1623,6 +1627,9 @@ class YAS3FS(LoggingMixIn, Operations):
             logger.debug("read awake '%s' '%i' '%i' '%s'" % (path, length, offset, fh))
             # update atime just in the cache ???
         with data.get_lock():
+            if not data.content:
+                logger.debug("read '%s' '%i' '%i' '%s' no content" % (path, length, offset, fh))
+                return '' # Something better ???
             data.content.seek(offset)
             return data.content.read(length)
 
@@ -1646,6 +1653,9 @@ class YAS3FS(LoggingMixIn, Operations):
                 
         data = self.cache.get(path, 'data')
 	with data.get_lock():
+            if not data.content:
+                logger.debug("write awake '%s' '%i' '%i' '%s' no content" % (path, len(new_data), offset, fh))            
+                return 0
             data.content.seek(offset)
             data.content.write(new_data)
             data.set('change', True)

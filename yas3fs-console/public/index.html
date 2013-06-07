@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang='en'>
+<head>
+  <title>YAS3FS Console</title>
+  <link rel='stylesheet' href='/stylesheets/style.css'></link>
+</head>
+<body>
+<h1>YAS3FS Console</h1>
+<p>
+  For more information please see: <a href='https://github.com/danilop/yas3fs'>https://github.com/danilop/yas3fs</a>
+</p>
+<div id='content'>
+  <div id='help'>
+    <p>Insert the <a href='http://aws.amazon.com/sns/'>SNS</a> Topic ARN and click [Start].</p>
+  </div>
+  <p>
+    <input id='topicArn'/>
+  </p>
+  <p>
+    <input id='start-button' type='button' value='Start'/>
+    <input id='stop-button' type='button' value='Stop'/>
+    Time interval:
+    <select id='timer-interval'>
+      <option value="1">1 second</option>
+      <option value="5">5 seconds</option>
+      <option value="10">10 seconds</option>
+      <option value="15">15 seconds</option>
+      <option value="20">20 seconds</option>
+      <option value="30">30 seconds</option>
+      <option value="60">1 minute</option>
+      <option value="300">5 minutes</option>
+      <option value="600">10 minutes</option>
+    </select>
+  </p>
+  <p>
+    Time for nodes to become old:
+    <select id='old-elapsed'>
+      <option value="1">1 second</option>
+      <option value="5">5 seconds</option>
+      <option value="10">10 seconds</option>
+      <option value="15">15 seconds</option>
+      <option value="20">20 seconds</option>
+      <option value="30">30 seconds</option>
+      <option value="60">1 minute</option>
+      <option value="300">5 minutes</option>
+      <option value="600">10 minutes</option>
+    </select>
+    to be forgotten:
+    <select id='forget-elapsed'>
+      <option value="1">1 second</option>
+      <option value="5">5 seconds</option>
+      <option value="10">10 seconds</option>
+      <option value="15">15 seconds</option>
+      <option value="20">20 seconds</option>
+      <option value="30">30 seconds</option>
+      <option value="60">1 minute</option>
+      <option value="300">5 minutes</option>
+      <option value="600">10 minutes</option>
+    </select>
+  </p>
+  <p></p>
+  <div id='table'></div>
+</div>
+<script src='/socket.io/socket.io.js' type='text/javascript'></script>
+<script src='http://code.jquery.com/jquery-1.10.0.js' type='text/javascript'></script>
+<script src='/javascripts/console.js' type='text/javascript'></script>
+</body>
+</html>
