@@ -4,7 +4,7 @@ YAS3FS (Yet Another S3-backed File System) is a [Filesystem in Userspace (FUSE)]
 interface to [Amazon S3](http://aws.amazon.com/s3/).
 It was inspired by [s3fs](http://code.google.com/p/s3fs/) but rewritten from scratch to implement
 a distributed cache synchronized by [Amazon SNS](http://aws.amazon.com/sns/) notifications.
-A web console is provided to easily monitor the nodes of cluster.
+A web console is provided to easily monitor the nodes of a cluster.
 
 **This is a personal project. No relation whatsoever exists between this project and my employer.**
 
