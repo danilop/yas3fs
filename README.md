@@ -208,6 +208,7 @@ It is based on [Node.js](http://nodejs.org) and once "node" is [installed](http:
 
     git clone git://github.com/danilop/yas3fs.git
     cd yas3fs
+    npm install
     node yas3fs-console/server.js
 
 It is using the 3000 port by default (e.g. "http://localhost:3000"), but you can change it using the PORT environmental variable, e.g.:

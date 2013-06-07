@@ -1,0 +1,12 @@
+{
+    "name": "yas3fs-console",
+    "dependencies" : {
+	"aws-sdk": "*",
+	"util": "*",
+	"node-uuid": "*",
+	"express": "*"
+    },
+    "scripts": {
+    	"start": "node server"
+    }
+}
