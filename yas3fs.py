@@ -1084,7 +1084,7 @@ class YAS3FS(LoggingMixIn, Operations):
         if not metadata_values == None:
             self.cache.set(path, metadata_name, metadata_values)
         data = self.cache.get(path, 'data')
-        if self.write_metadata and (key or (data and not data.has('change'))): # No change in progress, I should write now
+        if self.write_metadata and (key or (not data) or (data and not data.has('change'))): # No change in progress, I should write now
 	    if not key:
                 key = self.get_key(path)
 	    if key:
