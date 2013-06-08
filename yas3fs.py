@@ -213,7 +213,7 @@ class FSData():
             else:
                 current_size = self.get_current_size()
             delta = current_size - self.size
-            self.size = current_size;
+            self.size = current_size
         with self.cache.data_size_lock:
             self.cache.size[self.store] += delta
     def get_content_as_string(self):
@@ -221,7 +221,7 @@ class FSData():
             with self.get_lock():
                 return self.content.getvalue()
         elif self.store == 'disk':
-            with self.get_lock():
+            with self.get_lock():                
                 self.content.seek(0) # Go to the beginning
                 return self.content.read()
         else:
@@ -1206,16 +1206,25 @@ class YAS3FS(LoggingMixIn, Operations):
 	attr = {}
 	attr['st_uid'] = uid
 	attr['st_gid'] = gid
-	attr['st_ctime'] = now # atime, mtime and size are updated in the following 'write'
+	attr['st_atime'] = now
+	attr['st_mtime'] = now
+	attr['st_ctime'] = now
+	attr['st_size'] = 0
 	attr['st_mode'] = (stat.S_IFLNK | 0755)
 	self.cache.delete(path)
 	self.cache.add(path)
-        data = FSData(self.cache, 'mem', path)
-        self.cache.set(path, 'data', data)
-        self.write(path, link, 0)
+        if self.cache_on_disk > 0:
+            data = FSData(self.cache, 'mem', path) # New files (almost) always cache in mem - is it ok ???
+        else:
+            data = FSData(self.cache, 'disk', path)
+	self.cache.set(path, 'data', data)
+	data.set('change', True) # Do I need this ???
 	k = Key(self.s3_bucket)
 	self.set_metadata(path, 'attr', attr, k)
 	self.set_metadata(path, 'xattr', {}, k)
+        data.open()
+        self.write(path, link, 0)
+        data.close()
 	k.key = self.join_prefix(path)
 	k.set_contents_from_string(link, headers={'Content-Type': 'application/x-symlink'})
         self.cache.set(path, 'key', k)
@@ -1414,7 +1423,10 @@ class YAS3FS(LoggingMixIn, Operations):
                     data_range = data.get('range')
                     if not data_range:
                         break
-	    return data.get_content_as_string()
+            data.open()
+            link = data.get_content_as_string()
+            data.close()
+	    return link
         logger.debug("readlink '%s' EINVAL" % (path))
 	raise FuseOSError(errno.EINVAL)
  
@@ -1870,10 +1882,12 @@ def errorAndExit(error, exitCode=1):
     exit(exitCode)
 
 def createDirForFile(filename):
+    logger.debug("createDirForFile '%s'" % filename)
     dirname = os.path.dirname(filename)
     createDir(dirname)
 
 def createDir(dirname):
+    logger.debug("createDir '%s'" % dirname)
     try:
         os.makedirs(dirname)
     except OSError as exc: # Python >2.5                                                                 
@@ -1883,7 +1897,10 @@ def createDir(dirname):
             raise
 
 def removeEmptyDirForFile(filename):
+    logger.debug("removeEmptyDirForFile '%s'" % filename)
     dirname = os.path.dirname(filename)
+    logger.debug("dirname '%s'" % dirname)
+    logger.debug("listdir '%s'" % os.listdir(dirname))
     if not os.listdir(dirname): # to check if the dir is empty
          os.removedirs(dirname)
 
