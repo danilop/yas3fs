@@ -1968,9 +1968,9 @@ In an EC2 instance a IAM role can be used to give access to S3/SNS/SQS resources
     parser.add_option("--cache-check", dest="cache_check_interval",
                       help="interval between cache memory checks in seconds (default is %default seconds)", metavar="N", default=3)
     parser.add_option("--download-num", dest="download_num",
-                      help="number of parallel downloads (default is %default)", metavar="N", default=4)
+                      help="number of parallel downloads (default is %default)", metavar="N", default=10)
     parser.add_option("--prefetch-num", dest="prefetch_num",
-                      help="number of parallel prefetching downloads (default is %default)", metavar="N", default=1)
+                      help="number of parallel prefetching downloads (default is %default)", metavar="N", default=10)
     parser.add_option("--buffer-size", dest="buffer_size",
                       help="download buffer size in KB (0 to disable buffering, default is %default KB)", metavar="N", default=10240)
     parser.add_option("--buffer-prefetch", dest="buffer_prefetch",
