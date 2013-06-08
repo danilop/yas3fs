@@ -1097,7 +1097,7 @@ class YAS3FS(LoggingMixIn, Operations):
 		    key.metadata[metadata_name] = s
 		elif metadata_name in key.metadata:
 		    del key.metadata[metadata_name]
-                if (not data) or (data and (not data.has('change')):
+                if (not data) or (data and (not data.has('change'))):
                     logger.debug("writing metadata '%s' '%s'" % (path, key))
                     md = key.metadata
                     md['Content-Type'] = key.content_type # Otherwise we loose the Content-Type with Copy
