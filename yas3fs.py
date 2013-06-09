@@ -1467,9 +1467,10 @@ class YAS3FS(LoggingMixIn, Operations):
             data_range = data.get('range')
             if not data_range:
                 break
-            if data_range.interval.contains([0, size]):
+            if data_range.interval.contains([0, size - 1]):
                 data.delete('range')
                 break
+            self.enqueue_download_data(path, 0, size)
             logger.debug("truncate wait '%s' '%i'" % (path, size))
             data_range.wait()
             logger.debug("truncate awake '%s' '%i'" % (path, size))
