@@ -1467,7 +1467,7 @@ class YAS3FS(LoggingMixIn, Operations):
             data_range = data.get('range')
             if not data_range:
                 break
-            if data_range.interval.contains([0, size - 1]):
+            if (size == 0) or (data_range.interval.contains([0, size - 1])):
                 data.delete('range')
                 break
             self.enqueue_download_data(path, 0, size)
