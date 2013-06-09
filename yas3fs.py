@@ -775,7 +775,7 @@ class YAS3FS(LoggingMixIn, Operations):
             self.check_cache_thread.join(self.cache_check_interval + 1.0)
         
     def listen_for_messages_over_http(self):
-        logger.info("Listening on: '%s'" % self.http_listen_rl)
+        logger.info("Listening on: '%s'" % self.http_listen_url)
         server_class = SNS_HTTPServer
         handler_class = SNS_HTTPRequestHandler
         server_address = ('', self.sns_http_port)
