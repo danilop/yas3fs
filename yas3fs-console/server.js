@@ -52,6 +52,7 @@ function onSocketConnection(client) {
     }
     client.on('disconnect', onClientDisconnect);
     client.on('update', onUpdate);
+    client.on('list', onList);
     client.on('log', onLog);
 }
 
@@ -75,6 +76,33 @@ function onUpdate(topicArn) {
 		publishPingToTopic(topicArn);
 	}
     }
+}
+
+function onList() {
+    util.log('Get Topic List for: '+this.id);
+    clients[this.id].socket.emit('topic', 'xxx:yyy');
+    getSomeTopics(clients[this.id].socket);
+}
+
+function getSomeTopics(client, nextToken) {
+    var topics = [];
+    var params = {};
+    if (nextToken) {
+	params = {
+	'NextToken': nextToken
+	}
+    }
+    sns.listTopics(params, function (err, data) {
+	if (err) return hadError(err);
+	data.Topics.forEach(function(item) {
+	    topics.push(item.TopicArn);
+	});
+	util.log('topics: '+topics);
+	client.emit('topic', topics);
+	if (data.NextToken) {
+	    getSomeTopics(data.NextToken);
+	}
+    });
 }
 
 function initTopic(topicArn) {
@@ -169,6 +197,7 @@ function publishPingToTopic(topicArn) {
 
 function getMessagesFromQueueForTopic(topicArn) {
     util.log('getting messages from queue');
+    if (!queues[topicArn]) return;
     sqs.receiveMessage({
 	QueueUrl: queues[topicArn].queueUrl,
 	MaxNumberOfMessages: 10, // 10 is the maximum according to API specifications

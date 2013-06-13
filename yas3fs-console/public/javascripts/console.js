@@ -10,6 +10,15 @@ function init() {
     socket = io.connect();
     setEventHandlers();
     nodes = {};
+    $('#topicArnList').val('-').trigger('change');
+    $('#topicArnList').change(function() {
+	if ($('#topicArnList').val() == '-') {
+	    $('#topicArn').removeAttr("disabled");
+	    $('#topicArn').focus();
+	} else {
+	    $('#topicArn').attr("disabled", true);
+	}
+    });
     $('#timer-interval').val(10).trigger('change');
     $('#timer-interval').change(function() {
 	if (timer) {
@@ -38,8 +47,15 @@ function init() {
     $('#forget-elapsed').val(60).trigger('change');
     $('#start-button').click(function() {
 	$('#start-button').attr("disabled", true);
+	$('#topicArnList').attr("disabled", true);
+	$('#topicArn').attr("disabled", true);
 	$('#stop-button').removeAttr("disabled");
-	topicArn = $('#topicArn').val();
+	topicArn = $('#topicArnList').val();
+	if (topicArn == '-') {
+	    topicArn = $('#topicArn').val();
+	}
+	nodes = {};
+	updateTable();
 	if (!timer) {
 	    var interval = $('#timer-interval').val();
 	    console.log('interval: '+ interval);
@@ -51,6 +67,10 @@ function init() {
     $('#stop-button').click(function() {
 	$('#stop-button').attr("disabled", true);
 	$('#start-button').removeAttr("disabled");
+	$('#topicArnList').removeAttr("disabled");
+	if ($('#topicArnList').val() == '-') {
+	    $('#topicArn').removeAttr("disabled");
+	}
 	if (timer) {
 	    clearInterval(timer);
 	    timer = null;
@@ -62,6 +82,9 @@ function init() {
 	}
     });
     $('#topicArn').focus();
+
+    socket.emit('list');
+    
     console.log('init done!');
 }
 
@@ -70,6 +93,7 @@ function start() {
 
 function setEventHandlers() {
     socket.on('add', onAdd);
+    socket.on('topic', onTopic);
 }
 
 function update() {
@@ -79,7 +103,7 @@ function update() {
 }
 
 function onAdd(data) {
-    console.log('add!');
+    console.log('add');
     if (data[1] == 'status') {
 	var n = {};
 	n.hostname = data[2];
@@ -92,6 +116,13 @@ function onAdd(data) {
 	nodes[data[0]] = n;
 	updateTable();
     }
+}
+
+function onTopic(data) {
+    console.log('topic');
+    data.forEach(function(topic) {
+	$('#topicArnList').append($('<option>', { value: topic }).text(topic));
+    });
 }
 
 function getKeys(obj) {

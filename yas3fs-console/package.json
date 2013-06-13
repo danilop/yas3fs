@@ -4,7 +4,8 @@
 	"aws-sdk": "*",
 	"util": "*",
 	"node-uuid": "*",
-	"express": "*"
+	"express": "*",
+	"socket.io": "*"
     },
     "scripts": {
     	"start": "node server"
