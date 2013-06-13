@@ -5,7 +5,7 @@ var express = require('express'); // For static files
 
 var sns;
 var sqs;
-var socket;
+var io;
 var queues;
 
 var sqsWaitTimeSeconds;
@@ -32,7 +32,7 @@ function init() {
     app.use(express.static(__dirname + '/public'));
     server = app.listen(port);
 
-    socket = require('socket.io').listen(server, {'log level': 1});
+    io = require('socket.io').listen(server, {'log level': 1});
 
     queues = {};
     clients = {};
@@ -41,7 +41,7 @@ function init() {
 };
 
 var setEventHandlers = function() {
-    socket.on('connection', onSocketConnection);
+    io.sockets.on('connection', onSocketConnection);
 }
 
 function onSocketConnection(client) {
@@ -80,17 +80,18 @@ function onUpdate(topicArn) {
 
 function onList() {
     util.log('Get Topic List for: '+this.id);
-    clients[this.id].socket.emit('topic', 'xxx:yyy');
-    getSomeTopics(clients[this.id].socket);
+    getSomeTopics();
 }
 
-function getSomeTopics(client, nextToken) {
+function getSomeTopics(nextToken) {
     var topics = [];
-    var params = {};
+    var params;
     if (nextToken) {
 	params = {
 	'NextToken': nextToken
 	}
+    } else {
+	params = {}
     }
     sns.listTopics(params, function (err, data) {
 	if (err) return hadError(err);
@@ -98,7 +99,7 @@ function getSomeTopics(client, nextToken) {
 	    topics.push(item.TopicArn);
 	});
 	util.log('topics: '+topics);
-	client.emit('topic', topics);
+	io.sockets.emit('topic', topics);
 	if (data.NextToken) {
 	    getSomeTopics(data.NextToken);
 	}
