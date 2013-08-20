@@ -31,6 +31,7 @@ function init() {
     app.use(express.logger('dev'));
     app.use(express.static(__dirname + '/public'));
     server = app.listen(port);
+    util.log('Listening on port: ' + port);
 
     io = require('socket.io').listen(server, {'log level': 1});
 

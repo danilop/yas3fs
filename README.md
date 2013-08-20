@@ -18,7 +18,7 @@ A web console is provided to easily monitor the nodes of a cluster.
 * [SNS](http://aws.amazon.com/sns/) notifications are used to update other nodes in the cluster that something has changed on S3 and they need to invalidate their cache.
 * Notifications can be listened using HTTP or [SQS](http://aws.amazon.com/sqs/) endpoints.
 * If the cache grows to its maximum size, the less recently accessed files are removed.
-* AWS credentials can be passed using AWS\_ACCESS\_KEY\_ID and AWS\_SECRET\_ACCESS\_KEY environmental variables.
+* AWS credentials can be passed using AWS\_ACCESS\_KEY\_ID and AWS\_SECRET\_ACCESS\_KEY environment variables.
 * In an [EC2](http://aws.amazon.com/ec2/) instance a [IAM](http://aws.amazon.com/iam/) role can be used to give access to S3/SNS/SQS resources.
 * It is written in Python (2.6) using [boto](https://github.com/boto/boto) and [fusepy](https://github.com/terencehonles/fusepy).
 
@@ -68,7 +68,7 @@ If you want to do a quick test here's the installation procedure depending on th
 * You don't need to create anything in the bucket as the initial path (if any) is created by the tool on the first mount.
 * If you want to use an existing S3 bucket you can use the `--no-metadata` option to not use user metadata to persist file system attr/xattr.
 * Create an SNS topic in the same region as the S3 bucket and write down the full topic ARN (you need it to run the tool if more than one client is connected to the same bucket/path).
-* Create a IAM Role that gives access to the S3 and SNS/SQS resources you need or pass the AWS credentials to the tool using environmental variables (see `-h`).
+* Create a IAM Role that gives access to the S3 and SNS/SQS resources you need or pass the AWS credentials to the tool using environment variables (see `-h`).
 * I used the `eu-west-1` region in my sample, but you can replace that with any region you want. If no region is specified it defaults to `us-east-1`.
 
 **On EC2 with Amazon Linux 2012.09**
@@ -141,7 +141,7 @@ To unmount the file system on a Mac you can use `umount`.
     SNS notifications are used to update other nodes in the cluster that something has changed on S3 and they need to invalidate their cache.
     Notifications can be listened using HTTP or SQS endpoints.
     If the cache grows to its maximum size, the less recently accessed files are removed.
-    AWS credentials can be passed using AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY environmental variables.
+    AWS credentials can be passed using AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY environment variables.
     In an EC2 instance a IAM role can be used to give access to S3/SNS/SQS resources.
 
     Options:
@@ -201,17 +201,18 @@ To unmount the file system on a Mac you can use `umount`.
 A web console to easy monitor the nodes of a cluster (i.e. that are listening to the same SNS topic)
 is in the "yas3fs-console/" subdirectory.
 
-* AWS credentials can be passed using AWS\_ACCESS\_KEY\_ID and AWS\_SECRET\_ACCESS\_KEY environmental variables.
+* AWS credentials can be passed using AWS\_ACCESS\_KEY\_ID and AWS\_SECRET\_ACCESS\_KEY environment variables.
+* The AWS_REGION environment variable must point to a valid AWS reagion (e.g. eu-west-1)
 * In an [EC2](http://aws.amazon.com/ec2/) instance a [IAM](http://aws.amazon.com/iam/) role can be used to give access to S3/SNS/SQS resources.
 
 It is based on [Node.js](http://nodejs.org) and once "node" is [installed](http://nodejs.org/download/) you can run it with:
 
     git clone git://github.com/danilop/yas3fs.git
-    cd yas3fs
+    cd yas3fs/yas3fs-console
     npm install
-    node yas3fs-console/server.js
+    node server.js
 
-It is using the 3000 port by default (e.g. "http://localhost:3000"), but you can change it using the PORT environmental variable, e.g.:
+It is using the 3000 port by default (e.g. "http://localhost:3000"), but you can change it using the PORT environment variable, e.g.:
 
     export PORT=8080
     node yas3fs-console/server.js
