@@ -71,7 +71,7 @@ If you want to do a quick test here's the installation procedure depending on th
 * Create a IAM Role that gives access to the S3 and SNS/SQS resources you need or pass the AWS credentials to the tool using environment variables (see `-h`).
 * I used the `eu-west-1` region in my sample, but you can replace that with any region you want. If no region is specified it defaults to `us-east-1`.
 
-**On EC2 with Amazon Linux 2012.09**
+**On EC2 with Amazon Linux**
 
     sudo yum -y install fuse fuse-libs
     sudo yum -y install git # You need to install git on S3-backed AMI
@@ -84,7 +84,7 @@ If you want to do a quick test here's the installation procedure depending on th
     mkdir LOCAL-PATH
     ./yas3fs.py LOCAL-PATH --url s3://BUCKET/PATH --topic TOPIC-ARN --new-queue --region eu-west-1
 
-**On EC2 with Ubuntu Server 12.04.1 LTS**
+**On EC2 with Ubuntu systems**
 
     sudo aptitude install fuse-utils libfuse2 python-pip
     sudo pip install -U boto fusepy
