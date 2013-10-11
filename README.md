@@ -86,7 +86,7 @@ If you want to do a quick test here's the installation procedure depending on th
 
 **On EC2 with Ubuntu systems**
 
-    sudo aptitude install fuse-utils libfuse2 python-pip
+    sudo apt-get install fuse-utils libfuse2 python-pip git
     sudo pip install -U boto fusepy
     sudo sed -i'' 's/^# *user_allow_other/user_allow_other/' /etc/fuse.conf # uncomment user_allow_other
     git clone git://github.com/danilop/yas3fs.git
