@@ -1149,7 +1149,7 @@ class YAS3FS(LoggingMixIn, Operations):
                 full_path += '/'
 	    key_list = self.s3_bucket.list(full_path, '/')
 	    dirs = ['.', '..']
-	    for k in key_list:
+	    for k in key_list:                
 		d = k.name.encode('ascii')[len(full_path):]
 		if len(d) > 0:
 		    if d[-1] == '/':
