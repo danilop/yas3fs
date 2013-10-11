@@ -128,7 +128,7 @@ mkdir LOCAL-PATH
 
 <p><strong>On EC2 with Ubuntu systems</strong></p>
 
-<pre><code>sudo aptitude install fuse-utils libfuse2 python-pip
+<pre><code>sudo apt-get install fuse-utils libfuse2 python-pip git
 sudo pip install -U boto fusepy
 sudo sed -i'' 's/^# *user_allow_other/user_allow_other/' /etc/fuse.conf # uncomment user_allow_other
 git clone git://github.com/danilop/yas3fs.git
