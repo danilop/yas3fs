@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# This is a sample script to be configured and copied in /etc/rc.d/init.d
-# to mount one (or more) file systems using yas3fs at boot
+# This is a sample script to be configured and copied in /etc/init.d
+# to mount a file system using yas3fs at boot
 
 # Those are some environmental variables to configure yas3fs
 
