@@ -2001,7 +2001,12 @@ In an EC2 instance a IAM role can be used to give access to S3/SNS/SQS resources
 
     if options.logfile != '':
         logHandler = logging.handlers.RotatingFileHandler(options.logfile, maxBytes=1024*1024*1024, backupCount=10)
-        logger.addHandler(logHandler)
+    else:
+        logHandler = logging.StreamHandler()
+
+    formatter = logging.Formatter('%(asctime)s %(levelname)s %(message)s')
+    logHandler.setFormatter(formatter)
+    logger.addHandler(logHandler)
 
     if options.debug:
         logger.setLevel(logging.DEBUG)
@@ -2033,12 +2038,12 @@ In an EC2 instance a IAM role can be used to give access to S3/SNS/SQS resources
                     foreground=options.foreground or options.debug,
                     default_permissions=True, allow_other=True,
                     auto_cache=True, atime=False,
-                    big_writes=True, # Not working on OS Xyes
+                    big_writes=True, # Not working on OS X
                     max_read=131072, max_write=131072, max_readahead=131072)
 
 if __name__ == '__main__':
 
-    logging.basicConfig()
+    #logging.basicConfig()
     logger = logging.getLogger('yas3fs')
 
     try:
