@@ -96,7 +96,7 @@ If you want to do a quick test here's the installation procedure depending on th
     mkdir LOCAL-PATH
     ./yas3fs.py LOCAL-PATH --url s3://BUCKET/PATH --topic TOPIC-ARN --new-queue --region eu-west-1
 
-**On a Mac (tested under Mountain Lion)**
+**On a Mac with OS X**
 
 Install FUSE for OS X from <http://osxfuse.github.com>
 
