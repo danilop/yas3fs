@@ -1011,12 +1011,19 @@ class YAS3FS(LoggingMixIn, Operations):
         if cache:
             key = self.cache.get(path, 'key')
             if key:
+                logger.debug("get_key from cache '%s'" % (path))
                 return key
+        logger.debug("get_key from S3 #1 '%s'" % (path))
         key = self.s3_bucket.get_key(self.join_prefix(path))
         if not key:
-            key = self.s3_bucket.get_key(self.join_prefix(path + '/'))
+            full_path = path + '/'
+            logger.debug("get_key from S3 #2 '%s' '%s'" % (path, full_path))
+            key = self.s3_bucket.get_key(self.join_prefix(full_path))
         if key:
+            logger.debug("get_key to cache '%s'" % (path))
             self.cache.set(path, 'key', key)
+        else:
+            logger.debug("get_key no '%s'" % (path))
         return key
 
     def get_metadata(self, path, metadata_name, key=None):
@@ -1026,12 +1033,15 @@ class YAS3FS(LoggingMixIn, Operations):
                 key = self.get_key(path)
             if not key:
                 if path == '/': # First time mount of a new file system
-                    self.cache.delete(path)
-                    self.mkdir('', 0755)
-                    self.cache.rename('', path)
+                    ###self.cache.delete(path)
+                    ###self.mkdir('', 0755)
+                    #self.cache.rename('', path)
+                    logger.debug("get_metadata -> '%s' '%s' '%s' First time mount" % (path, metadata_name, key))
+                    self.mkdir(path, 0755)
                     return self.cache.get(path, metadata_name)
                 else:
                     full_path = self.join_prefix(path + '/')
+                    logger.debug("get_metadata -> '%s' '%s' '%s' S3 list '%s'" % (path, metadata_name, key, full_path))
                     key_list = self.s3_bucket.list(full_path) # Don't need to set a delimeter here
                     if len(list(key_list)) == 0:
                         self.cache.add(path) # It is empty to cache further checks
@@ -1092,16 +1102,17 @@ class YAS3FS(LoggingMixIn, Operations):
                     values = metadata_values
                     if values == None:
                         values = self.cache.get(path, metadata_name)
-		    s = ';'.join(['%s=%s' % (k,v) for k,v in values.iteritems()
-				  if not (metadata_name == 'attr' and k == 'st_size')]) # For the size use the key.size
-		    key.metadata[metadata_name] = s
-		elif metadata_name in key.metadata:
-		    del key.metadata[metadata_name]
+                    if values == None:
+                        del key.metadata[metadata_name]
+                    else:
+                        s = ';'.join(['%s=%s' % (k,v) for k,v in values.iteritems()
+                                      if not (metadata_name == 'attr' and k == 'st_size')]) # For the size use the key.size
+                        key.metadata[metadata_name] = s
                 if (not data) or (data and (not data.has('change'))):
                     logger.debug("writing metadata '%s' '%s'" % (path, key))
                     md = key.metadata
                     md['Content-Type'] = key.content_type # Otherwise we loose the Content-Type with Copy
-                    key.copy(key.bucket.name, key.name, md, preserve_acl=False) # Do I need to preserve ACL?
+                    key.copy(key.bucket.name, key.name, md, preserve_acl=True) # Do I need to preserve ACL?
                     self.publish(['md', metadata_name, path])
 
     def getattr(self, path, fh=None):
@@ -1995,7 +2006,7 @@ In an EC2 instance a IAM role can be used to give access to S3/SNS/SQS resources
     parser.add_option("-f", "--foreground", action="store_true", dest="foreground", default=False,
                       help="run in foreground")
     parser.add_option("-d", "--debug", action="store_true", dest="debug", default=False,
-                      help="print debug information (implies '-f')")
+                      help="print debug information in log")
 
     (options, args) = parser.parse_args()
 
@@ -2026,7 +2037,7 @@ In an EC2 instance a IAM role can be used to give access to S3/SNS/SQS resources
     if sys.platform == "darwin":
         volume_name = os.path.basename(mountpoint)
         fuse = FUSE(YAS3FS(options), mountpoint, fsname="yas3fs",
-                    foreground=options.foreground or options.debug,
+                    foreground=options.foreground,
                     default_permissions=True, allow_other=True,
                     auto_cache=True, atime=False,
                     max_read=131072, max_write=131072, max_readahead=131072,
@@ -2035,7 +2046,7 @@ In an EC2 instance a IAM role can be used to give access to S3/SNS/SQS resources
                     # local=True) # local option is quite unstable
     else:
         fuse = FUSE(YAS3FS(options), mountpoint, fsname="yas3fs",
-                    foreground=options.foreground or options.debug,
+                    foreground=options.foreground,
                     default_permissions=True, allow_other=True,
                     auto_cache=True, atime=False,
                     big_writes=True, # Not working on OS X
