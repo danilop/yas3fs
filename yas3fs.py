@@ -773,6 +773,7 @@ class YAS3FS(LoggingMixIn, Operations):
             self.cache_entries = 0 # To stop memory thread
             logger.info("waiting for check cache thread to shutdown...")
             self.check_cache_thread.join(self.cache_check_interval + 1.0)
+        logger.info('File system unmounted.')
         
     def listen_for_messages_over_http(self):
         logger.info("Listening on: '%s'" % self.http_listen_url)
@@ -1003,7 +1004,10 @@ class YAS3FS(LoggingMixIn, Operations):
 
     def join_prefix(self, path):
         if self.s3_prefix == '':
-            return path[1:] # Remove beginning "/"
+            if path != '/':
+                return path[1:] # Remove beginning '/'
+            else:
+                return '.' # To handle '/' with empty s3_prefix
         else:
             return self.s3_prefix + path
 
@@ -1015,7 +1019,7 @@ class YAS3FS(LoggingMixIn, Operations):
                 return key
         logger.debug("get_key from S3 #1 '%s'" % (path))
         key = self.s3_bucket.get_key(self.join_prefix(path))
-        if not key:
+        if not key and path != '/':
             full_path = path + '/'
             logger.debug("get_key from S3 #2 '%s' '%s'" % (path, full_path))
             key = self.s3_bucket.get_key(self.join_prefix(full_path))
@@ -1035,9 +1039,9 @@ class YAS3FS(LoggingMixIn, Operations):
                 if path == '/': # First time mount of a new file system
                     ###self.cache.delete(path)
                     ###self.mkdir('', 0755)
-                    #self.cache.rename('', path)
-                    logger.debug("get_metadata -> '%s' '%s' '%s' First time mount" % (path, metadata_name, key))
+                    ###self.cache.rename('', path)
                     self.mkdir(path, 0755)
+                    logger.debug("get_metadata -> '%s' '%s' '%s' First time mount" % (path, metadata_name, key))
                     return self.cache.get(path, metadata_name)
                 else:
                     full_path = self.join_prefix(path + '/')
@@ -1097,6 +1101,7 @@ class YAS3FS(LoggingMixIn, Operations):
         if self.write_metadata and (key or (not data) or (data and not data.has('change'))): # No change in progress, I should write now
 	    if not key:
                 key = self.get_key(path)
+                logger.debug("set_metadata '%s' '%s' '%s' '%s' Key" % (path, metadata_name, metadata_values, key))
 	    if key:
 		if metadata_name:
                     values = metadata_values
@@ -1111,8 +1116,11 @@ class YAS3FS(LoggingMixIn, Operations):
                 if (not data) or (data and (not data.has('change'))):
                     logger.debug("writing metadata '%s' '%s'" % (path, key))
                     md = key.metadata
-                    md['Content-Type'] = key.content_type # Otherwise we loose the Content-Type with Copy
-                    key.copy(key.bucket.name, key.name, md, preserve_acl=True) # Do I need to preserve ACL?
+                    md['Content-Type'] = key.content_type # Otherwise we loose the Content-Type with S3 Copy
+                    if key.size > 0:
+                        key.copy(key.bucket.name, key.name, md, preserve_acl=False) # Do I need to preserve ACL?
+                    else:
+                        key.set_contents_from_string(''); # Better for empry objects ???
                     self.publish(['md', metadata_name, path])
 
     def getattr(self, path, fh=None):
@@ -1156,8 +1164,11 @@ class YAS3FS(LoggingMixIn, Operations):
 
 	if not dirs:
 	    full_path = self.join_prefix(path)
-            if full_path != '' and full_path[-1] != '/':
+            if full_path == '.':
+                full_path = ''
+            elif full_path != '' and full_path[-1] != '/':
                 full_path += '/'
+            logger.debug("readdir '%s' '%s' S3 list '%s'" % (path, fh, full_path))
 	    key_list = self.s3_bucket.list(full_path, '/')
 	    dirs = ['.', '..']
 	    for k in key_list:                
@@ -1195,12 +1206,17 @@ class YAS3FS(LoggingMixIn, Operations):
 	k = Key(self.s3_bucket)
 	self.set_metadata(path, 'attr', attr, k)
 	self.set_metadata(path, 'xattr', {}, k)
-	k.key = self.join_prefix(path + '/')
+        if path != '/':
+            full_path = path + '/'
+        else:
+            full_path = path # To manage '/' with an empty s3_prefix
+        k.key = self.join_prefix(full_path)
+        logger.debug("mkdir '%s' '%s' '%s' S3 " % (path, mode, k))
 	k.set_contents_from_string('', headers={'Content-Type': 'application/x-directory'})
         self.cache.set(path, 'key', k)
 	data.delete('change')
 	self.cache.set(path, 'readdir', ['.', '..']) # the directory is empty
-	if path != '':
+	if path != '/':
             self.add_to_parent_readdir(path)
             self.publish(['mkdir', path])
 	return 0
