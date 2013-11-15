@@ -1117,10 +1117,7 @@ class YAS3FS(LoggingMixIn, Operations):
                     logger.debug("writing metadata '%s' '%s'" % (path, key))
                     md = key.metadata
                     md['Content-Type'] = key.content_type # Otherwise we loose the Content-Type with S3 Copy
-                    if key.size > 0:
-                        key.copy(key.bucket.name, key.name, md, preserve_acl=False) # Do I need to preserve ACL?
-                    else:
-                        key.set_contents_from_string(''); # Better for empry objects ???
+                    key.copy(key.bucket.name, key.name, md, preserve_acl=False) # Do I need to preserve ACL?
                     self.publish(['md', metadata_name, path])
 
     def getattr(self, path, fh=None):
@@ -1163,6 +1160,7 @@ class YAS3FS(LoggingMixIn, Operations):
         dirs = self.cache.get(path, 'readdir')
 
 	if not dirs:
+            logger.debug("readdir '%s' '%s' no cache" % (path, fh))
 	    full_path = self.join_prefix(path)
             if full_path == '.':
                 full_path = ''
@@ -1174,11 +1172,14 @@ class YAS3FS(LoggingMixIn, Operations):
 	    for k in key_list:                
 		d = k.name.encode('ascii')[len(full_path):]
 		if len(d) > 0:
+                    if d == '.':
+                        continue # already there ### Do I need this ???
 		    if d[-1] == '/':
 			d = d[:-1]
 		    dirs.append(d)
 	    self.cache.set(path, 'readdir', dirs)
 
+        logger.debug("readdir '%s' '%s' '%s'" % (path, fh, dirs))
 	return dirs
 
     def mkdir(self, path, mode):
@@ -1210,13 +1211,14 @@ class YAS3FS(LoggingMixIn, Operations):
             full_path = path + '/'
         else:
             full_path = path # To manage '/' with an empty s3_prefix
-        k.key = self.join_prefix(full_path)
-        logger.debug("mkdir '%s' '%s' '%s' S3 " % (path, mode, k))
-	k.set_contents_from_string('', headers={'Content-Type': 'application/x-directory'})
+        if path != '/' or self.write_metadata:
+            k.key = self.join_prefix(full_path)
+            logger.debug("mkdir '%s' '%s' '%s' S3 " % (path, mode, k))
+            k.set_contents_from_string('', headers={'Content-Type': 'application/x-directory'})
         self.cache.set(path, 'key', k)
 	data.delete('change')
-	self.cache.set(path, 'readdir', ['.', '..']) # the directory is empty
 	if path != '/':
+            self.cache.set(path, 'readdir', ['.', '..']) # the directory is empty
             self.add_to_parent_readdir(path)
             self.publish(['mkdir', path])
 	return 0
