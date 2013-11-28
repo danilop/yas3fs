@@ -18,7 +18,7 @@ MOUNT_PATH=/mnt/shared # Use whatever you like here...
 
 start()
 {
-	su $UNPRIVILEGED_USER -c "$YAS3FS_PATH/yas3fs.py --url=s3://$BUCKET_NAME/$BUCKET_PATH --topic $TOPIC_ARN --new-queue --region $REGION $MOUNT_PATH"
+	su $UNPRIVILEGED_USER -c "$YAS3FS_PATH/yas3fs --url=s3://$BUCKET_NAME/$BUCKET_PATH --topic $TOPIC_ARN --new-queue --region $REGION $MOUNT_PATH"
 }
 
 stop()

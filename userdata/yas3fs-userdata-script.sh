@@ -15,7 +15,7 @@ pip install fusepy
 git clone git://github.com/danilop/yas3fs.git $YAS3FS_PATH
 sed -i'' 's/^# user_allow_other/user_allow_other/' /etc/fuse.conf # uncomment user_allow_other
 # You need a IAM Role to access the S3/SNS/SQS resources used by yas3fs
-$YAS3FS_PATH/yas3fs.py $MOUNT_PATH --region $AWS_REGION --url s3://$BUCKET_NAME/$BUCKET_PATH --mkdir --log $LOG_PATH/yas3fs.log # --topic $SNS_TOPIC --new-queue
+$YAS3FS_PATH/yas3fs $MOUNT_PATH --region $AWS_REGION --url s3://$BUCKET_NAME/$BUCKET_PATH --mkdir --log $LOG_PATH/yas3fs.log # --topic $SNS_TOPIC --new-queue
 # On an EC2 instance you can add the following options
 # to use the ephemeral storage
 # to cache on disk 100GB of files larger than 1MB
