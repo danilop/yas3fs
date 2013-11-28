@@ -1828,8 +1828,10 @@ class YAS3FS(LoggingMixIn, Operations):
         attr = self.get_metadata(path, 'attr')
         if attr < 0:
             return attr
-        attr['st_uid'] = uid
-        attr['st_gid'] = gid
+        if uid != -1:
+            attr['st_uid'] = uid
+        if gid != -1:
+            attr['st_gid'] = gid
         self.set_metadata(path, 'attr')
         return 0
 
