@@ -190,9 +190,9 @@ To unmount the file system on a Mac you can use `umount`.
                            disable multipart upload, default is 4)
       --mp-retries=N       max number of retries in uploading a part (default is 3)
       --id=ID              a unique ID identifying this node in a cluster
-      --log=FILE           the filename to use for logs
       --mkdir              create mountpoint if not found (create intermediate
                            directories as required)
+      -l FILE, --log=FILE  the filename to use for logs
       -f, --foreground     run in foreground
       -d, --debug          print debug information (implies '-f')
 
