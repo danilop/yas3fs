@@ -40,7 +40,7 @@ When everything works it can be interrupted (with `^C`) and restarted to run in 
 
 To mount an S3 bucket without using SNS (i.e. for a single node):
 
-    yas3fs.py /path/to/mount --url s3://bucket/path 
+    yas3fs /path/to/mount --url s3://bucket/path 
 
 To persist file system metadata such as attr/xattr yas3fs is using S3 User Metadata.
 To mount an S3 bucket without actually writing metadata in it,
@@ -49,11 +49,11 @@ you can use the `--no-metadata` option.
 
 To mount an S3 bucket using SNS and listening to an SQS endpoint:
 
-    yas3fs.py /path/to/mount --url s3://bucket/path --topic TOPIC-ARN --new-queue
+    yas3fs /path/to/mount --url s3://bucket/path --topic TOPIC-ARN --new-queue
 
 To mount an S3 bucket using SNS and listening to an HTTP endpoint (on EC2):
 
-    yas3fs.py /path/to/mount --url s3://bucket/path --topic TOPIC-ARN --ec2-hostname --port N
+    yas3fs /path/to/mount --url s3://bucket/path --topic TOPIC-ARN --ec2-hostname --port N
 
 On EC2 the security group must allow inbound traffic from SNS on the selected port.
 
@@ -80,9 +80,9 @@ If you want to do a quick test here's the installation procedure depending on th
     sudo sed -i'' 's/^# *user_allow_other/user_allow_other/' /etc/fuse.conf # uncomment user_allow_other
     git clone git://github.com/danilop/yas3fs.git
     cd yas3fs
-    ./yas3fs.py -h # See the usage
+    ./yas3fs -h # See the usage
     mkdir LOCAL-PATH
-    ./yas3fs.py LOCAL-PATH --url s3://BUCKET/PATH --topic TOPIC-ARN --new-queue --region eu-west-1
+    ./yas3fs LOCAL-PATH --url s3://BUCKET/PATH --topic TOPIC-ARN --new-queue --region eu-west-1
 
 **On EC2 with Ubuntu systems**
 
@@ -91,10 +91,10 @@ If you want to do a quick test here's the installation procedure depending on th
     sudo sed -i'' 's/^# *user_allow_other/user_allow_other/' /etc/fuse.conf # uncomment user_allow_other
     git clone git://github.com/danilop/yas3fs.git
     cd yas3fs
-    ./yas3fs.py -h # See the usage
+    ./yas3fs -h # See the usage
     sudo chmod a+r /etc/fuse.conf # make it readable by anybody, it is not the default on Ubuntu
     mkdir LOCAL-PATH
-    ./yas3fs.py LOCAL-PATH --url s3://BUCKET/PATH --topic TOPIC-ARN --new-queue --region eu-west-1
+    ./yas3fs LOCAL-PATH --url s3://BUCKET/PATH --topic TOPIC-ARN --new-queue --region eu-west-1
 
 **On a Mac with OS X**
 
@@ -109,9 +109,9 @@ download the most suitable "egg" from
     sudo easy_install fusepy
     git clone git://github.com/danilop/yas3fs.git
     cd yas3fs
-    ./yas3fs.py -h # See the usage
+    ./yas3fs -h # See the usage
     mkdir LOCAL-PATH
-    ./yas3fs.py LOCAL-PATH --url s3://BUCKET/PATH --topic TOPIC-ARN --new-queue --region eu-west-1
+    ./yas3fs LOCAL-PATH --url s3://BUCKET/PATH --topic TOPIC-ARN --new-queue --region eu-west-1
 
 If something does not work as expected you can use the `-d` option to run in foreground in debug mode.
 
@@ -125,9 +125,9 @@ To unmount the file system on a Mac you can use `umount`.
 
 ### Full Usage
 
-    yas3fs.py -h
+    yas3fs -h
 
-    Usage: yas3fs.py <mountpoint> [options]
+    Usage: yas3fs <mountpoint> [options]
 
     YAS3FS (Yet Another S3-backed File System) is a Filesystem in Userspace (FUSE) interface to Amazon S3.
 

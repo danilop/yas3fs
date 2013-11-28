@@ -1213,7 +1213,7 @@ class YAS3FS(LoggingMixIn, Operations):
             full_path = path # To manage '/' with an empty s3_prefix
         if path != '/' or self.write_metadata:
             k.key = self.join_prefix(full_path)
-            logger.debug("mkdir '%s' '%s' '%s' S3 " % (path, mode, k))
+            logger.debug("mkdir '%s' '%s' '%s' S3" % (path, mode, k))
             k.set_contents_from_string('', headers={'Content-Type': 'application/x-directory'})
         self.cache.set(path, 'key', k)
 	data.delete('change')
@@ -1255,6 +1255,7 @@ class YAS3FS(LoggingMixIn, Operations):
         self.write(path, link, 0)
         data.close()
 	k.key = self.join_prefix(path)
+        logger.debug("symlink '%s' '%s' '%s' S3" % (path, link, k))
 	k.set_contents_from_string(link, headers={'Content-Type': 'application/x-symlink'})
         self.cache.set(path, 'key', k)
 	data.delete('change')
@@ -1680,6 +1681,8 @@ class YAS3FS(LoggingMixIn, Operations):
         if not self.cache.has(path) or self.cache.is_empty(path):
             logger.debug("write '%s' '%i' '%i' '%s' ENOENT" % (path, len(new_data), offset, fh))
             raise FuseOSError(errno.ENOENT)
+        if isinstance(new_data, unicode): # Fix for unicode
+            new_data = str(new_data)
 	length = len(new_data)
         
         data_range = self.cache.get(path, 'data').get('range')
@@ -1698,6 +1701,7 @@ class YAS3FS(LoggingMixIn, Operations):
             if not data.content:
                 logger.debug("write awake '%s' '%i' '%i' '%s' no content" % (path, len(new_data), offset, fh))            
                 return 0
+            logger.debug("write '%s' '%i' '%i' '%s' '%s' content" % (path, len(new_data), offset, fh, data.content))
             data.content.seek(offset)
             data.content.write(new_data)
             data.set('change', True)
@@ -1742,6 +1746,7 @@ class YAS3FS(LoggingMixIn, Operations):
                     k = self.get_key(path, cache=False)
                     written = True
             if not written:
+                logger.debug("flush '%s' '%s' '%s' '%s' S3" % (path, fh, k, type))
                 k.set_contents_from_file(data.content, headers={'Content-Type': type})
             data.update_etag(k.etag[1:-1])
             data.delete('change')
