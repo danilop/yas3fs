@@ -77,7 +77,7 @@ When everything works it can be interrupted (with <code>^C</code>) and restarted
 
 <p>To mount an S3 bucket without using SNS (i.e. for a single node):</p>
 
-<pre><code>yas3fs.py /path/to/mount --url s3://bucket/path 
+<pre><code>yas3fs /path/to/mount --url s3://bucket/path 
 </code></pre>
 
 <p>To persist file system metadata such as attr/xattr yas3fs is using S3 User Metadata.
@@ -87,12 +87,12 @@ you can use the <code>--no-metadata</code> option.</p>
 
 <p>To mount an S3 bucket using SNS and listening to an SQS endpoint:</p>
 
-<pre><code>yas3fs.py /path/to/mount --url s3://bucket/path --topic TOPIC-ARN --new-queue
+<pre><code>yas3fs /path/to/mount --url s3://bucket/path --topic TOPIC-ARN --new-queue
 </code></pre>
 
 <p>To mount an S3 bucket using SNS and listening to an HTTP endpoint (on EC2):</p>
 
-<pre><code>yas3fs.py /path/to/mount --url s3://bucket/path --topic TOPIC-ARN --ec2-hostname --port N
+<pre><code>yas3fs /path/to/mount --url s3://bucket/path --topic TOPIC-ARN --ec2-hostname --port N
 </code></pre>
 
 <p>On EC2 the security group must allow inbound traffic from SNS on the selected port.</p>
@@ -121,9 +121,9 @@ sudo pip install -U boto fusepy
 sudo sed -i'' 's/^# *user_allow_other/user_allow_other/' /etc/fuse.conf # uncomment user_allow_other
 git clone git://github.com/danilop/yas3fs.git
 cd yas3fs
-./yas3fs.py -h # See the usage
+./yas3fs -h # See the usage
 mkdir LOCAL-PATH
-./yas3fs.py LOCAL-PATH --url s3://BUCKET/PATH --topic TOPIC-ARN --new-queue --region eu-west-1
+./yas3fs LOCAL-PATH --url s3://BUCKET/PATH --topic TOPIC-ARN --new-queue --region eu-west-1
 </code></pre>
 
 <p><strong>On EC2 with Ubuntu systems</strong></p>
@@ -133,10 +133,10 @@ sudo pip install -U boto fusepy
 sudo sed -i'' 's/^# *user_allow_other/user_allow_other/' /etc/fuse.conf # uncomment user_allow_other
 git clone git://github.com/danilop/yas3fs.git
 cd yas3fs
-./yas3fs.py -h # See the usage
+./yas3fs -h # See the usage
 sudo chmod a+r /etc/fuse.conf # make it readable by anybody, it is not the default on Ubuntu
 mkdir LOCAL-PATH
-./yas3fs.py LOCAL-PATH --url s3://BUCKET/PATH --topic TOPIC-ARN --new-queue --region eu-west-1
+./yas3fs LOCAL-PATH --url s3://BUCKET/PATH --topic TOPIC-ARN --new-queue --region eu-west-1
 </code></pre>
 
 <p><strong>On a Mac with OS X</strong></p>
@@ -152,9 +152,9 @@ sudo easy_install boto
 sudo easy_install fusepy
 git clone git://github.com/danilop/yas3fs.git
 cd yas3fs
-./yas3fs.py -h # See the usage
+./yas3fs -h # See the usage
 mkdir LOCAL-PATH
-./yas3fs.py LOCAL-PATH --url s3://BUCKET/PATH --topic TOPIC-ARN --new-queue --region eu-west-1
+./yas3fs LOCAL-PATH --url s3://BUCKET/PATH --topic TOPIC-ARN --new-queue --region eu-west-1
 </code></pre>
 
 <p>If something does not work as expected you can use the <code>-d</code> option to run in foreground in debug mode.</p>
@@ -171,9 +171,9 @@ mkdir LOCAL-PATH
 <h3>
 <a name="full-usage" class="anchor" href="#full-usage"><span class="octicon octicon-link"></span></a>Full Usage</h3>
 
-<pre><code>yas3fs.py -h
+<pre><code>yas3fs -h
 
-Usage: yas3fs.py &lt;mountpoint&gt; [options]
+Usage: yas3fs &lt;mountpoint&gt; [options]
 
 YAS3FS (Yet Another S3-backed File System) is a Filesystem in Userspace (FUSE) interface to Amazon S3.
 
@@ -236,9 +236,9 @@ Options:
                        disable multipart upload, default is 4)
   --mp-retries=N       max number of retries in uploading a part (default is 3)
   --id=ID              a unique ID identifying this node in a cluster
-  --log=FILE           the filename to use for logs
   --mkdir              create mountpoint if not found (create intermediate
                        directories as required)
+  -l FILE, --log=FILE  the filename to use for logs
   -f, --foreground     run in foreground
   -d, --debug          print debug information (implies '-f')
 </code></pre>
