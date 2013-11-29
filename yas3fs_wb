@@ -1002,7 +1002,8 @@ class YAS3FS(LoggingMixIn, Operations):
         (parent_path, dir) = os.path.split(path)
         logger.debug("parent_path '%s'" % (parent_path))
         with self.cache.get_lock(path):
-            dirs = self.cache.get(parent_path, 'readdir')
+            # dirs = self.cache.get(parent_path, 'readdir')
+            dirs = self.readdir(parent_path)
             if dirs != None and dirs.count(dir) > 0:
                 dirs.remove(dir)
 
