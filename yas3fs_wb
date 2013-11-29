@@ -1064,7 +1064,7 @@ class YAS3FS(LoggingMixIn, Operations):
     def do(self, path, todo):
         if self.writeback_num > 0:
             n = hash(path) % self.writeback_num # So that the same path always goes to the same thread
-            self.writeback.queue[n].put(todo)
+            self.writeback_queue[n].put(todo)
         else:
             todo()
 
