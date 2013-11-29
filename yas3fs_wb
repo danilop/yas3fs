@@ -703,7 +703,7 @@ class YAS3FS(LoggingMixIn, Operations):
         self.writeback_threads = {}
         self.writeback_queue = {}
         for i in range(self.writeback_num):
-            self.writeback_threads[i] = threading.Thread(target=self.writeback, args=(i))
+            self.writeback_threads[i] = threading.Thread(target=self.writeback, args=(i,))
             self.writeback_threads[i].deamon = True
             self.writeback_threads[i].start()
             self.writeback_queue[i] = Queue.Queue()
@@ -1051,7 +1051,7 @@ class YAS3FS(LoggingMixIn, Operations):
             logger.debug("get_key no '%s'" % (path))
         return key
 
-    def writeback(n):
+    def writeback(self, n):
         while self.running:
            try:
                todo = self.writeback_queue[n].get(True, 1) # 1 second time-out
