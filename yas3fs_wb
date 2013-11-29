@@ -518,7 +518,7 @@ class YAS3FS(LoggingMixIn, Operations):
     def __init__(self, options):
         # Some constants
         ### self.http_listen_path_length = 30
-        self.download_running = True
+        self.running = True
         self.check_status_interval = 5.0 # Seconds, no need to configure that
 
         # Initialization
@@ -590,8 +590,8 @@ class YAS3FS(LoggingMixIn, Operations):
         logger.info("Multipart maximum number of parallel threads: '%s'" % str(self.multipart_num))
         self.multipart_retries = options.multipart_retries
         logger.info("Multipart maximum number of retries per part: '%s'" % str(self.multipart_retries))
-        self.writeback = options.writeback
-        logger.info("Writeback: '%s'" % str(self.writeback))
+        self.writeback_num = options.writeback_num
+        logger.info("Writeback number of parallel threads (0 to disable writeback): '%i'" % self.writeback_num)
 
         # Internal Initialization
         if options.cache_path == '':
@@ -700,6 +700,14 @@ class YAS3FS(LoggingMixIn, Operations):
             self.prefetch_threads[i].deamon = True
             self.prefetch_threads[i].start()
 
+        self.writeback_threads = {}
+        self.writeback_queue = {}
+        for i in range(self.writeback_num):
+            self.writeback_threads[i] = threading.Thread(target=self.writeback, args=(i,))
+            self.writeback_threads[i].deamon = True
+            self.writeback_threads[i].start()
+            self.writeback_queue[i] = Queue.Queue()
+
         if self.sqs_queue_name:
             self.queue_listen_thread = threading.Thread(target=self.listen_for_messages_over_sqs)
             self.queue_listen_thread.daemon = True
@@ -743,7 +751,7 @@ class YAS3FS(LoggingMixIn, Operations):
         # Cleanup for unmount
         logger.info('File system unmount...')
 
-        self.download_running = False
+        self.running = False
 
         if self.http_listen_thread:
             self.httpd.shutdown() # To stop HTTP listen thread
@@ -926,7 +934,7 @@ class YAS3FS(LoggingMixIn, Operations):
             logger.info("num_entries, mem_size, disk_size, download_queue, prefetch_queue: %i, %i, %i, %i, %i"
                         % (num_entries, mem_size, disk_size, self.download_queue.qsize(), self.prefetch_queue.qsize()))
 
-            if self.download_running:
+            if self.running:
                 for i in self.download_threads.keys():
                     if not self.download_threads[i].is_alive():
                         logger.debug("Download thread restarted!")
@@ -1043,11 +1051,20 @@ class YAS3FS(LoggingMixIn, Operations):
             logger.debug("get_key no '%s'" % (path))
         return key
 
-    def do(self, todo):
-        if self.writeback:
-            logger.debug("writeback")
-            t = threading.Thread(target=todo)
-            t.start()
+    def writeback(n):
+        while self.running:
+           try:
+               todo = self.writeback_queue[n].get(True, 1) # 1 second time-out
+               logger.debug("writeback #%i" % n)
+               todo()
+               self.writeback_queue.task_done()
+           except Queue.Empty:
+               pass
+
+    def do(self, path, todo):
+        if self.writeback_num > 0:
+            n = hash(path) % self.writeback_num # So that the same path always goes to the same thread
+            self.writeback.queue[n].put(todo)
         else:
             todo()
 
@@ -1355,7 +1372,7 @@ class YAS3FS(LoggingMixIn, Operations):
                 self.download_queue.put(option_list)
 
     def download(self, prefetch=False):
-       while self.download_running:
+        while self.running:
            try:
                if prefetch:
                    (path, start, end) = self.prefetch_queue.get(True, 1) # 1 second time-out
@@ -2082,8 +2099,8 @@ In an EC2 instance a IAM role can be used to give access to S3/SNS/SQS resources
                       help="a unique ID identifying this node in a cluster", metavar="ID")
     parser.add_option("--mkdir", action="store_true", dest="mkdir", default=False,
                       help="create mountpoint if not found (create intermediate directories as required)")
-    parser.add_option("--writeback", action="store_true", dest="writeback", default=False,
-                      help="cache writes to S3 locally, fast but not reliable")
+    parser.add_option("--writeback", dest="writeback",
+                      help="use writeback threads to cache writes, fast but not reliable (0 to disable writeback, default id %default)", metavar="N", default=0)
     parser.add_option("-l", "--log", dest="logfile",
                       help="the filename to use for logs", metavar="FILE", default="")
     parser.add_option("-f", "--foreground", action="store_true", dest="foreground", default=False,
