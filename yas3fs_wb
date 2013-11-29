@@ -1158,7 +1158,7 @@ class YAS3FS(LoggingMixIn, Operations):
                         md['Content-Type'] = key.content_type # Otherwise we loose the Content-Type with S3 Copy
                         key.copy(key.bucket.name, key.name, md, preserve_acl=False) # Do I need to preserve ACL?
                         self.publish(['md', metadata_name, path])
-                    self.do(todo)
+                    self.do(path, todo)
 
     def getattr(self, path, fh=None):
         logger.debug("getattr -> '%s' '%s'" % (path, fh))
@@ -1264,7 +1264,7 @@ class YAS3FS(LoggingMixIn, Operations):
             data.delete('change')
             if path != '/': ### Do I need this???
                 self.publish(['mkdir', path])
-        self.do(todo)
+        self.do(path, todo)
 
 	return 0
  
@@ -1308,7 +1308,7 @@ class YAS3FS(LoggingMixIn, Operations):
             k.set_contents_from_string(link, headers={'Content-Type': 'application/x-symlink'})
             data.delete('change')
             self.publish(['symlink', path])
-        self.do(todo)
+        self.do(path, todo)
 
 	return 0
 
@@ -1532,7 +1532,7 @@ class YAS3FS(LoggingMixIn, Operations):
             logger.debug("rmdir '%s' '%s' S3" % (path, k))
             k.delete()
             self.publish(['rmdir', path])
-        self.do(todo)
+        self.do(path, todo)
 
 	self.cache.reset(path) # Cache invaliation
 	self.remove_from_parent_readdir(path)
@@ -1618,7 +1618,7 @@ class YAS3FS(LoggingMixIn, Operations):
                     key.copy(key.bucket.name, target, md, preserve_acl=False) # Do I need to preserve ACL?
                     key.delete()
                     self.publish(['rename', source_path, target_path])
-                self.do(todo)
+                self.do(source_path, todo)
 
         self.remove_from_parent_readdir(path)
         self.add_to_parent_readdir(new_path)
@@ -1671,7 +1671,7 @@ class YAS3FS(LoggingMixIn, Operations):
                 logger.debug("unlink '%s' '%s' S3" % (path, k))
                 k.delete()
                 self.publish(['unlink', path])
-            self.do(todo)
+            self.do(path, todo)
 
 	self.cache.reset(path)
 	self.remove_from_parent_readdir(path)
@@ -1822,7 +1822,7 @@ class YAS3FS(LoggingMixIn, Operations):
                 data.update_etag(etag)
                 data.delete('change')
                 self.publish(['flush', path, etag])
-            self.do(todo)
+            self.do(path, todo)
 
         return 0
 
