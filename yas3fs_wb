@@ -590,7 +590,7 @@ class YAS3FS(LoggingMixIn, Operations):
         logger.info("Multipart maximum number of parallel threads: '%s'" % str(self.multipart_num))
         self.multipart_retries = options.multipart_retries
         logger.info("Multipart maximum number of retries per part: '%s'" % str(self.multipart_retries))
-        self.writeback_num = options.writeback_num
+        self.writeback_num = int(options.writeback_num)
         logger.info("Writeback number of parallel threads (0 to disable writeback): '%i'" % self.writeback_num)
 
         # Internal Initialization
