@@ -1057,7 +1057,7 @@ class YAS3FS(LoggingMixIn, Operations):
                todo = self.writeback_queue[n].get(True, 1) # 1 second time-out
                logger.debug("writeback #%i" % n)
                todo()
-               self.writeback_queue.task_done()
+               self.writeback_queue[n].task_done()
            except Queue.Empty:
                pass
 
