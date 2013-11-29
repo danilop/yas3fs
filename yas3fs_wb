@@ -2099,7 +2099,7 @@ In an EC2 instance a IAM role can be used to give access to S3/SNS/SQS resources
                       help="a unique ID identifying this node in a cluster", metavar="ID")
     parser.add_option("--mkdir", action="store_true", dest="mkdir", default=False,
                       help="create mountpoint if not found (create intermediate directories as required)")
-    parser.add_option("--writeback", dest="writeback",
+    parser.add_option("--writeback", dest="writeback_num",
                       help="use writeback threads to cache writes, fast but not reliable (0 to disable writeback, default id %default)", metavar="N", default=0)
     parser.add_option("-l", "--log", dest="logfile",
                       help="the filename to use for logs", metavar="FILE", default="")
