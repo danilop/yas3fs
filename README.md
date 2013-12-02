@@ -34,9 +34,9 @@ This is the logical architecture of yas3fs:
 
 ![yas3fs Logical Architecture](http://blog.danilopoccia.net/wp-content/uploads/sites/2/2012/11/yas3fs.png.scaled500.png)
 
-I strongly suggest to start yas3fs for the first time with the `-d` (debug) option, to see if there is any error.
+I strongly suggest to start yas3fs for the first time with the `-df` (debug + foreground) options, to see if there is any error.
 When everything works it can be interrupted (with `^C`) and restarted to run in background
-(it's the default with no `-d` / `-f` options).
+(it's the default with no `-f` options).
 
 To mount an S3 bucket without using SNS (i.e. for a single node):
 
@@ -115,7 +115,7 @@ download the most suitable "egg" from
 
     sudo easy_install M2Crypto-*.egg
 
-If something does not work as expected you can use the `-d` option to run in foreground in debug mode.
+If something does not work as expected you can use the `-df` options to run in foreground in debug mode.
 
 **Unmount**
 
