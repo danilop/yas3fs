@@ -12,17 +12,17 @@ tar tzvf latest.tar.gz
 echo "Extracting content ..."
 tar xzvf latest.tar.gz
 echo "Removing tarball ..."
-rm latest.tar.gz
+rm -v latest.tar.gz
 echo "Number of files in the wordpress/ path:"
 find wordpress | wc -l
 echo "Renaming wordpress/ in wp/ ..."
-mv wordpress wp
+mv -v wordpress wp
 echo "Number of files in the wp/ path:"
 find wp | wc -l
 echo "Zipping wp/ in wp.zip ..."
 zip -r wp.zip wp
 echo "Removing wp/ path ..."
-rm -rf wp
+rm -rfv wp
 echo "Checking zip file ..."
 unzip -t wp.zip
 echo "Listing zip file ..."
