@@ -71,9 +71,9 @@ A web console is provided to easily monitor the nodes of a cluster.</p>
 
 <p><img src="http://blog.danilopoccia.net/wp-content/uploads/sites/2/2012/11/yas3fs.png.scaled500.png" alt="yas3fs Logical Architecture"></p>
 
-<p>I strongly suggest to start yas3fs for the first time with the <code>-d</code> (debug) option, to see if there is any error.
+<p>I strongly suggest to start yas3fs for the first time with the <code>-df</code> (debug + foreground) options, to see if there is any error.
 When everything works it can be interrupted (with <code>^C</code>) and restarted to run in background
-(it's the default with no <code>-d</code> / <code>-f</code> options).</p>
+(it's the default with no <code>-f</code> options).</p>
 
 <p>To mount an S3 bucket without using SNS (i.e. for a single node):</p>
 
@@ -143,12 +143,7 @@ mkdir LOCAL-PATH
 
 <p>Install FUSE for OS X from <a href="http://osxfuse.github.com">http://osxfuse.github.com</a></p>
 
-<p>To install the Python <a href="http://chandlerproject.org/Projects/MeTooCrypto">M2Crypto</a> module,
-download the most suitable "egg" from
-<a href="http://chandlerproject.org/Projects/MeTooCrypto#Downloads">http://chandlerproject.org/Projects/MeTooCrypto#Downloads</a>.</p>
-
-<pre><code>sudo easy_install M2Crypto-*.egg
-sudo easy_install boto
+<pre><code>sudo easy_install boto
 sudo easy_install fusepy
 git clone git://github.com/danilop/yas3fs.git
 cd yas3fs
@@ -157,7 +152,15 @@ mkdir LOCAL-PATH
 ./yas3fs LOCAL-PATH --url s3://BUCKET/PATH --topic TOPIC-ARN --new-queue --region eu-west-1
 </code></pre>
 
-<p>If something does not work as expected you can use the <code>-d</code> option to run in foreground in debug mode.</p>
+<p>To listen to SNS HTTP notifications (I usually suggest to use SQS instead)
+you need to install the Python <a href="http://chandlerproject.org/Projects/MeTooCrypto">M2Crypto</a> module,
+download the most suitable "egg" from
+<a href="http://chandlerproject.org/Projects/MeTooCrypto#Downloads">http://chandlerproject.org/Projects/MeTooCrypto#Downloads</a>.</p>
+
+<pre><code>sudo easy_install M2Crypto-*.egg
+</code></pre>
+
+<p>If something does not work as expected you can use the <code>-df</code> options to run in foreground in debug mode.</p>
 
 <p><strong>Unmount</strong></p>
 
