@@ -2023,22 +2023,22 @@ In an EC2 instance a IAM role can be used to give access to S3/SNS/SQS resources
     parser.add_option("--queue-polling", dest="queue_polling_interval",
                       help="SQS queue polling interval in seconds (default is %default seconds)", metavar="N", default=0)
     parser.add_option("--cache-entries", dest="cache_entries",
-                      help="max number of entries to cache (default is %default entries)", metavar="N", default=1000000)
+                      help="max number of entries to cache (default is %default entries)", metavar="N", default=100000)
     parser.add_option("--cache-mem-size", dest="cache_mem_size",
-                      help="max size of the memory cache in MB (default is %default MB)", metavar="N", default=1024)
+                      help="max size of the memory cache in MB (default is %default MB)", metavar="N", default=128)
     parser.add_option("--cache-disk-size", dest="cache_disk_size",
-                      help="max size of the disk cache in MB (default is %default MB)", metavar="N", default=10240)
+                      help="max size of the disk cache in MB (default is %default MB)", metavar="N", default=1024)
     parser.add_option("--cache-path", dest="cache_path",
                       help="local path to use for disk cache (default is '/tmp/yas3fs/BUCKET/PATH')", metavar="PATH", default="")
     parser.add_option("--cache-on-disk", dest="cache_on_disk",
                       help="use disk (instead of memory) cache for files greater than the given size in bytes (default is %default bytes)",
                       metavar="N", default=0)
     parser.add_option("--cache-check", dest="cache_check_interval",
-                      help="interval between cache memory checks in seconds (default is %default seconds)", metavar="N", default=3)
+                      help="interval between cache memory checks in seconds (default is %default seconds)", metavar="N", default=5)
     parser.add_option("--download-num", dest="download_num",
-                      help="number of parallel downloads (default is %default)", metavar="N", default=10)
+                      help="number of parallel downloads (default is %default)", metavar="N", default=4)
     parser.add_option("--prefetch-num", dest="prefetch_num",
-                      help="number of parallel prefetching downloads (default is %default)", metavar="N", default=10)
+                      help="number of parallel prefetching downloads (default is %default)", metavar="N", default=2)
     parser.add_option("--buffer-size", dest="buffer_size",
                       help="download buffer size in KB (0 to disable buffering, default is %default KB)", metavar="N", default=10240)
     parser.add_option("--buffer-prefetch", dest="buffer_prefetch",
