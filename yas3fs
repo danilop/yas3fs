@@ -21,7 +21,6 @@ import socket
 import BaseHTTPServer
 import urllib2
 import itertools
-import M2Crypto
 import base64
 import logging
 import signal
@@ -571,6 +570,7 @@ class YAS3FS(LoggingMixIn, Operations):
             logger.info("Hostname to listen to SNS HTTP notifications: '%s'" % self.hostname)
         self.sns_http_port = int(options.port or '0')
         if options.port:
+            import M2Crypto # Required to check integrity of SNS HTTP notifications
             logger.info(" TCP port to listen to SNS HTTP notifications: '%i'" % self.sns_http_port)
         self.download_num = int(options.download_num)
         logger.info("Number of parallel donwloading threads: '%i'" % self.download_num)
