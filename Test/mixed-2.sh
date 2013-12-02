@@ -15,8 +15,13 @@ do
     echo "Iteration # $i of $N"
     echo "Adding 't1' at the end of 't2' ..."
     cat t1 >> t2
-    echo "Adding 't2' at the end of 't1' ..."
-    cat t2 >> t1
+    echo "Linking 't2' to 't2link' ..."
+    ln -s t2 t2link
+    echo "Adding 't2link' at the end of 't1' ..."
+    cat t2link >> t1
+    ls -l t1 t2 t2link
+    echo "Removing 't2link' ..."
+    rm t2link
     ls -l t1 t2
 done
 echo "Removing 't1' ..."
