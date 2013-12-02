@@ -108,7 +108,7 @@ Install FUSE for OS X from <http://osxfuse.github.com>
     mkdir LOCAL-PATH
     ./yas3fs LOCAL-PATH --url s3://BUCKET/PATH --topic TOPIC-ARN --new-queue --region eu-west-1
 
-Only if you need to listen to SNS HTTP notifications (but I usually suggest to use SQS instead)
+To listen to SNS HTTP notifications (I usually suggest to use SQS instead)
 you need to install the Python [M2Crypto](http://chandlerproject.org/Projects/MeTooCrypto) module,
 download the most suitable "egg" from
 <http://chandlerproject.org/Projects/MeTooCrypto#Downloads>.
