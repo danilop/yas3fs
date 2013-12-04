@@ -1789,6 +1789,7 @@ class YAS3FS(LoggingMixIn, Operations):
         part_num = 0
         part_pos = 0
         part_queue = Queue.Queue()
+        multipart_size = max(self.multipart_size, full_size / 100) # No more than 100 parts...
         while part_pos < full_size:
             bytes_left = full_size - part_pos
             if bytes_left > self.multipart_size:
@@ -1814,7 +1815,7 @@ class YAS3FS(LoggingMixIn, Operations):
             logger.debug("multipart_upload ok '%s' '%s' '%s'" % (key_path, data, headers))
             new_key = mpu.complete_upload()
         else:
-            logger.debug("multipart_upload cancel '%s' '%s' '%s'" % (key_path, data, headers))
+            logger.debug("multipart_upload cancel '%s' '%s' '%s' '%i' != '%i'" % (key_path, data, headers, mpu.get_all_parts(), part_num))
             mpu.cancel_upload()
             new_key = None
         return new_key
@@ -2050,7 +2051,7 @@ In an EC2 instance a IAM role can be used to give access to S3/SNS/SQS resources
     parser.add_option("--prefetch", action="store_true", dest="full_prefetch", default=False,
                       help="start downloading file content as soon as the file is discovered")
     parser.add_option("--mp-size", dest="multipart_size",
-                      help="size of parts to use for multipart upload in KB (default value is %default KB, the minimum allowed is 5120 KB)", metavar="N", default=10240)
+                      help="size of parts to use for multipart upload in KB (default value is %default KB, the minimum allowed is 5120 KB)", metavar="N", default=102400)
     parser.add_option("--mp-num", dest="multipart_num",
                       help="max number of parallel multipart uploads per file (0 to disable multipart upload, default is %default)", metavar="N", default=4)
     parser.add_option("--mp-retries", dest="multipart_retries",
