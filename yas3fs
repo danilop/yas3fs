@@ -1769,10 +1769,10 @@ class YAS3FS(LoggingMixIn, Operations):
                 full_size = attr['st_size']
                 if full_size > self.multipart_size:
                     logger.debug("flush '%s' '%s' '%s' '%s' S3" % (path, fh, k, type))
-                    new_k = self.multipart_upload(k.name, data, full_size,
+                    complete = self.multipart_upload(k.name, data, full_size,
                                                   headers={'Content-Type': type}, metadata=k.metadata)
-                    new_k = self.get_key(path, cache=False)
-                    etag = new_k.etag[1:-1]
+                    ###new_k = self.get_key(path, cache=False)
+                    etag = complete.etag[1:-1]
                     written = True
             if not written:
                 logger.debug("flush '%s' '%s' '%s' '%s' S3" % (path, fh, k, type))
@@ -1811,8 +1811,10 @@ class YAS3FS(LoggingMixIn, Operations):
         part_queue.join()
         logger.debug("multipart_upload all threads joined '%s' '%s' '%s'" % (key_path, data, headers))
         if len(mpu.get_all_parts()) == part_num:
+            logger.debug("multipart_upload ok '%s' '%s' '%s'" % (key_path, data, headers))
             new_key = mpu.complete_upload()
         else:
+            logger.debug("multipart_upload cancel '%s' '%s' '%s'" % (key_path, data, headers))
             mpu.cancel_upload()
             new_key = None
         return new_key
