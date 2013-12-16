@@ -1181,8 +1181,10 @@ class YAS3FS(LoggingMixIn, Operations):
             logger.debug("readdir '%s' '%s' S3 list '%s'" % (path, fh, full_path))
 	    key_list = self.s3_bucket.list(full_path, '/')
 	    dirs = ['.', '..']
-	    for k in key_list:                
-		d = k.name.encode('ascii')[len(full_path):]
+	    for k in key_list:
+                logger.debug("readdir '%s' '%s' S3 list key '%s'" % (path, fh, k))
+		# d = k.name.encode('ascii')[len(full_path):] ### You can use unicode in S3 keys
+		d = k.name[len(full_path):]
 		if len(d) > 0:
                     if d == '.':
                         continue # already there ### Do I need this ???
@@ -1558,7 +1560,8 @@ class YAS3FS(LoggingMixIn, Operations):
             if key.name[-1] == '/':
                 key_list = self.s3_bucket.list(key.name)
                 for k in key_list:
-                    source = k.name.encode('ascii')
+                    # source = k.name.encode('ascii') ### S3 keys can be unicode
+                    source = k.name
                     target = self.join_prefix(new_path + source[len(key.name) - 1:])
                     to_copy[source] = target
             else:
