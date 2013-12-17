@@ -6,6 +6,8 @@ It was inspired by [s3fs](http://code.google.com/p/s3fs/) but rewritten from scr
 a distributed cache synchronized by [Amazon SNS](http://aws.amazon.com/sns/) notifications.
 A web console is provided to easily monitor the nodes of a cluster.
 
+If you use YAS3FS please share your experience on the [wiki](https://github.com/danilop/yas3fs/wiki), thanks!
+
 **This is a personal project. No relation whatsoever exists between this project and my employer.**
 
 * It allows to mount an S3 bucket (or a part of it, if you specify a path) as a local folder.
