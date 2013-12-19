@@ -1774,8 +1774,8 @@ class YAS3FS(LoggingMixIn, Operations):
                     logger.debug("flush '%s' '%s' '%s' '%s' S3" % (path, fh, k, type))
                     complete = self.multipart_upload(k.name, data, full_size,
                                                   headers={'Content-Type': type}, metadata=k.metadata)
-                    ###new_k = self.get_key(path, cache=False)
                     etag = complete.etag[1:-1]
+                    new_k = self.get_key(path, cache=False) # To refresh the S3 key cache
                     written = True
             if not written:
                 logger.debug("flush '%s' '%s' '%s' '%s' S3" % (path, fh, k, type))
