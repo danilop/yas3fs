@@ -75,8 +75,7 @@ If you want to do a quick test here's the installation procedure depending on th
 
 **On EC2 with Amazon Linux**
 
-    sudo yum -y install fuse fuse-libs
-    sudo yum -y install git # You need to install git on S3-backed AMI
+    sudo yum -y install fuse fuse-libs git
     sudo easy_install pip
     sudo pip install -U boto fusepy
     sudo sed -i'' 's/^# *user_allow_other/user_allow_other/' /etc/fuse.conf # uncomment user_allow_other
