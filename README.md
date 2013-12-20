@@ -79,23 +79,31 @@ If you want to do a quick test here's the installation procedure depending on th
     sudo easy_install pip
     sudo pip install -U boto fusepy
     sudo sed -i'' 's/^# *user_allow_other/user_allow_other/' /etc/fuse.conf # uncomment user_allow_other
-    git clone git://github.com/danilop/yas3fs.git
+    cd /opt # To install yas3fs under /opt/yas3fs
+    sudo git clone git://github.com/danilop/yas3fs.git
     cd yas3fs
     ./yas3fs -h # See the usage
     mkdir LOCAL-PATH
-    ./yas3fs LOCAL-PATH --url s3://BUCKET/PATH --topic TOPIC-ARN --new-queue --region eu-west-1
+    # For single host mount
+    ./yas3fs LOCAL-PATH --url s3://BUCKET/PATH
+    # For multiple host mount
+    ./yas3fs LOCAL-PATH --url s3://BUCKET/PATH --topic TOPIC-ARN --new-queue
 
 **On EC2 with Ubuntu systems**
 
     sudo apt-get install fuse-utils libfuse2 python-pip git
     sudo pip install -U boto fusepy
     sudo sed -i'' 's/^# *user_allow_other/user_allow_other/' /etc/fuse.conf # uncomment user_allow_other
-    git clone git://github.com/danilop/yas3fs.git
+    cd /opt # To install yas3fs under /opt/yas3fs
+    sudo git clone git://github.com/danilop/yas3fs.git
     cd yas3fs
     ./yas3fs -h # See the usage
     sudo chmod a+r /etc/fuse.conf # make it readable by anybody, it is not the default on Ubuntu
     mkdir LOCAL-PATH
-    ./yas3fs LOCAL-PATH --url s3://BUCKET/PATH --topic TOPIC-ARN --new-queue --region eu-west-1
+    # For single host mount
+    ./yas3fs LOCAL-PATH --url s3://BUCKET/PATH
+    # For multiple host mount
+    ./yas3fs LOCAL-PATH --url s3://BUCKET/PATH --topic TOPIC-ARN --new-queue
 
 **On a Mac with OS X**
 
@@ -103,11 +111,15 @@ Install FUSE for OS X from <http://osxfuse.github.com>
 
     sudo easy_install boto
     sudo easy_install fusepy
-    git clone git://github.com/danilop/yas3fs.git
+    cd /opt # To install yas3fs under /opt/yas3fs
+    sudo git clone git://github.com/danilop/yas3fs.git
     cd yas3fs
     ./yas3fs -h # See the usage
     mkdir LOCAL-PATH
-    ./yas3fs LOCAL-PATH --url s3://BUCKET/PATH --topic TOPIC-ARN --new-queue --region eu-west-1
+    # For single host mount
+    ./yas3fs LOCAL-PATH --url s3://BUCKET/PATH
+    # For multiple host mount
+    ./yas3fs LOCAL-PATH --url s3://BUCKET/PATH --topic TOPIC-ARN --new-queue
 
 To listen to SNS HTTP notifications (I usually suggest to use SQS instead)
 you need to install the Python [M2Crypto](http://chandlerproject.org/Projects/MeTooCrypto) module,
