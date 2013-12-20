@@ -1,0 +1,6 @@
+#!/bin/bash
+# Copy com.user.yas3fs.plist under ~/Library/LaunchAgents/
+# Run launchctl load ~/Library/LaunchAgents/com.user.yas3fs.plist
+export AWS_ACCESS_KEY_ID=...
+export AWS_SECRET_ACCESS_KEY=...
+/opt/yas3fs/yas3fs MOUNT_POINT --url s3://BUCKET[/PREFIX] -l ~/yas3fs.log -f
