@@ -86,7 +86,7 @@ If you want to do a quick test here's the installation procedure depending on th
     mkdir LOCAL-PATH
     # For single host mount
     ./yas3fs LOCAL-PATH --url s3://BUCKET/PATH
-    # For multiple host mount
+    # For multiple hosts mount
     ./yas3fs LOCAL-PATH --url s3://BUCKET/PATH --topic TOPIC-ARN --new-queue
 
 **On EC2 with Ubuntu systems**
@@ -102,7 +102,7 @@ If you want to do a quick test here's the installation procedure depending on th
     mkdir LOCAL-PATH
     # For single host mount
     ./yas3fs LOCAL-PATH --url s3://BUCKET/PATH
-    # For multiple host mount
+    # For multiple hosts mount
     ./yas3fs LOCAL-PATH --url s3://BUCKET/PATH --topic TOPIC-ARN --new-queue
 
 **On a Mac with OS X**
@@ -118,7 +118,7 @@ Install FUSE for OS X from <http://osxfuse.github.com>
     mkdir LOCAL-PATH
     # For single host mount
     ./yas3fs LOCAL-PATH --url s3://BUCKET/PATH
-    # For multiple host mount
+    # For multiple hosts mount
     ./yas3fs LOCAL-PATH --url s3://BUCKET/PATH --topic TOPIC-ARN --new-queue
 
 To listen to SNS HTTP notifications (I usually suggest to use SQS instead)
