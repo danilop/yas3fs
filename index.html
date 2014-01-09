@@ -40,7 +40,7 @@ It was inspired by <a href="http://code.google.com/p/s3fs/">s3fs</a> but rewritt
 a distributed cache synchronized by <a href="http://aws.amazon.com/sns/">Amazon SNS</a> notifications.
 A web console is provided to easily monitor the nodes of a cluster.</p>
 
-<p><strong>This is a personal project. No relation whatsoever exists between this project and my employer.</strong></p>
+<p><strong>If you use YAS3FS please share your experience on the <a href="https://github.com/danilop/yas3fs/wiki">wiki</a>, thanks!</strong></p>
 
 <ul>
 <li>It allows to mount an S3 bucket (or a part of it, if you specify a path) as a local folder.</li>
@@ -57,7 +57,9 @@ A web console is provided to easily monitor the nodes of a cluster.</p>
 <li>AWS credentials can be passed using AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY environment variables.</li>
 <li>In an <a href="http://aws.amazon.com/ec2/">EC2</a> instance a <a href="http://aws.amazon.com/iam/">IAM</a> role can be used to give access to S3/SNS/SQS resources.</li>
 <li>It is written in Python (2.6) using <a href="https://github.com/boto/boto">boto</a> and <a href="https://github.com/terencehonles/fusepy">fusepy</a>.</li>
-</ul><h3>
+</ul><p>This is a personal project. No relation whatsoever exists between this project and my employer.</p>
+
+<h3>
 <a name="license" class="anchor" href="#license"><span class="octicon octicon-link"></span></a>License</h3>
 
 <p>Copyright (c) 2012-2013 Danilo Poccia, <a href="http://blog.danilopoccia.net">http://blog.danilopoccia.net</a></p>
@@ -114,16 +116,19 @@ within an <a href="http://aws.amazon.com/autoscaling/">Auto Scaling</a> group.</
 <li>I used the <code>eu-west-1</code> region in my sample, but you can replace that with any region you want. If no region is specified it defaults to <code>us-east-1</code>.</li>
 </ul><p><strong>On EC2 with Amazon Linux</strong></p>
 
-<pre><code>sudo yum -y install fuse fuse-libs
-sudo yum -y install git # You need to install git on S3-backed AMI
+<pre><code>sudo yum -y install fuse fuse-libs git
 sudo easy_install pip
 sudo pip install -U boto fusepy
 sudo sed -i'' 's/^# *user_allow_other/user_allow_other/' /etc/fuse.conf # uncomment user_allow_other
-git clone git://github.com/danilop/yas3fs.git
+cd /opt # To install yas3fs under /opt/yas3fs
+sudo git clone git://github.com/danilop/yas3fs.git
 cd yas3fs
 ./yas3fs -h # See the usage
 mkdir LOCAL-PATH
-./yas3fs LOCAL-PATH --url s3://BUCKET/PATH --topic TOPIC-ARN --new-queue --region eu-west-1
+# For single host mount
+./yas3fs LOCAL-PATH --url s3://BUCKET/PATH
+# For multiple hosts mount
+./yas3fs LOCAL-PATH --url s3://BUCKET/PATH --topic TOPIC-ARN --new-queue
 </code></pre>
 
 <p><strong>On EC2 with Ubuntu systems</strong></p>
@@ -131,12 +136,16 @@ mkdir LOCAL-PATH
 <pre><code>sudo apt-get install fuse-utils libfuse2 python-pip git
 sudo pip install -U boto fusepy
 sudo sed -i'' 's/^# *user_allow_other/user_allow_other/' /etc/fuse.conf # uncomment user_allow_other
-git clone git://github.com/danilop/yas3fs.git
+cd /opt # To install yas3fs under /opt/yas3fs
+sudo git clone git://github.com/danilop/yas3fs.git
 cd yas3fs
 ./yas3fs -h # See the usage
 sudo chmod a+r /etc/fuse.conf # make it readable by anybody, it is not the default on Ubuntu
 mkdir LOCAL-PATH
-./yas3fs LOCAL-PATH --url s3://BUCKET/PATH --topic TOPIC-ARN --new-queue --region eu-west-1
+# For single host mount
+./yas3fs LOCAL-PATH --url s3://BUCKET/PATH
+# For multiple hosts mount
+./yas3fs LOCAL-PATH --url s3://BUCKET/PATH --topic TOPIC-ARN --new-queue
 </code></pre>
 
 <p><strong>On a Mac with OS X</strong></p>
@@ -145,11 +154,15 @@ mkdir LOCAL-PATH
 
 <pre><code>sudo easy_install boto
 sudo easy_install fusepy
-git clone git://github.com/danilop/yas3fs.git
+cd /opt # To install yas3fs under /opt/yas3fs
+sudo git clone git://github.com/danilop/yas3fs.git
 cd yas3fs
 ./yas3fs -h # See the usage
 mkdir LOCAL-PATH
-./yas3fs LOCAL-PATH --url s3://BUCKET/PATH --topic TOPIC-ARN --new-queue --region eu-west-1
+# For single host mount
+./yas3fs LOCAL-PATH --url s3://BUCKET/PATH
+# For multiple hosts mount
+./yas3fs LOCAL-PATH --url s3://BUCKET/PATH --topic TOPIC-ARN --new-queue
 </code></pre>
 
 <p>To listen to SNS HTTP notifications (I usually suggest to use SQS instead)
