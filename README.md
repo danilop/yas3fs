@@ -6,9 +6,7 @@ It was inspired by [s3fs](http://code.google.com/p/s3fs/) but rewritten from scr
 a distributed cache synchronized by [Amazon SNS](http://aws.amazon.com/sns/) notifications.
 A web console is provided to easily monitor the nodes of a cluster.
 
-If you use YAS3FS please share your experience on the [wiki](https://github.com/danilop/yas3fs/wiki), thanks!
-
-**This is a personal project. No relation whatsoever exists between this project and my employer.**
+**If you use YAS3FS please share your experience on the [wiki](https://github.com/danilop/yas3fs/wiki), thanks!**
 
 * It allows to mount an S3 bucket (or a part of it, if you specify a path) as a local folder.
 * It works on Linux and Mac OS X.
@@ -23,6 +21,8 @@ If you use YAS3FS please share your experience on the [wiki](https://github.com/
 * AWS credentials can be passed using AWS\_ACCESS\_KEY\_ID and AWS\_SECRET\_ACCESS\_KEY environment variables.
 * In an [EC2](http://aws.amazon.com/ec2/) instance a [IAM](http://aws.amazon.com/iam/) role can be used to give access to S3/SNS/SQS resources.
 * It is written in Python (2.6) using [boto](https://github.com/boto/boto) and [fusepy](https://github.com/terencehonles/fusepy).
+
+This is a personal project. No relation whatsoever exists between this project and my employer.
 
 ### License
 
