@@ -1387,24 +1387,33 @@ class YAS3FS(LoggingMixIn, Operations):
                         return
             data_range.ongoing_intervals[thread_name] = new_interval
 
-        range_headers = { 'Range' : 'bytes=' + str(new_interval[0]) + '-' + str(new_interval[1]) }
-        logger.debug("download_data range '%s' '%s' [thread '%s']" % (path, range_headers, thread_name))
+        if new_interval[0] == 0 and new_interval[1] == key.size -1:
+            range_headers = None
+        else:
+            range_headers = { 'Range' : 'bytes=' + str(new_interval[0]) + '-' + str(new_interval[1]) }
 
         retry = True
         while retry:
+            logger.debug("download_data range '%s' '%s' [thread '%s']" % (path, range_headers, thread_name))
             try:
                 if debug:
                     n1=dt.datetime.now()
-                bytes = key.get_contents_as_string(headers=range_headers)
+                if range_headers: # Use range headers only if necessary
+                    bytes = key.get_contents_as_string(headers=range_headers)
+                else:
+                    bytes = key.get_contents_as_string()
                 if debug:
                     n2=dt.datetime.now()
+            	    elapsed = (n2-n1).microseconds/1e6
                 retry = False
             except Exception as e:
-                logger.info("download_data error '%s' %i-%i [thread '%s'] -> retrying" % (path, start, end, thread_name))
+        	if debug:
+                    logger.info("download_data error '%s' %i-%i [thread '%s'] elapsed %.6f -> retrying" % (path, start, end, thread_name, elapsed))
+                else:
+                    logger.info("download_data error '%s' %i-%i [thread '%s'] -> retrying" % (path, start, end, thread_name))
                 logger.exception(e)
 
         if debug:
-            elapsed = (n2-n1).microseconds/1e6
             logger.debug("download_data done '%s' %i-%i [thread '%s'] elapsed %.6f" % (path, start, end, thread_name, elapsed))
 
         with self.cache.get_lock(path):
