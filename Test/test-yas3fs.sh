@@ -14,7 +14,7 @@ do
     FILENAME=`echo "$FILELIST"|sed -n ${N}p`
     echo "File name is: $FILENAME"
 
-    SIZE=`cat "$FILENAME"|wc -c`
+    SIZE=`wc -c "$FILENAME" | cut -d' ' -f1`
     echo "File size is: $SIZE"
 
     START=`echo "$RANDOM * $SIZE / 32767"|bc`

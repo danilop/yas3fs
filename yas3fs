@@ -306,7 +306,8 @@ class FSCache():
     def reset_all(self):
          with self.lock:
              self.entries = {}
-             self.locks = {}
+             self.new_locks = {} # New locks (still) without entry in the cache
+             self.unused_locks = {} # Paths with unused locks that will be removed on the next purge if remain unused
              self.lru = LinkedList()
              self.size = {}
              for store in FSData.stores:
@@ -318,15 +319,22 @@ class FSCache():
     def get_cache_etags_filename(self, path):
         return self.cache_path + '/etags' + path # path begins with '/'
     def get_lock(self, path):
-        try:
-            return self.locks[path]
-        except KeyError:
-            return self.lock
+        with self.lock: # Global cache lock, used only for giving file-level locks
+            try:
+                return self.entries[path]['lock']
+            except KeyError:
+                try:
+                    return self.new_locks[path]
+                except KeyError:
+                    new_lock = threading.RLock()
+                    self.new_locks[path] = new_lock
+                    return new_lock;
     def add(self, path):
         with self.get_lock(path):
             if not self.has(path):
                 self.entries[path] = {}
-                self.locks[path] = threading.RLock()
+                self.entries[path]['lock'] = self.new_locks[path]
+                del self.new_locks[path]
                 self.lru.append(path)
     def delete(self, path, prop=None):
         with self.get_lock(path):
@@ -334,9 +342,8 @@ class FSCache():
                 with self.get_lock(path):
                     if prop == None:
                         for p in self.entries[path].keys():
-                            self.delete(path, p)
+                           self.delete(path, p)
                         del self.entries[path]
-                        del self.locks[path]
                         self.lru.delete(path)
                     else:
                         if prop in self.entries[path]:
@@ -356,11 +363,9 @@ class FSCache():
                         with data.get_lock():
                             data.rename(new_path)
                     self.entries[new_path] = self.entries[path]
-                    self.locks[new_path] = self.locks[path]
                     self.lru.append(new_path)
                     self.lru.delete(path)
                     del self.entries[path]
-                    del self.locks[path]
     def get(self, path, prop=None):
         self.lru.move_to_the_tail(path) # Move to the tail of the LRU cache
         try:
@@ -921,8 +926,10 @@ class YAS3FS(LoggingMixIn, Operations):
         while self.cache_entries:
 
             num_entries, mem_size, disk_size = self.cache.get_memory_usage()
-            logger.info("num_entries, mem_size, disk_size, download_queue, prefetch_queue: %i, %i, %i, %i, %i"
-                        % (num_entries, mem_size, disk_size, self.download_queue.qsize(), self.prefetch_queue.qsize()))
+            logger.info("num_entries, mem_size, disk_size, download_queue, prefetch_queue, new_locks, unused_locks: %i, %i, %i, %i, %i, %i, %i"
+                        % (num_entries, mem_size, disk_size,
+                           self.download_queue.qsize(), self.prefetch_queue.qsize(),
+                           self.cache.new_locks.len(), self.cache.unused_locks.len()))
 
             if self.running:
                 for i in self.download_threads.keys():
@@ -960,12 +967,13 @@ class YAS3FS(LoggingMixIn, Operations):
                 store = 'disk'
 
             if purge:
+                # Need to pruge something
                 path = self.cache.lru.popleft()
                 with self.cache.get_lock(path):
                     logger.debug("purge: '%s' '%s' ?" % (store, path))
                     data = self.cache.get(path, 'data')
                     if data and (store == '' or data.store == store) and (not data.has('open')) and (not data.has('change')):
-                        logger.debug("purge: '%s' '%s' ok" % (store, path))
+                        logger.debug("purge: '%s' '%s' OK" % (store, path))
                         if store == '':
                             self.cache.delete(path) # Remove completely from cache
                         else:
@@ -976,6 +984,25 @@ class YAS3FS(LoggingMixIn, Operations):
                                      % (store, path, data != None, data and data.has('open'), data and data.has('change')))
                         self.cache.lru.append(path)
             else:
+                # Check for unused locks to be removed
+                for path in self.cache.unused_locks.keys():
+                    logger.debug("purge unused lock: '%s'" % (path))
+                    try:
+                        with self.cache.lock and self.cache.new_locks[path]:
+                            del self.cache.new_locks[path]
+                            logger.debug("purge unused lock: '%s' deleted" % (path))
+                    except KeyError:
+                        pass
+                    try:
+                        del self.cache.unused_locks[path]
+                        logger.debug("purge unused lock: '%s' removed from list" % (path))
+                    except KeyError:
+                        pass
+                # Look for unused locks to be removed at next iteration (if still "new")
+                for path in self.cache.new_locks.keys():
+                    logger.debug("purge unused lock: '%s' added to list" % (path))
+                    self.cache.unused_locks[path] = True # Just a flag
+                # Sleep for some time
                 time.sleep(self.cache_check_interval)
 
     def add_to_parent_readdir(self, path):
