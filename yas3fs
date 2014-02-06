@@ -1445,6 +1445,7 @@ class YAS3FS(LoggingMixIn, Operations):
             except Exception as e:
                 logger.info("download_data error '%s' %i-%i [thread '%s'] -> retrying" % (path, start, end, thread_name))
                 logger.exception(e)
+                key = copy.deepcopy(self.get_key(path)) # Do I need this to overcome error "caching" ???
 
         if debug:
             elapsed = (n2-n1).microseconds/1e6
