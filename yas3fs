@@ -339,20 +339,19 @@ class FSCache():
     def delete(self, path, prop=None):
         with self.get_lock(path):
             if path in self.entries:
-                with self.get_lock(path):
-                    if prop == None:
-                        for p in self.entries[path].keys():
-                           self.delete(path, p)
-                        self.new_locks[path] = self.entries[path]['lock'] # Preserve lock, let the unused locks check remove it later
-                        del self.entries[path]
-                        self.lru.delete(path)
-                    else:
-                        if prop in self.entries[path]:
-                            if prop == 'data':
-                                data = self.entries[path][prop]
-                                with data.get_lock(): # Useless, is the same lock already acquired before
-                                    data.delete() # To clean stuff, e.g. remove cache files
-                            del self.entries[path][prop]
+                if prop == None:
+                    self.new_locks[path] = self.entries[path]['lock'] # Preserve lock, let the unused locks check remove it later
+                    for p in self.entries[path].keys():
+                        self.delete(path, p)
+                    del self.entries[path]
+                    self.lru.delete(path)
+                else:
+                    if prop in self.entries[path]:
+                        if prop == 'data':
+                            data = self.entries[path][prop]
+                            with data.get_lock(): # Useless, is the same lock already acquired before
+                                data.delete() # To clean stuff, e.g. remove cache files
+                        del self.entries[path][prop]
     def rename(self, path, new_path):
         with self.get_lock(path) and self.get_lock(new_path):
             if path in self.entries:
@@ -1008,6 +1007,7 @@ class YAS3FS(LoggingMixIn, Operations):
                 for path in self.cache.new_locks.keys():
                     logger.debug("purge unused lock: '%s' added to list" % (path))
                     self.cache.unused_locks[path] = True # Just a flag
+
                 # Sleep for some time
                 time.sleep(self.cache_check_interval)
 
