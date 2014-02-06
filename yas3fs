@@ -349,8 +349,7 @@ class FSCache():
                     if prop in self.entries[path]:
                         if prop == 'data':
                             data = self.entries[path][prop]
-                            with data.get_lock(): # Useless, is the same lock already acquired before
-                                data.delete() # To clean stuff, e.g. remove cache files
+                            data.delete() # To clean stuff, e.g. remove cache files
                         del self.entries[path][prop]
     def rename(self, path, new_path):
         with self.get_lock(path) and self.get_lock(new_path):
@@ -2022,7 +2021,13 @@ def removeEmptyDirForFile(filename):
     logger.debug("dirname '%s'" % dirname)
     logger.debug("listdir '%s'" % os.listdir(dirname))
     if not os.listdir(dirname): # to check if the dir is empty
-         os.removedirs(dirname)
+        try:
+            os.removedirs(dirname)
+        except OSError as exc: # Python >2.5                                                                 
+            if exc.errno == errno.ENOTEMPTY:
+                pass
+            else:
+                raise
 
 def get_current_time():
     return time.mktime(time.gmtime())
