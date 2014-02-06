@@ -1679,19 +1679,21 @@ class YAS3FS(LoggingMixIn, Operations):
 
     def open(self, path, flags):
         logger.debug("open '%s' '%i'" % (path, flags))
-	self.cache.add(path)
-	if not self.check_data(path):
-	    self.mknod(path, flags)
-        self.cache.get(path, 'data').open()
+        with self.cache.get_lock(path):
+            self.cache.add(path)
+            if not self.check_data(path):
+                self.mknod(path, flags)
+            self.cache.get(path, 'data').open()
         logger.debug("open '%s' '%i' '%s'" % (path, flags, self.cache.get(path, 'data').get('open')))
 	return 0
 
     def release(self, path, flags):
         logger.debug("release '%s' '%i'" % (path, flags))
-        if self.cache.is_empty(path):
-            logger.debug("release '%s' '%i' ENOENT" % (path, flags))
-            raise FuseOSError(errno.ENOENT)
-        self.cache.get(path, 'data').close()
+        with self.cache.get_lock(path):
+            if self.cache.is_empty(path):
+                logger.debug("release '%s' '%i' ENOENT" % (path, flags))
+                raise FuseOSError(errno.ENOENT)
+            self.cache.get(path, 'data').close()
         logger.debug("release '%s' '%i' '%s'" % (path, flags, self.cache.get(path, 'data').get('open')))
 	return 0
 
