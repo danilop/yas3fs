@@ -613,7 +613,11 @@ class YAS3FS(LoggingMixIn, Operations):
         if not self.aws_region in (r.name for r in boto.s3.regions()):
             errorAndExit("wrong AWS region '%s' for S3" % self.aws_region)
         try:
-            self.s3 = boto.s3.connect_to_region(self.aws_region)
+            if self.aws_region == 'us-east-1':
+                # For US Standard use Northern Virginia endpoint only
+                self.s3 = boto.connect_s3(host='s3-external-1.amazonaws.com')
+            else:
+                self.s3 = boto.s3.connect_to_region(self.aws_region)
         except boto.exception.NoAuthHandlerFound:
             errorAndExit("no AWS credentials found")
         if not self.s3:
