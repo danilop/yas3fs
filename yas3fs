@@ -144,38 +144,37 @@ class FSData():
     stores = [ 'mem', 'disk' ]
     unknown_store = "Unknown store"
     def __init__(self, cache, store, path):
-        with self.get_lock():
-            self.cache = cache
-            self.store = store
-            self.path = path
-            self.props = {}
-            self.size = 0
-            self.etag = None # Something better ???
-            if store == 'mem':
-                self.content = io.BytesIO()
-            elif store == 'disk':
-                previous_file = False
-                filename = self.cache.get_cache_filename(self.path)
-                if os.path.isfile(filename):
-                    # There's a file already there
-                    self.content = io.FileIO(filename, mode='rb+')
-                    self.update_size()
-                    self.content.close()
-                    self.set('new', None) # Not sure it is the latest version
-                    # Now search for an etag file
-                    etag_filename = self.cache.get_cache_etags_filename(self.path)
-                    if os.path.isfile(etag_filename):
-                        with open(etag_filename, 'r') as etag_file:
-                            self.etag = etag_file.read()
-                        previous_file = True
-                if not previous_file:
-                    createDirForFile(filename)
-                    logger.debug("creating new cache file '%s'" % filename)
-                    open(filename, 'w').close() # To create an empty file (and overwrite a previous file)
-                    logger.debug("created new cache file '%s'" % filename)
-                self.content = None # Not open, yet
-            else:
-                raise FSData.unknown_store
+        self.cache = cache
+        self.store = store
+        self.path = path
+        self.props = {}
+        self.size = 0
+        self.etag = None # Something better ???
+        if store == 'mem':
+            self.content = io.BytesIO()
+        elif store == 'disk':
+            previous_file = False
+            filename = self.cache.get_cache_filename(self.path)
+            if os.path.isfile(filename):
+                # There's a file already there
+                self.content = io.FileIO(filename, mode='rb+')
+                self.update_size()
+                self.content.close()
+                self.set('new', None) # Not sure it is the latest version
+                # Now search for an etag file
+                etag_filename = self.cache.get_cache_etags_filename(self.path)
+                if os.path.isfile(etag_filename):
+                    with open(etag_filename, 'r') as etag_file:
+                        self.etag = etag_file.read()
+                    previous_file = True
+            if not previous_file:
+                createDirForFile(filename)
+                logger.debug("creating new cache file '%s'" % filename)
+                open(filename, 'w').close() # To create an empty file (and overwrite a previous file)
+                logger.debug("created new cache file '%s'" % filename)
+            self.content = None # Not open, yet
+        else:
+            raise FSData.unknown_store
     def get_lock(self):
         return self.cache.get_lock(self.path)
     def open(self):
