@@ -343,8 +343,10 @@ class FSCache():
                     if prop == None:
                         for p in self.entries[path].keys():
                            self.delete(path, p)
-                        del self.entries[path]
-                        self.lru.delete(path)
+                        with self.lock:
+                            self.new_locks[path] = self.entries[path]['lock'] # Preserve lock, let the unused locks check remove it later
+                            del self.entries[path]
+                            self.lru.delete(path)
                     else:
                         if prop in self.entries[path]:
                             if prop == 'data':
@@ -353,7 +355,7 @@ class FSCache():
                                     data.delete() # To clean stuff, e.g. remove cache files
                             del self.entries[path][prop]
     def rename(self, path, new_path):
-        with self.get_lock(path):
+        with self.get_lock(path) and self.get_lock(new_path):
             if path in self.entries:
                 with self.get_lock(path):
                     self.delete(path, 'key') # Cannot be renamed
