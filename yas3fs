@@ -929,7 +929,7 @@ class YAS3FS(LoggingMixIn, Operations):
             logger.info("num_entries, mem_size, disk_size, download_queue, prefetch_queue, new_locks, unused_locks: %i, %i, %i, %i, %i, %i, %i"
                         % (num_entries, mem_size, disk_size,
                            self.download_queue.qsize(), self.prefetch_queue.qsize(),
-                           self.cache.new_locks.len(), self.cache.unused_locks.len()))
+                           len(self.cache.new_locks), len(self.cache.unused_locks))
 
             if self.running:
                 for i in self.download_threads.keys():
