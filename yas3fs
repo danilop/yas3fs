@@ -343,10 +343,9 @@ class FSCache():
                     if prop == None:
                         for p in self.entries[path].keys():
                            self.delete(path, p)
-                        with self.lock:
-                            self.new_locks[path] = self.entries[path]['lock'] # Preserve lock, let the unused locks check remove it later
-                            del self.entries[path]
-                            self.lru.delete(path)
+                        self.new_locks[path] = self.entries[path]['lock'] # Preserve lock, let the unused locks check remove it later
+                        del self.entries[path]
+                        self.lru.delete(path)
                     else:
                         if prop in self.entries[path]:
                             if prop == 'data':
