@@ -2172,8 +2172,7 @@ In an EC2 instance a IAM role can be used to give access to S3/SNS/SQS resources
         'atime':False,
         'max_read':131072,
         'max_write':131072,
-        'max_readahead':131072,
-        'auto_xattr':True
+        'max_readahead':131072
         }
 
     if options.uid:
@@ -2187,6 +2186,7 @@ In an EC2 instance a IAM role can be used to give access to S3/SNS/SQS resources
         mount_options['volname'] = os.path.basename(mountpoint)
         mount_options['noappledouble'] = True
         mount_options['daemon_timeout'] = 3600
+        mount_options['auto_xattr'] = True
         # mount_options['local'] = True # local option is quite unstable
     else:
         mount_options['big_writes'] = True # Not working on OSX
