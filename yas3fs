@@ -404,9 +404,9 @@ class FSCache():
                 pass
             return False
     def is_empty(self, path): # A wrapper to improve readability
-        return self.has(path) and not self.get(path)
+        return self.has(path) and len(self.get(path)) <= 1 # Empty or just with 'lock'
     def is_not_empty(self, path): # A wrapper to improve readability
-        return self.has(path) and self.get(path)
+        return self.has(path) and len(self.get(path)) > 1 # More than just 'lock'
  
 class SNS_HTTPServer(BaseHTTPServer.HTTPServer):
     """ HTTP Server to receive SNS notifications via HTTP """
@@ -1242,10 +1242,15 @@ class YAS3FS(LoggingMixIn, Operations):
     def mkdir(self, path, mode):
         logger.debug("mkdir '%s' '%s'" % (path, mode))
 	if self.cache.is_not_empty(path):
+            logger.debug("mkdir 1")
+            logger.debug("mkdir cache '%s'" % self.cache.get(path))
 	    raise FuseOSError(errno.EEXIST)
+        logger.debug("mkdir 2")
 	k = self.get_key(path)
 	if k:
+            logger.debug("mkdir 3")
 	    raise FuseOSError(errno.EEXIST)
+        logger.debug("mkdir 4")
 	now = get_current_time()
 	uid, gid = get_uid_gid()
 	attr = {}
