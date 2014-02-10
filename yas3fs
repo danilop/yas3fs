@@ -2121,6 +2121,12 @@ In an EC2 instance a IAM role can be used to give access to S3/SNS/SQS resources
                       help="a unique ID identifying this node in a cluster", metavar="ID")
     parser.add_option("--mkdir", action="store_true", dest="mkdir", default=False,
                       help="create mountpoint if not found (create intermediate directories as required)")
+    parser.add_option("--uid", dest="uid",
+                      help="default UID (default is current UID)", metavar="N", default="")
+    parser.add_option("--gid", dest="gid",
+                      help="default GID (default is current GID)", metavar="N", default="")
+    parser.add_option("--umask", dest="umask",
+                      help="default umask (default is current umask)", metavar="MASK", default="")
     parser.add_option("-l", "--log", dest="logfile",
                       help="the filename to use for logs", metavar="FILE", default="")
     parser.add_option("-f", "--foreground", action="store_true", dest="foreground", default=False,
@@ -2157,23 +2163,35 @@ In an EC2 instance a IAM role can be used to give access to S3/SNS/SQS resources
     if options.mkdir:
         createDir(mountpoint)
 
+    mount_options = {
+        'mountpoint':mountpoint,
+        'fsname':'yas3fs',
+        'foreground':options.foreground,
+        'allow_other':True,
+        'auto_cache':True,
+        'atime':False,
+        'max_read':131072,
+        'max_write':131072,
+        'max_readahead':131072,
+        'auto_xattr':True
+        }
+
+    if options.uid:
+        mount_options['uid'] = options.uid
+    if options.gid:
+        mount_options['gid'] = options.gid
+    if options.umask:
+        mount_options['umask'] = options.umask
+
     if sys.platform == "darwin":
-        volume_name = os.path.basename(mountpoint)
-        fuse = FUSE(YAS3FS(options), mountpoint, fsname="yas3fs",
-                    foreground=options.foreground,
-                    default_permissions=True, allow_other=True,
-                    auto_cache=True, atime=False,
-                    max_read=131072, max_write=131072, max_readahead=131072,
-                    auto_xattr=True, volname=volume_name,
-                    noappledouble=True, daemon_timeout=3600)
-                    # local=True) # local option is quite unstable
+        mount_options['volname'] = os.path.basename(mountpoint)
+        mount_options['noappledouble'] = True
+        mount_options['daemon_timeout'] = 3600
+        # mount_options['local'] = True # local option is quite unstable
     else:
-        fuse = FUSE(YAS3FS(options), mountpoint, fsname="yas3fs",
-                    foreground=options.foreground,
-                    default_permissions=True, allow_other=True,
-                    auto_cache=True, atime=False,
-                    big_writes=True, # Not working on OS X
-                    max_read=131072, max_write=131072, max_readahead=131072)
+        mount_options['big_writes'] = True # Not working on OSX
+
+    fuse = FUSE(YAS3FS(options), **mount_options)
 
 if __name__ == '__main__':
 
