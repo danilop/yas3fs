@@ -30,6 +30,7 @@ import uuid
 import copy
 import traceback
 import datetime as dt
+import gc # For debug only
 
 import boto
 import boto.s3        
@@ -929,10 +930,16 @@ class YAS3FS(LoggingMixIn, Operations):
         while self.cache_entries:
 
             num_entries, mem_size, disk_size = self.cache.get_memory_usage()
-            logger.info("entries, mem_size, disk_size, download_queue, prefetch_queue, new_locks, unused_locks: %i, %i, %i, %i, %i, %i, %i"
+            logger.info("entries, mem_size, disk_size, download_queue, prefetch_queue: %i, %i, %i, %i, %i"
                         % (num_entries, mem_size, disk_size,
-                           self.download_queue.qsize(), self.prefetch_queue.qsize(),
-                           len(self.cache.new_locks), len(self.cache.unused_locks)))
+                           self.download_queue.qsize(), self.prefetch_queue.qsize()))
+
+            if debug:
+                (threshold0, threshold1, threshold2) = gc.get_threshold()
+                (count0, count1, count2) = gc.get_count()
+                logger.debug("new_locks, unused_locks: %i, %i" % (len(self.cache.new_locks), len(self.cache.unused_locks)))
+                logger.debug("gc count0/threshold0, count1/threshold1, count2/threshold2: %i/%i, %i/%i, %i/%i"
+                             % (count0,threshold0,count1,threshold1,count2,threshold2))
 
             if self.running:
                 for i in self.download_threads.keys():
@@ -2134,6 +2141,9 @@ In an EC2 instance a IAM role can be used to give access to S3/SNS/SQS resources
 
     if options.debug:
         logger.setLevel(logging.DEBUG)
+        gc.set_debug(gc.DEBUG_STATS)
+        (threshold0, threshold1, threshold2) = gc.get_threshold()
+        logger.debug("gc threshold0, threshold1, threshold2 = %i, %i, %i" % (threshold0, threshold1, threshold2))
     else:
         logger.setLevel(logging.INFO)
         
