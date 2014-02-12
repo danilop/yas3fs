@@ -275,11 +275,12 @@ class FSData():
                 createDirForFile(new_filename)
                 os.rename(filename, new_filename)
                 removeEmptyDirForFile(filename)
-                filename = self.cache.get_cache_etags_filename(self.path)
-                new_filename = self.cache.get_cache_etags_filename(new_path)
-                createDirForFile(new_filename)
-                os.rename(filename, new_filename)
-                removeEmptyDirForFile(filename)
+                etag_filename = self.cache.get_cache_etags_filename(self.path)
+                if os.path.isfile(etag_filename):
+                    new_etag_filename = self.cache.get_cache_etags_filename(new_path)
+                    createDirForFile(new_etag_filename)
+                    os.rename(etag_filename, new_etag_filename)
+                    removeEmptyDirForFile(etag_filename)
                 self.path = new_path
                 if self.content:
                     self.content = io.FileIO(new_filename, mode='rb+')
@@ -1615,7 +1616,6 @@ class YAS3FS(LoggingMixIn, Operations):
             if key.name[-1] == '/':
                 key_list = self.s3_bucket.list(key.name)
                 for k in key_list:
-                    # source = k.name.encode('ascii') ### S3 keys can be unicode
                     source = k.name
                     target = self.join_prefix(new_path + source[len(key.name) - 1:])
                     to_copy[source] = target
