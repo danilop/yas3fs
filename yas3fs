@@ -1715,7 +1715,7 @@ class YAS3FS(LoggingMixIn, Operations):
             if self.cache.is_empty(path):
                 logger.debug("release '%s' '%i' ENOENT" % (path, flags))
                 raise FuseOSError(errno.ENOENT)
-            if self.cache.has('data'):
+            if self.cache.has(path, 'data'):
                 self.cache.get(path, 'data').close()
         logger.debug("release '%s' '%i' '%s'" % (path, flags, self.cache.get(path, 'data').get('open')))
 	return 0
