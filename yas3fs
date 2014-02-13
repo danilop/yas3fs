@@ -1731,7 +1731,11 @@ class YAS3FS(LoggingMixIn, Operations):
                     prefetch_start = end_interval + 1
                     prefetch_length = self.buffer_size * self.buffer_prefetch
                     logger.debug("download prefetch '%s' '%i' '%i'" % (path, prefetch_start, prefetch_length))
-                    self.enqueue_download_data(path, prefetch_start, prefetch_length, prefetch=True)
+                    prefetch_end_interval = min(prefetch_start + prefetch_length, file_size) - 1
+                    if prefetch_start < prefetch_end_interval:
+                        prefetch_interval = [prefetch_start, prefetch_end_interval]
+                        if not data_range.interval.contains(prefetch_interval):
+                            self.enqueue_download_data(path, prefetch_start, prefetch_length, prefetch=True)
                 logger.debug("read '%s' '%i' '%i' '%s' in range" % (path, length, offset, fh))                
                 break
             else:
