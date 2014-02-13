@@ -1150,31 +1150,32 @@ class YAS3FS(LoggingMixIn, Operations):
 
     def set_metadata(self, path, metadata_name=None, metadata_values=None, key=None):
         logger.debug("set_metadata '%s' '%s' '%s' '%s'" % (path, metadata_name, metadata_values, key))
-        if not metadata_values == None:
-            self.cache.set(path, metadata_name, metadata_values)
-        data = self.cache.get(path, 'data')
-        if self.write_metadata and (key or (not data) or (data and not data.has('change'))): # No change in progress, I should write now
-	    if not key:
-                key = self.get_key(path)
-                logger.debug("set_metadata '%s' '%s' '%s' '%s' Key" % (path, metadata_name, metadata_values, key))
-	    if key:
-		if metadata_name:
-                    values = metadata_values
-                    if values == None:
-                        values = self.cache.get(path, metadata_name)
-                    if values == None:
-                        del key.metadata[metadata_name]
-                    else:
-                        s = ';'.join(['%s=%s' % (k,v) for k,v in values.iteritems()
-                                      if not (metadata_name == 'attr' and k == 'st_size')]) # For the size use the key.size
-                        key.metadata[metadata_name] = s
-                if (not data) or (data and (not data.has('change'))):
-                    logger.debug("writing metadata '%s' '%s' S3" % (path, key))
-                    md = key.metadata
-                    md['Content-Type'] = key.content_type # Otherwise we loose the Content-Type with S3 Copy
-                    key.copy(key.bucket.name, key.name, md, preserve_acl=False) # Do I need to preserve ACL?
-                    self.publish(['md', metadata_name, path])
-
+        with self.cache.get_lock(path):
+            if not metadata_values == None:
+                self.cache.set(path, metadata_name, metadata_values)
+                data = self.cache.get(path, 'data')
+            if self.write_metadata and (key or (not data) or (data and not data.has('change'))): # No change in progress, I should write now
+                if not key:
+                    key = self.get_key(path)
+                    logger.debug("set_metadata '%s' '%s' '%s' '%s' Key" % (path, metadata_name, metadata_values, key))
+                if key:
+                    if metadata_name:
+                        values = metadata_values
+                        if values == None:
+                            values = self.cache.get(path, metadata_name)
+                        if values == None:
+                            del key.metadata[metadata_name]
+                        else:
+                            s = ';'.join(['%s=%s' % (k,v) for k,v in values.iteritems()
+                                          if not (metadata_name == 'attr' and k == 'st_size')]) # For the size use the key.size
+                            key.metadata[metadata_name] = s
+                    if (not data) or (data and (not data.has('change'))):
+                        logger.debug("writing metadata '%s' '%s' S3" % (path, key))
+                        md = key.metadata
+                        md['Content-Type'] = key.content_type # Otherwise we loose the Content-Type with S3 Copy
+                        key.copy(key.bucket.name, key.name, md, preserve_acl=False) # Do I need to preserve ACL?
+                        self.publish(['md', metadata_name, path])
+                    
     def getattr(self, path, fh=None):
         logger.debug("getattr -> '%s' '%s'" % (path, fh))
         if self.cache.is_empty(path):
@@ -1233,94 +1234,96 @@ class YAS3FS(LoggingMixIn, Operations):
 
     def mkdir(self, path, mode):
         logger.debug("mkdir '%s' '%s'" % (path, mode))
-	if self.cache.is_not_empty(path):
-            logger.debug("mkdir 1")
-            logger.debug("mkdir cache '%s'" % self.cache.get(path))
-	    raise FuseOSError(errno.EEXIST)
-        logger.debug("mkdir 2")
-	k = self.get_key(path)
-	if k:
-            logger.debug("mkdir 3")
-	    raise FuseOSError(errno.EEXIST)
-        logger.debug("mkdir 4")
-	now = get_current_time()
-	uid, gid = get_uid_gid()
-	attr = {}
-	attr['st_uid'] = uid
-	attr['st_gid'] = gid
-	attr['st_atime'] = now
-	attr['st_mtime'] = now
-	attr['st_ctime'] = now
-	attr['st_size'] = 0
-	attr['st_mode'] = (stat.S_IFDIR | mode)
-	self.cache.delete(path)
-	self.cache.add(path)
-        data = FSData(self.cache, 'mem', path)
-        self.cache.set(path, 'data', data)
-        data.set('change', True)
-	k = Key(self.s3_bucket)
-	self.set_metadata(path, 'attr', attr, k)
-	self.set_metadata(path, 'xattr', {}, k)
-        if path != '/':
-            full_path = path + '/'
-        else:
-            full_path = path # To manage '/' with an empty s3_prefix
-        self.cache.set(path, 'key', k)
-	if path != '/':
-            self.cache.set(path, 'readdir', ['.', '..']) # the directory is empty
-            self.add_to_parent_readdir(path)
-            
-        if path != '/' or self.write_metadata:
-            k.key = self.join_prefix(full_path)
-            logger.debug("mkdir '%s' '%s' '%s' S3" % (path, mode, k))
-            k.set_contents_from_string('', headers={'Content-Type': 'application/x-directory'})
-        data.delete('change')
-        if path != '/': ### Do I need this???
-            self.publish(['mkdir', path])
+        with self.cache.get_lock(path):
+            if self.cache.is_not_empty(path):
+                logger.debug("mkdir 1")
+                logger.debug("mkdir cache '%s'" % self.cache.get(path))
+                raise FuseOSError(errno.EEXIST)
+            logger.debug("mkdir 2")
+            k = self.get_key(path)
+            if k:
+                logger.debug("mkdir 3")
+                raise FuseOSError(errno.EEXIST)
+            logger.debug("mkdir 4")
+            now = get_current_time()
+            uid, gid = get_uid_gid()
+            attr = {}
+            attr['st_uid'] = uid
+            attr['st_gid'] = gid
+            attr['st_atime'] = now
+            attr['st_mtime'] = now
+            attr['st_ctime'] = now
+            attr['st_size'] = 0
+            attr['st_mode'] = (stat.S_IFDIR | mode)
+            self.cache.delete(path)
+            self.cache.add(path)
+            data = FSData(self.cache, 'mem', path)
+            self.cache.set(path, 'data', data)
+            data.set('change', True)
+            k = Key(self.s3_bucket)
+            self.set_metadata(path, 'attr', attr, k)
+            self.set_metadata(path, 'xattr', {}, k)
+            if path != '/':
+                full_path = path + '/'
+            else:
+                full_path = path # To manage '/' with an empty s3_prefix
+            self.cache.set(path, 'key', k)
+            if path != '/':
+                self.cache.set(path, 'readdir', ['.', '..']) # the directory is empty
+                self.add_to_parent_readdir(path)
 
-	return 0
+            if path != '/' or self.write_metadata:
+                k.key = self.join_prefix(full_path)
+                logger.debug("mkdir '%s' '%s' '%s' S3" % (path, mode, k))
+                k.set_contents_from_string('', headers={'Content-Type': 'application/x-directory'})
+            data.delete('change')
+            if path != '/': ### Do I need this???
+                self.publish(['mkdir', path])
+
+            return 0
  
     def symlink(self, path, link):
         logger.debug("symlink '%s' '%s'" % (path, link))
-	if self.cache.is_not_empty(path):
-	    raise FuseOSError(errno.EEXIST)
-	k = self.get_key(path)
-	if k:
-	    raise FuseOSError(errno.EEXIST)
-	now = get_current_time()
-	uid, gid = get_uid_gid()
-	attr = {}
-	attr['st_uid'] = uid
-	attr['st_gid'] = gid
-	attr['st_atime'] = now
-	attr['st_mtime'] = now
-	attr['st_ctime'] = now
-	attr['st_size'] = 0
-	attr['st_mode'] = (stat.S_IFLNK | 0755)
-        self.cache.delete(path)
-	self.cache.add(path)
-        if self.cache_on_disk > 0:
-            data = FSData(self.cache, 'mem', path) # New files (almost) always cache in mem - is it ok ???
-        else:
-            data = FSData(self.cache, 'disk', path)
-	self.cache.set(path, 'data', data)
-	data.set('change', True) # Do I need this ???
-	k = Key(self.s3_bucket)
-	self.set_metadata(path, 'attr', attr, k)
-	self.set_metadata(path, 'xattr', {}, k)
-        data.open()
-        self.write(path, link, 0)
-        data.close()
-	k.key = self.join_prefix(path)
-        self.cache.set(path, 'key', k)
-	self.add_to_parent_readdir(path)
+        with self.cache.get_lock(path):
+            if self.cache.is_not_empty(path):
+                raise FuseOSError(errno.EEXIST)
+            k = self.get_key(path)
+            if k:
+                raise FuseOSError(errno.EEXIST)
+            now = get_current_time()
+            uid, gid = get_uid_gid()
+            attr = {}
+            attr['st_uid'] = uid
+            attr['st_gid'] = gid
+            attr['st_atime'] = now
+            attr['st_mtime'] = now
+            attr['st_ctime'] = now
+            attr['st_size'] = 0
+            attr['st_mode'] = (stat.S_IFLNK | 0755)
+            self.cache.delete(path)
+            self.cache.add(path)
+            if self.cache_on_disk > 0:
+                data = FSData(self.cache, 'mem', path) # New files (almost) always cache in mem - is it ok ???
+            else:
+                data = FSData(self.cache, 'disk', path)
+            self.cache.set(path, 'data', data)
+            data.set('change', True) # Do I need this ???
+            k = Key(self.s3_bucket)
+            self.set_metadata(path, 'attr', attr, k)
+            self.set_metadata(path, 'xattr', {}, k)
+            data.open()
+            self.write(path, link, 0)
+            data.close()
+            k.key = self.join_prefix(path)
+            self.cache.set(path, 'key', k)
+            self.add_to_parent_readdir(path)
 
-        logger.debug("symlink '%s' '%s' '%s' S3" % (path, link, k))
-        k.set_contents_from_string(link, headers={'Content-Type': 'application/x-symlink'})
-        data.delete('change')
-        self.publish(['symlink', path])
+            logger.debug("symlink '%s' '%s' '%s' S3" % (path, link, k))
+            k.set_contents_from_string(link, headers={'Content-Type': 'application/x-symlink'})
+            data.delete('change')
+            self.publish(['symlink', path])
 
-	return 0
+            return 0
 
     def check_data(self, path): 
         logger.debug("check_data '%s'" % (path))
@@ -1528,59 +1531,61 @@ class YAS3FS(LoggingMixIn, Operations):
  
     def rmdir(self, path):
         logger.debug("rmdir '%s'" % (path))
-	if self.cache.is_empty(path):
-            logger.debug("rmdir '%s' ENOENT" % (path))
-	    raise FuseOSError(errno.ENOENT)
-	k = self.get_key(path) # Should I use cache here ???
-	if not k:
-            logger.debug("rmdir '%s' ENOENT" % (path))
-	    raise FuseOSError(errno.ENOENT)
-        if len(self.readdir(path)) > 2:
-            logger.debug("rmdir '%s' ENOTEMPTY" % (path))
-            raise FuseOSError(errno.ENOTEMPTY)
+        with self.cache.get_lock(path):
+            if self.cache.is_empty(path):
+                logger.debug("rmdir '%s' ENOENT" % (path))
+                raise FuseOSError(errno.ENOENT)
+            k = self.get_key(path) # Should I use cache here ???
+            if not k:
+                logger.debug("rmdir '%s' ENOENT" % (path))
+                raise FuseOSError(errno.ENOENT)
+            if len(self.readdir(path)) > 2:
+                logger.debug("rmdir '%s' ENOTEMPTY" % (path))
+                raise FuseOSError(errno.ENOTEMPTY)
 
-        logger.debug("rmdir '%s' '%s' S3" % (path, k))
-        k.delete()
-        self.publish(['rmdir', path])
+            logger.debug("rmdir '%s' '%s' S3" % (path, k))
+            k.delete()
+            self.publish(['rmdir', path])
 
-	self.cache.reset(path) # Cache invaliation
-	self.remove_from_parent_readdir(path)
-	return 0
+            self.cache.reset(path) # Cache invaliation
+            self.remove_from_parent_readdir(path)
+            return 0
 
     def truncate(self, path, size):
         logger.debug("truncate '%s' '%i'" % (path, size))
-	if self.cache.is_empty(path):
-            logger.debug("truncate '%s' '%i' ENOENT" % (path, size))
-	    raise FuseOSError(errno.ENOENT)
-	self.cache.add(path)
-	if not self.check_data(path):
-            logger.debug("truncate '%s' '%i' ENOENT" % (path, size))
-	    raise FuseOSError(errno.ENOENT)
-        while True:
-            data = self.cache.get(path, 'data')
-            if not data:
-                raise FuseOSError(errno.ENOENT) # ??? That should not happen
-            data_range = data.get('range')
-            if not data_range:
-                break
-            if (size == 0) or (data_range.interval.contains([0, size - 1])):
-                data.delete('range')
-                break
-            self.enqueue_download_data(path, 0, size)
-            logger.debug("truncate wait '%s' '%i'" % (path, size))
-            data_range.wait()
-            logger.debug("truncate awake '%s' '%i'" % (path, size))
-        data.content.truncate(size)
-        now = get_current_time()
-	attr = self.get_metadata(path, 'attr')
-        old_size = attr['st_size']
-	data.set('change', True)
-        if size != old_size:
-            attr['st_size'] = size
-            data.update_size()
-        attr['st_mtime'] = now
-        attr['st_atime'] = now
-	return 0
+        with self.cache.get_lock(path):
+            if self.cache.is_empty(path):
+                logger.debug("truncate '%s' '%i' ENOENT" % (path, size))
+                raise FuseOSError(errno.ENOENT)
+            self.cache.add(path)
+            if not self.check_data(path):
+                logger.debug("truncate '%s' '%i' ENOENT" % (path, size))
+                raise FuseOSError(errno.ENOENT)
+            while True:
+                data = self.cache.get(path, 'data')
+                if not data:
+                    raise FuseOSError(errno.ENOENT) # ??? That should not happen
+                data_range = data.get('range')
+                if not data_range:
+                    break
+                if (size == 0) or (data_range.interval.contains([0, size - 1])):
+                    data.delete('range')
+                    break
+                self.enqueue_download_data(path, 0, size)
+                logger.debug("truncate wait '%s' '%i'" % (path, size))
+                data_range.wait()
+                logger.debug("truncate awake '%s' '%i'" % (path, size))
+            data.content.truncate(size)
+            now = get_current_time()
+            attr = self.get_metadata(path, 'attr')
+            old_size = attr['st_size']
+            data.set('change', True)
+            if size != old_size:
+                attr['st_size'] = size
+                data.update_size()
+            attr['st_mtime'] = now
+            attr['st_atime'] = now
+            return 0
 
     ### Should work for files in cache but not flushed to S3...
     def rename(self, path, new_path):
@@ -1631,53 +1636,55 @@ class YAS3FS(LoggingMixIn, Operations):
 
     def mknod(self, path, mode, dev=None):
         logger.debug("mknod '%s' '%i' '%s'" % (path, mode, dev))
-        if self.cache.is_not_empty(file):
-            logger.debug("mknod '%s' '%i' '%s' EEXIST" % (path, mode, dev))
-            raise FuseOSError(errno.EEXIST)
-	else:
-	    k = self.get_key(path)
-	    if k:
+        with self.cache.get_lock(path):
+            if self.cache.is_not_empty(file):
                 logger.debug("mknod '%s' '%i' '%s' EEXIST" % (path, mode, dev))
-		raise FuseOSError(errno.EEXIST)
-	    self.cache.add(path)
-	now = get_current_time()
-	uid, gid = get_uid_gid()
-	attr = {}
-	attr['st_uid'] = uid
-	attr['st_gid'] = gid
-	attr['st_mode'] = int(stat.S_IFREG | mode)
-	attr['st_atime'] = now
-	attr['st_mtime'] = now
-	attr['st_ctime'] = now
-	attr['st_size'] = 0 # New file
-        if self.cache_on_disk > 0:
-            data = FSData(self.cache, 'mem', path) # New files (almost) always cache in mem - is it ok ???
-        else:
-            data = FSData(self.cache, 'disk', path)
-	self.cache.set(path, 'data', data)
-	data.set('change', True)
-	self.set_metadata(path, 'attr', attr)
-	self.set_metadata(path, 'xattr', {})
-	self.add_to_parent_readdir(path)
-	self.publish(['mknod', path])
-	return 0
+                raise FuseOSError(errno.EEXIST)
+            else:
+                k = self.get_key(path)
+                if k:
+                    logger.debug("mknod '%s' '%i' '%s' EEXIST" % (path, mode, dev))
+                    raise FuseOSError(errno.EEXIST)
+                self.cache.add(path)
+            now = get_current_time()
+            uid, gid = get_uid_gid()
+            attr = {}
+            attr['st_uid'] = uid
+            attr['st_gid'] = gid
+            attr['st_mode'] = int(stat.S_IFREG | mode)
+            attr['st_atime'] = now
+            attr['st_mtime'] = now
+            attr['st_ctime'] = now
+            attr['st_size'] = 0 # New file
+            if self.cache_on_disk > 0:
+                data = FSData(self.cache, 'mem', path) # New files (almost) always cache in mem - is it ok ???
+            else:
+                data = FSData(self.cache, 'disk', path)
+            self.cache.set(path, 'data', data)
+            data.set('change', True)
+            self.set_metadata(path, 'attr', attr)
+            self.set_metadata(path, 'xattr', {})
+            self.add_to_parent_readdir(path)
+            self.publish(['mknod', path])
+            return 0
 
     def unlink(self, path):
         logger.debug("unlink '%s'" % (path))
-	if self.cache.is_empty(path):
-            logger.debug("unlink '%s' ENOENT" % (path))
-	    raise FuseOSError(errno.ENOENT)
-	k = self.get_key(path)
-	if not k and not self.cache.has(path):
-            logger.debug("unlink '%s' ENOENT" % (path))
-	    raise FuseOSError(errno.ENOENT)
-        if k:
-            logger.debug("unlink '%s' '%s' S3" % (path, k))
-            k.delete()
-            self.publish(['unlink', path])
+        with self.cache.get_lock(path):
+            if self.cache.is_empty(path):
+                logger.debug("unlink '%s' ENOENT" % (path))
+                raise FuseOSError(errno.ENOENT)
+            k = self.get_key(path)
+            if not k and not self.cache.has(path):
+                logger.debug("unlink '%s' ENOENT" % (path))
+                raise FuseOSError(errno.ENOENT)
+            if k:
+                logger.debug("unlink '%s' '%s' S3" % (path, k))
+                k.delete()
+                self.publish(['unlink', path])
 
-	self.cache.reset(path)
-	self.remove_from_parent_readdir(path)
+            self.cache.reset(path)
+            self.remove_from_parent_readdir(path)
 	return 0
 
     def create(self, path, mode, fi=None):
@@ -1794,43 +1801,44 @@ class YAS3FS(LoggingMixIn, Operations):
 
     def flush(self, path, fh=None):
         logger.debug("flush '%s' '%s'" % (path, fh))
-        data = self.cache.get(path, 'data')
-        if data and data.has('change'):
-            k = self.get_key(path)
-            if not k:
-                k = Key(self.s3_bucket)
-                k.key = self.join_prefix(path)
-                self.cache.set(path, 'key', k)
-            now = get_current_time()
-            attr = self.get_metadata(path, 'attr', k)
-            attr['st_atime'] = now
-            attr['st_mtime'] = now
-            self.set_metadata(path, 'attr', None, k) # To update key metadata before upload to S3
-            self.set_metadata(path, 'xattr', None, k) # To update key metadata before upload to S3
-            type = mimetypes.guess_type(path)[0] or 'application/octet-stream'
-            data.content.seek(0) # Do I need this???
-            if k.size == None:
-                old_size = 0
-            else:
-                old_size = k.size
+        with self.cache.get_lock(path):
+            data = self.cache.get(path, 'data')
+            if data and data.has('change'):
+                k = self.get_key(path)
+                if not k:
+                    k = Key(self.s3_bucket)
+                    k.key = self.join_prefix(path)
+                    self.cache.set(path, 'key', k)
+                now = get_current_time()
+                attr = self.get_metadata(path, 'attr', k)
+                attr['st_atime'] = now
+                attr['st_mtime'] = now
+                self.set_metadata(path, 'attr', None, k) # To update key metadata before upload to S3
+                self.set_metadata(path, 'xattr', None, k) # To update key metadata before upload to S3
+                type = mimetypes.guess_type(path)[0] or 'application/octet-stream'
+                data.content.seek(0) # Do I need this???
+                if k.size == None:
+                    old_size = 0
+                else:
+                    old_size = k.size
 
-            written = False
-            if self.multipart_num > 0:
-                full_size = attr['st_size']
-                if full_size > self.multipart_size:
+                written = False
+                if self.multipart_num > 0:
+                    full_size = attr['st_size']
+                    if full_size > self.multipart_size:
+                        logger.debug("flush '%s' '%s' '%s' '%s' S3" % (path, fh, k, type))
+                        complete = self.multipart_upload(k.name, data, full_size,
+                                                      headers={'Content-Type': type}, metadata=k.metadata)
+                        etag = complete.etag[1:-1]
+                        new_k = self.get_key(path, cache=False) # To refresh the S3 key cache
+                        written = True
+                if not written:
                     logger.debug("flush '%s' '%s' '%s' '%s' S3" % (path, fh, k, type))
-                    complete = self.multipart_upload(k.name, data, full_size,
-                                                  headers={'Content-Type': type}, metadata=k.metadata)
-                    etag = complete.etag[1:-1]
-                    new_k = self.get_key(path, cache=False) # To refresh the S3 key cache
-                    written = True
-            if not written:
-                logger.debug("flush '%s' '%s' '%s' '%s' S3" % (path, fh, k, type))
-                k.set_contents_from_file(data.content, headers={'Content-Type': type})
-                etag = k.etag[1:-1]
-            data.update_etag(etag)
-            data.delete('change')
-            self.publish(['flush', path, etag])
+                    k.set_contents_from_file(data.content, headers={'Content-Type': type})
+                    etag = k.etag[1:-1]
+                data.update_etag(etag)
+                data.delete('change')
+                self.publish(['flush', path, etag])
 
         return 0
 
@@ -1894,45 +1902,48 @@ class YAS3FS(LoggingMixIn, Operations):
             
     def chmod(self, path, mode):
         logger.debug("chmod '%s' '%i'" % (path, mode))
-        if self.cache.is_empty(path):
-            logger.debug("chmod '%s' '%i' ENOENT" % (path, mode))
-            raise FuseOSError(errno.ENOENT)
-        attr = self.get_metadata(path, 'attr')
-        if attr < 0:
-            return attr
-        attr['st_mode'] = mode
-        self.set_metadata(path, 'attr')
-        return 0
+        with self.cache.get_lock(path):
+            if self.cache.is_empty(path):
+                logger.debug("chmod '%s' '%i' ENOENT" % (path, mode))
+                raise FuseOSError(errno.ENOENT)
+            attr = self.get_metadata(path, 'attr')
+            if attr < 0:
+                return attr
+            attr['st_mode'] = mode
+            self.set_metadata(path, 'attr')
+            return 0
 
     def chown(self, path, uid, gid):
         logger.debug("chown '%s' '%i' '%i'" % (path, uid, gid))
-        if self.cache.is_empty(path):
-            logger.debug("chown '%s' '%i' '%i' ENOENT" % (path, uid, gid))
-            raise FuseOSError(errno.ENOENT)
-        attr = self.get_metadata(path, 'attr')
-        if attr < 0:
-            return attr
-        if uid != -1:
-            attr['st_uid'] = uid
-        if gid != -1:
-            attr['st_gid'] = gid
-        self.set_metadata(path, 'attr')
-        return 0
+        with self.cache.get_lock(path):
+            if self.cache.is_empty(path):
+                logger.debug("chown '%s' '%i' '%i' ENOENT" % (path, uid, gid))
+                raise FuseOSError(errno.ENOENT)
+            attr = self.get_metadata(path, 'attr')
+            if attr < 0:
+                return attr
+            if uid != -1:
+                attr['st_uid'] = uid
+            if gid != -1:
+                attr['st_gid'] = gid
+            self.set_metadata(path, 'attr')
+            return 0
 
     def utime(self, path, times=None):
         logger.debug("utime '%s' '%s'" % (path, times))
-        if self.cache.is_empty(path):
-            logger.debug("utime '%s' '%s' ENOENT" % (path, times))
-            raise FuseOSError(errno.ENOENT)
-        now = get_current_time()
-        atime, mtime = times if times else (now, now)
-        attr = self.get_metadata(path, 'attr')
-        if attr < 0:
-            return attr
-        attr['st_atime'] = atime
-        attr['st_mtime'] = mtime
-        self.set_metadata(path, 'attr')
-        return 0
+        with self.cache.get_lock(path):
+            if self.cache.is_empty(path):
+                logger.debug("utime '%s' '%s' ENOENT" % (path, times))
+                raise FuseOSError(errno.ENOENT)
+            now = get_current_time()
+            atime, mtime = times if times else (now, now)
+            attr = self.get_metadata(path, 'attr')
+            if attr < 0:
+                return attr
+            attr['st_atime'] = atime
+            attr['st_mtime'] = mtime
+            self.set_metadata(path, 'attr')
+            return 0
 
     def getxattr(self, path, name, position=0):
         logger.debug("getxattr '%s' '%s' '%i'" % (path, name, position))
@@ -1955,29 +1966,31 @@ class YAS3FS(LoggingMixIn, Operations):
 
     def removexattr(self, path, name):
         logger.debug("removexattr '%s'" % (path, name))
-        if self.cache.is_empty(path):
-            logger.debug("removexattr '%s' ENOENT" % (path, name))
-            raise FuseOSError(errno.ENOENT)
-        xattr = self.get_metadata(path, 'xattr')
-        try:
-            del xattr[name]
-            self.set_metadata(path, 'xattr')
-        except KeyError:
-            logger.debug("removexattr '%s' should ENOATTR" % (path, name))
-            return '' # Should return ENOATTR
-        return 0
+        with self.cache.get_lock(path):
+            if self.cache.is_empty(path):
+                logger.debug("removexattr '%s' ENOENT" % (path, name))
+                raise FuseOSError(errno.ENOENT)
+            xattr = self.get_metadata(path, 'xattr')
+            try:
+                del xattr[name]
+                self.set_metadata(path, 'xattr')
+            except KeyError:
+                logger.debug("removexattr '%s' should ENOATTR" % (path, name))
+                return '' # Should return ENOATTR
+            return 0
 
     def setxattr(self, path, name, value, options, position=0):
         logger.debug("setxattr '%s' '%s' '%s' '%s' '%i'" % (path, name, value, options, position))
-        if self.cache.is_empty(path):
-            logger.debug("setxattr '%s' '%s' '%s' '%s' '%i' ENOENT" % (path, name, value, options, position))
-            raise FuseOSError(errno.ENOENT)
-        xattr = self.get_metadata(path, 'xattr')
-        if xattr < 0:
-            return xattr
-        xattr[name] = value
-        self.set_metadata(path, 'xattr')
-        return 0
+        with self.cache.get_lock(path):
+            if self.cache.is_empty(path):
+                logger.debug("setxattr '%s' '%s' '%s' '%s' '%i' ENOENT" % (path, name, value, options, position))
+                raise FuseOSError(errno.ENOENT)
+            xattr = self.get_metadata(path, 'xattr')
+            if xattr < 0:
+                return xattr
+            xattr[name] = value
+            self.set_metadata(path, 'xattr')
+            return 0
 
     def statfs(self, path):
         logger.debug("statfs '%s'" % (path))
