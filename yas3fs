@@ -525,6 +525,7 @@ class YAS3FS(LoggingMixIn, Operations):
         ### self.http_listen_path_length = 30
         self.running = True
         self.check_status_interval = 5.0 # Seconds, no need to configure that
+        self.s3_copy_retries = 3 # Maximum S3 Copy retries
 
         # Initialization
         global debug
@@ -1173,7 +1174,14 @@ class YAS3FS(LoggingMixIn, Operations):
                         logger.debug("writing metadata '%s' '%s' S3" % (path, key))
                         md = key.metadata
                         md['Content-Type'] = key.content_type # Otherwise we loose the Content-Type with S3 Copy
-                        key.copy(key.bucket.name, key.name, md, preserve_acl=False) # Do I need to preserve ACL?
+                        retry = 0
+                        while retry < self.s3_copy_retries:
+                            try:
+                                key.copy(key.bucket.name, key.name, md, preserve_acl=False) # Do I need to preserve ACL?
+                            except Exception as e:
+                                time.sleep(1.0) # Better wait 1 second before retrying
+                                retry += 1
+                                logger.debug("writing metadata '%s' '%s' S3 retry %i" % (path, key, retry))
                         self.publish(['md', metadata_name, path])
                     
     def getattr(self, path, fh=None):
@@ -1451,6 +1459,7 @@ class YAS3FS(LoggingMixIn, Operations):
             except Exception as e:
                 logger.info("download_data error '%s' %i-%i [thread '%s'] -> retrying" % (path, start, end, thread_name))
                 logger.exception(e)
+                time.sleep(1.0) # Better wait 1 second before retrying
                 key = copy.deepcopy(self.get_key(path)) # Do I need this to overcome error "caching" ???
 
         if debug:
@@ -1627,7 +1636,14 @@ class YAS3FS(LoggingMixIn, Operations):
             if key: # For files in cache but still not flushed to S3
                 md = key.metadata
                 md['Content-Type'] = key.content_type # Otherwise we loose the Content-Type with S3 Copy
-                key.copy(key.bucket.name, target, md, preserve_acl=False) # Do I need to preserve ACL?
+                retry = 0
+                while retry < self.s3_copy_retries:
+                    try:
+                        key.copy(key.bucket.name, target, md, preserve_acl=False) # Do I need to preserve ACL?
+                    except Exception as e:
+                        time.sleep(1.0) # Better wait 1 second before retrying
+                        retry += 1
+                        logger.debug("renaming '%s' ('%s') -> '%s' ('%s') retry %i" % (source, source_path, target, target_path, retry))
                 key.delete()
                 self.publish(['rename', source_path, target_path])
 
