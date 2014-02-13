@@ -1093,9 +1093,6 @@ class YAS3FS(LoggingMixIn, Operations):
                 key = self.get_key(path)
             if not key:
                 if path == '/': # First time mount of a new file system
-                    ###self.cache.delete(path)
-                    ###self.mkdir('', 0755)
-                    ###self.cache.rename('', path)
                     self.mkdir(path, 0755)
                     logger.debug("get_metadata -> '%s' '%s' '%s' First time mount" % (path, metadata_name, key))
                     return self.cache.get(path, metadata_name)
@@ -1103,11 +1100,13 @@ class YAS3FS(LoggingMixIn, Operations):
                     full_path = self.join_prefix(path + '/')
                     logger.debug("get_metadata -> '%s' '%s' '%s' S3 list '%s'" % (path, metadata_name, key, full_path))
                     key_list = self.s3_bucket.list(full_path) # Don't need to set a delimeter here
-                    if len(list(key_list)) == 0:
+                    ### if len(list(key_list)) == 0: ### Too slow, especially for paths with a lot of files
+                    if not has_elements(key_list):
                         self.cache.add(path) # It is empty to cache further checks
-                        logger.debug("get_metadata '%s' '%s' '%s' return None" % (path, metadata_name, key))
+                        logger.debug("get_metadata '%s' '%s' '%s' S3 no list '%s' return None" % (path, metadata_name, key, full_path))
                         return None
-###                     raise FuseOSError(errno.ENOENT)
+                    else:
+                        logger.debug("get_metadata '%s' '%s' '%s' S3 list '%s' OK" % (path, metadata_name, key, full_path))
             metadata_values = {}
             if key:
                 s = key.get_metadata(metadata_name)
@@ -1185,24 +1184,16 @@ class YAS3FS(LoggingMixIn, Operations):
         if attr == None:
             logger.debug("getattr <- '%s' '%s' ENOENT" % (path, fh))
             raise FuseOSError(errno.ENOENT)
-	st = {}
-	st['st_mode'] = attr['st_mode']
-	st['st_atime'] = attr['st_atime'] # Should I update this ???
-	st['st_mtime'] = attr['st_mtime'] # Should I use k.last_modified ???
-	st['st_ctime'] = attr['st_ctime']
-        st['st_uid'] = attr['st_uid']
-        st['st_gid'] = attr['st_gid']
-	st['st_size'] = attr['st_size']
-        if stat.S_ISDIR(st['st_mode']) and st['st_size'] == 0:
-            st['st_size'] = 4096 # For compatibility...
-	st['st_nlink'] = 1 # Something better TODO ???
+        if attr['st_size'] == 0 and stat.S_ISDIR(attr['st_mode']):
+            attr['st_size'] = 4096 # For compatibility...
+	attr['st_nlink'] = 1 # Something better TODO ???
         if self.full_prefetch: # Prefetch
-            if stat.S_ISDIR(st['st_mode']):
+            if stat.S_ISDIR(attr['st_mode']):
                 self.readdir(path)
             else:
                 self.check_data(path)
-        logger.debug("getattr <- '%s' '%s' '%s'" % (path, fh, st))
-        return st
+        logger.debug("getattr <- '%s' '%s' '%s'" % (path, fh, attr))
+        return attr
 
     def readdir(self, path, fh=None):
         logger.debug("readdir '%s' '%s'" % (path, fh))
@@ -1547,12 +1538,6 @@ class YAS3FS(LoggingMixIn, Operations):
         if len(self.readdir(path)) > 2:
             logger.debug("rmdir '%s' ENOTEMPTY" % (path))
             raise FuseOSError(errno.ENOTEMPTY)
-	#full_path = self.join_prefix(path + '/')
-	#key_list = self.s3_bucket.list(full_path) # Don't need to set a delimeter here
-	#for l in key_list:
-	#    if l.name != full_path:
-        #        logger.debug("rmdir '%s' ENOTEMPTY" % (path))
-	#	raise FuseOSError(errno.ENOTEMPTY)
 
         logger.debug("rmdir '%s' '%s' S3" % (path, k))
         k.delete()
@@ -2048,6 +2033,14 @@ def get_current_time():
 def get_uid_gid():
     uid, gid, pid = fuse_get_context()
     return int(uid), int(gid)
+
+def has_elements(iter):
+    found = False
+    for k in iter:
+        logger.debug("has_element '%s' -> '%s'" % (iter, k))
+        found = True
+        break
+    return found
 
 def main():
     usage = """%prog <mountpoint> [options]
