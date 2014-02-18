@@ -982,24 +982,25 @@ class YAS3FS(LoggingMixIn, Operations):
                 # Need to purge something
                 path = self.cache.lru.popleft() # Take a path on top of the LRU (least used)
                 with self.cache.get_lock(path):
-                    logger.debug("purge: '%s' '%s' ?" % (store, path))
-                    data = self.cache.get(path, 'data')
-                    full_delete = False
-                    if (not data) or (data and (store == '' or data.store == store) and (not data.has('open')) and (not data.has('change'))):
-                        if store == '':
-                            logger.debug("purge: '%s' '%s' OK full" % (store, path))
-                            self.cache.delete(path) # Remove completely from cache
-                            full_delete = True
-                        elif data:
-                            logger.debug("purge: '%s' '%s' OK data" % (store, path))
-                            self.cache.delete(path, 'data') # Just remove data
+                    if self.cache.has(path):
+                        logger.debug("purge: '%s' '%s' ?" % (store, path))
+                        data = self.cache.get(path, 'data')
+                        full_delete = False
+                        if (not data) or (data and (store == '' or data.store == store) and (not data.has('open')) and (not data.has('change'))):
+                            if store == '':
+                                logger.debug("purge: '%s' '%s' OK full" % (store, path))
+                                self.cache.delete(path) # Remove completely from cache
+                                full_delete = True
+                            elif data:
+                                logger.debug("purge: '%s' '%s' OK data" % (store, path))
+                                self.cache.delete(path, 'data') # Just remove data
+                            else:
+                                logger.debug("purge: '%s' '%s' KO no data" % (store, path))
                         else:
-                            logger.debug("purge: '%s' '%s' KO no data" % (store, path))
-                    else:
-                        logger.debug("purge: '%s' '%s' KO data? %s open? %s change? %s"
-                                     % (store, path, data != None, data and data.has('open'), data and data.has('change')))
-                    if not full_delete:
-                        self.cache.lru.append(path) # The entry is still there, let's append it again at the end of the RLU list
+                            logger.debug("purge: '%s' '%s' KO data? %s open? %s change? %s"
+                                         % (store, path, data != None, data and data.has('open'), data and data.has('change')))
+                        if not full_delete:
+                            self.cache.lru.append(path) # The entry is still there, let's append it again at the end of the RLU list
             else:
                 # Check for unused locks to be removed
                 for path in self.cache.unused_locks.keys():
