@@ -79,10 +79,10 @@ class LinkedListElement():
     """ The element of a linked list."""
     def __init__(self, value, next=None):
         self.value = value
-        self.next = next
         if next:
             self.append(next)
         else:
+            self.next = None
             self.prev = None
     def delete(self):
         self.prev.next = self.next
@@ -106,8 +106,9 @@ class LinkedList():
         self.lock = threading.RLock()
     def append(self, value):
         with self.lock:
-            new = LinkedListElement(value, self.tail)
-            self.index[value] = new
+            if value not in self.index:
+                new = LinkedListElement(value, self.tail)
+                self.index[value] = new
     def popleft(self):
         with self.lock:
             if self.head.next != self.tail:
