@@ -250,12 +250,14 @@ class FSData():
                     with self.cache.get_disk_lock(filename):
                         if os.path.isfile(filename):
                             os.unlink(filename)
-                            removeEmptyDirForFile(filename)
+                            if removeEmptyDirForFile(filename):
+                                self.cache.remove_disk_lock(filename)
                     etag_filename = self.cache.get_cache_etags_filename(self.path)
                     with self.cache.get_disk_lock(etag_filename):
                         if os.path.isfile(etag_filename):
                             os.unlink(etag_filename)
-                            removeEmptyDirForFile(etag_filename)
+                            if removeEmptyDirForFile(etag_filename):
+                                self.cache.remove_disk_lock(etag_filename)
                 self.content = None # If not
                 self.update_size(True)
                 for p in self.props.keys():
@@ -279,7 +281,8 @@ class FSData():
                 with self.cache.get_disk_lock(filename) and self.cache.get_disk_lock(new_filename):
                     createDirForFile(new_filename)
                     os.rename(filename, new_filename)
-                    removeEmptyDirForFile(filename)
+                    if removeEmptyDirForFile(filename):
+                        self.cache.remove_disk_lock(filename)
                 etag_filename = self.cache.get_cache_etags_filename(self.path)
                 with self.cache.get_disk_lock(etag_filename):
                     if os.path.isfile(etag_filename):
@@ -287,7 +290,8 @@ class FSData():
                         with self.cache.get_disk_lock(new_etag_filename):
                             createDirForFile(new_etag_filename)
                             os.rename(etag_filename, new_etag_filename)
-                            removeEmptyDirForFile(etag_filename)
+                            if removeEmptyDirForFile(etag_filename):
+                                self.cache.remove_disk_lock(etag_filename)
                 if self.content:
                     self.content = io.FileIO(new_filename, mode='rb+')
     def inc(self, prop):
@@ -1058,7 +1062,7 @@ class YAS3FS(LoggingMixIn, Operations):
         logger.debug("add_to_parent_readdir '%s'" % (path))
         (parent_path, dir) = os.path.split(path)
         logger.debug("parent_path '%s'" % (parent_path))
-        with self.cache.get_lock(path):
+        with self.cache.get_lock(parent_path):
             dirs = self.cache.get(parent_path, 'readdir')
             if dirs != None and dirs.count(dir) == 0:
                 dirs.append(dir)
@@ -1067,9 +1071,8 @@ class YAS3FS(LoggingMixIn, Operations):
         logger.debug("remove_from_parent_readdir '%s'" % (path))
         (parent_path, dir) = os.path.split(path)
         logger.debug("parent_path '%s'" % (parent_path))
-        with self.cache.get_lock(path):
-            # dirs = self.cache.get(parent_path, 'readdir')
-            dirs = self.readdir(parent_path)
+        with self.cache.get_lock(parent_path):
+            dirs = self.cache.get(parent_path, 'readdir')
             if dirs != None and dirs.count(dir) > 0:
                 dirs.remove(dir)
 
@@ -1094,14 +1097,12 @@ class YAS3FS(LoggingMixIn, Operations):
             if key:
                 logger.debug("get_key from cache '%s'" % (path))
                 return key
-        look_on_S3 = False
-        if path == '/':
-            look_on_S3 = True
-        else:
+        look_on_S3 = True
+        if path != '/':
             (parent_path, file) = os.path.split(path)
-            dirs = self.readdir(parent_path)
-            if file in dirs: # We know it can be found on S3
-                look_on_S3 = True
+            dirs = self.cache.get(parent_path, 'readdir')
+            if dirs and file not in dirs:
+                look_on_S3 = False # We know it's not there
         if look_on_S3:
             logger.debug("get_key from S3 #1 '%s'" % (path))
             key = self.s3_bucket.get_key(self.join_prefix(path))
@@ -1258,11 +1259,10 @@ class YAS3FS(LoggingMixIn, Operations):
 	    dirs = ['.', '..']
 	    for k in key_list:
                 logger.debug("readdir '%s' '%s' S3 list key '%s'" % (path, fh, k))
-		# d = k.name.encode('ascii')[len(full_path):] ### You can use unicode in S3 keys
 		d = k.name[len(full_path):]
 		if len(d) > 0:
                     if d == '.':
-                        continue # already there ### Do I need this ???
+                        continue # I need this for whole S3 buckets mounted without a prefix, I use '.' for '/' metadata
 		    if d[-1] == '/':
 			d = d[:-1]
 		    dirs.append(d)
@@ -2081,9 +2081,10 @@ def removeEmptyDirForFile(filename):
     logger.debug("listdir '%s'" % os.listdir(dirname))
     try:
         os.removedirs(dirname)
+        return True
     except OSError as exc: # Python >2.5
         if exc.errno == errno.ENOTEMPTY:
-            pass
+            return False
         else:
             raise
 
@@ -2094,12 +2095,15 @@ def get_uid_gid():
     uid, gid, pid = fuse_get_context()
     return int(uid), int(gid)
 
-def has_elements(iter):
+def has_elements(iter, num=1):
     found = False
+    c = 0
     for k in iter:
         logger.debug("has_element '%s' -> '%s'" % (iter, k))
-        found = True
-        break
+        c += 1
+        if c >= num:
+            found = True
+            break
     return found
 
 def main():
