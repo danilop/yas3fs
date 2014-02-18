@@ -1216,6 +1216,7 @@ class YAS3FS(LoggingMixIn, Operations):
                         while retry < self.s3_copy_retries:
                             try:
                                 key.copy(key.bucket.name, key.name, md, preserve_acl=False) # Do I need to preserve ACL?
+                                break
                             except Exception as e:
                                 time.sleep(1.0) # Better wait 1 second before retrying
                                 retry += 1
@@ -1676,6 +1677,7 @@ class YAS3FS(LoggingMixIn, Operations):
                 while retry < self.s3_copy_retries:
                     try:
                         key.copy(key.bucket.name, target, md, preserve_acl=False) # Do I need to preserve ACL?
+                        break
                     except Exception as e:
                         time.sleep(1.0) # Better wait 1 second before retrying
                         retry += 1
