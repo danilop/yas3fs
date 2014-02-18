@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+[#!/usr/bin/env python
 
 """
 Yet Another S3-backed File System, or yas3fs
@@ -177,7 +177,7 @@ class FSData():
         else:
             raise FSData.unknown_store
     def get_lock(self):
-        return self.cache.get_lock(self.path)
+        return self.cache.get_lock(self.path, True)
     def open(self):
         with self.get_lock():
             if not self.has('open'):
@@ -269,6 +269,7 @@ class FSData():
                     data_range.wake(False) # To make downloading threads go on... and then exit
     def rename(self, new_path):
         with self.get_lock():
+            self.path = new_path
             if self.store == 'disk':
                 filename = self.cache.get_cache_filename(self.path)
                 new_filename = self.cache.get_cache_filename(new_path)
@@ -281,7 +282,6 @@ class FSData():
                     createDirForFile(new_etag_filename)
                     os.rename(etag_filename, new_etag_filename)
                     removeEmptyDirForFile(etag_filename)
-                self.path = new_path
                 if self.content:
                     self.content = io.FileIO(new_filename, mode='rb+')
     def inc(self, prop):
@@ -320,7 +320,9 @@ class FSCache():
         return self.cache_path + '/files' + path # path begins with '/'
     def get_cache_etags_filename(self, path):
         return self.cache_path + '/etags' + path # path begins with '/'
-    def get_lock(self, path):
+    def get_lock(self, path, exists=False):
+        if exists:
+            return self.entries[path]['lock']
         with self.lock: # Global cache lock, used only for giving file-level locks
             try:
                 return self.entries[path]['lock']
@@ -342,7 +344,6 @@ class FSCache():
         with self.get_lock(path):
             if path in self.entries:
                 if prop == None:
-                    self.new_locks[path] = self.entries[path]['lock'] # Preserve lock, let the unused locks check remove it later
                     for p in self.entries[path].keys():
                         self.delete(path, p)
                     del self.entries[path]
@@ -352,21 +353,22 @@ class FSCache():
                         if prop == 'data':
                             data = self.entries[path][prop]
                             data.delete() # To clean stuff, e.g. remove cache files
+                        elif prop == 'lock':
+                            self.new_locks[path] = self.entries[path][prop] # Preserve lock, let the unused locks check remove it later
                         del self.entries[path][prop]
     def rename(self, path, new_path):
         with self.get_lock(path) and self.get_lock(new_path):
             if path in self.entries:
-                with self.get_lock(path):
-                    self.delete(path, 'key') # Cannot be renamed
-                    self.delete(new_path) # Assume overwrite
-                    if 'data' in self.entries[path]:
-                        data = self.entries[path]['data']
-                        with data.get_lock():
-                            data.rename(new_path)
-                    self.entries[new_path] = self.entries[path]
-                    self.lru.append(new_path)
-                    self.lru.delete(path)
-                    del self.entries[path]
+                self.delete(path, 'key') # Cannot be renamed
+                self.delete(new_path) # Assume overwrite
+                if 'data' in self.entries[path]:
+                    data = self.entries[path]['data']
+                    with data.get_lock():
+                        data.rename(new_path)
+                self.entries[new_path] = self.entries[path]
+                self.lru.append(new_path)
+                self.lru.delete(path)
+                del self.entries[path]
     def get(self, path, prop=None):
         self.lru.move_to_the_tail(path) # Move to the tail of the LRU cache
         try:
@@ -525,7 +527,7 @@ class YAS3FS(LoggingMixIn, Operations):
         ### self.http_listen_path_length = 30
         self.running = True
         self.check_status_interval = 5.0 # Seconds, no need to configure that
-        self.s3_copy_retries = 3 # Maximum S3 Copy retries
+        self.s3_copy_retries = 3 # Maximum number of S3 Copy retries
 
         # Initialization
         global debug
@@ -1187,7 +1189,7 @@ class YAS3FS(LoggingMixIn, Operations):
     def getattr(self, path, fh=None):
         logger.debug("getattr -> '%s' '%s'" % (path, fh))
         if self.cache.is_empty(path):
-            logger.debug("getattr <- '%s' '%s' ENOENT" % (path, fh))
+            logger.debug("getattr <- '%s' '%s' cache ENOENT" % (path, fh))
             raise FuseOSError(errno.ENOENT)
 	attr = self.get_metadata(path, 'attr')
         if attr == None:
@@ -1244,15 +1246,12 @@ class YAS3FS(LoggingMixIn, Operations):
         logger.debug("mkdir '%s' '%s'" % (path, mode))
         with self.cache.get_lock(path):
             if self.cache.is_not_empty(path):
-                logger.debug("mkdir 1")
                 logger.debug("mkdir cache '%s'" % self.cache.get(path))
                 raise FuseOSError(errno.EEXIST)
-            logger.debug("mkdir 2")
             k = self.get_key(path)
             if k:
-                logger.debug("mkdir 3")
+                logger.debug("mkdir key found '%s'" % self.cache.get(path))
                 raise FuseOSError(errno.EEXIST)
-            logger.debug("mkdir 4")
             now = get_current_time()
             uid, gid = get_uid_gid()
             attr = {}
@@ -1542,11 +1541,11 @@ class YAS3FS(LoggingMixIn, Operations):
         logger.debug("rmdir '%s'" % (path))
         with self.cache.get_lock(path):
             if self.cache.is_empty(path):
-                logger.debug("rmdir '%s' ENOENT" % (path))
+                logger.debug("rmdir '%s' cache ENOENT" % (path))
                 raise FuseOSError(errno.ENOENT)
-            k = self.get_key(path) # Should I use cache here ???
+            k = self.get_key(path)
             if not k:
-                logger.debug("rmdir '%s' ENOENT" % (path))
+                logger.debug("rmdir '%s' key found ENOENT" % (path))
                 raise FuseOSError(errno.ENOENT)
             if len(self.readdir(path)) > 2:
                 logger.debug("rmdir '%s' ENOTEMPTY" % (path))
@@ -1654,12 +1653,12 @@ class YAS3FS(LoggingMixIn, Operations):
         logger.debug("mknod '%s' '%i' '%s'" % (path, mode, dev))
         with self.cache.get_lock(path):
             if self.cache.is_not_empty(file):
-                logger.debug("mknod '%s' '%i' '%s' EEXIST" % (path, mode, dev))
+                logger.debug("mknod '%s' '%i' '%s' cache EEXIST" % (path, mode, dev))
                 raise FuseOSError(errno.EEXIST)
             else:
                 k = self.get_key(path)
                 if k:
-                    logger.debug("mknod '%s' '%i' '%s' EEXIST" % (path, mode, dev))
+                    logger.debug("mknod '%s' '%i' '%s' key found EEXIST" % (path, mode, dev))
                     raise FuseOSError(errno.EEXIST)
                 self.cache.add(path)
             now = get_current_time()
