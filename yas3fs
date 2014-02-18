@@ -1315,7 +1315,7 @@ class YAS3FS(LoggingMixIn, Operations):
             else:
                 data = FSData(self.cache, 'disk', path)
             self.cache.set(path, 'data', data)
-            data.set('change', True) # Do I need this ???
+            data.set('change', True)
             k = Key(self.s3_bucket)
             self.set_metadata(path, 'attr', attr, k)
             self.set_metadata(path, 'xattr', {}, k)
