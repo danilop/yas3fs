@@ -156,20 +156,21 @@ class FSData():
         elif store == 'disk':
             previous_file = False
             filename = self.cache.get_cache_filename(self.path)
-            if os.path.isfile(filename):
-                # There's a file already there
-                self.content = io.FileIO(filename, mode='rb+')
-                self.update_size()
-                self.content.close()
-                self.set('new', None) # Not sure it is the latest version
-                # Now search for an etag file
-                etag_filename = self.cache.get_cache_etags_filename(self.path)
-                if os.path.isfile(etag_filename):
-                    with open(etag_filename, 'r') as etag_file:
-                        self.etag = etag_file.read()
-                    previous_file = True
-            if not previous_file:
-                with self.cache.get_disk_lock(filename):
+            with self.cache.get_disk_lock(filename):
+                if os.path.isfile(filename):
+                    # There's a file already there
+                    self.content = io.FileIO(filename, mode='rb+')
+                    self.update_size()
+                    self.content.close()
+                    self.set('new', None) # Not sure it is the latest version
+                    # Now search for an etag file
+                    etag_filename = self.cache.get_cache_etags_filename(self.path)
+                    with self.cache.get_disk_lock(etag_filename):
+                        if os.path.isfile(etag_filename):
+                            with open(etag_filename, 'r') as etag_file:
+                                self.etag = etag_file.read()
+                            previous_file = True
+                if not previous_file:
                     createDirForFile(filename)
                     logger.debug("creating new cache file '%s'" % filename)
                     open(filename, 'w').close() # To create an empty file (and overwrite a previous file)
