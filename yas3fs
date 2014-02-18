@@ -177,7 +177,7 @@ class FSData():
         else:
             raise FSData.unknown_store
     def get_lock(self):
-        return self.cache.get_lock(self.path, True)
+        return self.cache.get_lock(self.path)
     def open(self):
         with self.get_lock():
             if not self.has('open'):
@@ -320,9 +320,7 @@ class FSCache():
         return self.cache_path + '/files' + path # path begins with '/'
     def get_cache_etags_filename(self, path):
         return self.cache_path + '/etags' + path # path begins with '/'
-    def get_lock(self, path, exists=False):
-        if exists:
-            return self.entries[path]['lock']
+    def get_lock(self, path):
         with self.lock: # Global cache lock, used only for giving file-level locks
             try:
                 return self.entries[path]['lock']
