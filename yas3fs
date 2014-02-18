@@ -84,9 +84,7 @@ class LinkedListElement():
     def delete(self):
         self.prev.next = self.next
         self.next.prev = self.prev
-        value = self.value
-        del self
-        return value
+        return self.value
 
 class LinkedList():
     """ A linked list that is used by yas3fs as a LRU index
@@ -278,7 +276,7 @@ class FSData():
             if self.store == 'disk':
                 filename = self.cache.get_cache_filename(self.path)
                 new_filename = self.cache.get_cache_filename(new_path)
-                with self.cache.get_disk_lock(filename) and self.get_disk_lock(new_filename):
+                with self.cache.get_disk_lock(filename) and self.cache.get_disk_lock(new_filename):
                     createDirForFile(new_filename)
                     os.rename(filename, new_filename)
                     removeEmptyDirForFile(filename)
@@ -431,9 +429,15 @@ class FSCache():
                 pass
             return False
     def is_empty(self, path): # A wrapper to improve readability
-        return self.has(path) and len(self.get(path)) <= 1 # Empty or just with 'lock'
+        try:
+            return len(self.get(path)) <= 1 # Empty or just with 'lock'
+        except TypeError: # if get returns None
+            return False
     def is_not_empty(self, path): # A wrapper to improve readability
-        return self.has(path) and len(self.get(path)) > 1 # More than just 'lock'
+        try:
+            return len(self.get(path)) > 1 # More than just 'lock'
+        except TypeError: # if get returns None
+            return False
  
 class SNS_HTTPServer(BaseHTTPServer.HTTPServer):
     """ HTTP Server to receive SNS notifications via HTTP """
