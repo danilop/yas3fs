@@ -130,6 +130,7 @@ class LinkedList():
                 old.append(self.tail)
 
 class FSRange():
+    """A range used to manage buffered downloads from S3."""
     io_wait = 3.0 # 3 seconds
     def __init__(self):
         self.interval = Interval()
@@ -146,6 +147,7 @@ class FSRange():
             e.set()
 
 class FSData():
+    """The data (content) associated with a file."""
     stores = [ 'mem', 'disk' ]
     unknown_store = "Unknown store"
     def __init__(self, cache, store, path):
@@ -247,6 +249,19 @@ class FSData():
     def set(self, prop, value):
         with self.get_lock():
             self.props[prop] = value
+    def inc(self, prop):
+        with self.get_lock():
+            if prop in self.props:
+                self.set(prop, self.props[prop] + 1)
+            else:
+                self.set(prop, 1)
+    def dec(self, prop):
+        with self.get_lock():
+            if prop in self.props:
+                if self.props[prop] > 1:
+                    self.set(prop, self.props[prop] - 1)
+                else:
+                    self.delete(prop)
     def delete(self, prop=None):
         with self.get_lock():
             if prop == None:
@@ -296,19 +311,6 @@ class FSData():
                 if self.content:
                     self.content = io.FileIO(new_filename, mode='rb+')
             self.path = new_path
-    def inc(self, prop):
-        with self.get_lock():
-            if prop in self.props:
-                self.set(prop, self.props[prop] + 1)
-            else:
-                self.set(prop, 1)
-    def dec(self, prop):
-        with self.get_lock():
-            if prop in self.props:
-                if self.props[prop] > 1:
-                    self.set(prop, self.props[prop] - 1)
-                else:
-                    self.delete(prop)
 
 class FSCache():
     """ File System Cache """
@@ -2046,6 +2048,8 @@ class YAS3FS(LoggingMixIn, Operations):
             }
         return {}
 
+### Utility functions
+
 def errorAndExit(error, exitCode=1):
     logger.error(error + ", use -h for help.")
     exit(exitCode)
@@ -2101,6 +2105,8 @@ def has_elements(iter, num=1):
             found = True
             break
     return found
+
+### Main
 
 def main():
     usage = """%prog <mountpoint> [options]
@@ -2254,7 +2260,6 @@ In an EC2 instance a IAM role can be used to give access to S3/SNS/SQS resources
 
 if __name__ == '__main__':
 
-    #logging.basicConfig()
     logger = logging.getLogger('yas3fs')
 
     try:
