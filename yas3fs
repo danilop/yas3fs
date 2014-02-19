@@ -376,7 +376,7 @@ class FSCache():
                     return new_lock;
     def get_disk_lock_for_file(self, filename):
         dirname = os.path.dirname(filename)
-        self.get_disk_lock(dirname)
+        return self.get_disk_lock(dirname)
     def get_disk_lock(self, dirname):
         with self.disk_lock:
             try:
