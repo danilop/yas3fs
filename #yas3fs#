@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+:#!/usr/bin/env python
 
 """
 Yet Another S3-backed File System, or yas3fs
@@ -1169,7 +1169,7 @@ class YAS3FS(LoggingMixIn, Operations):
 	return metadata_values
 
     def set_metadata(self, path, metadata_name=None, metadata_values=None, key=None):
-        logger.debug("set_metadata '%s' '%s' '%s'" % (path, metadata_name, key))
+        logger.debug("set_metadata '%s' '%s' '%s' '%s'" % (path, metadata_name, metadata_values, key))
         with self.cache.get_lock(path):
             if not metadata_values == None:
                 self.cache.set(path, metadata_name, metadata_values)
@@ -1177,7 +1177,7 @@ class YAS3FS(LoggingMixIn, Operations):
             if self.write_metadata and (key or (not data) or (data and not data.has('change'))): # No change in progress, I should write now
                 if not key:
                     key = self.get_key(path)
-                    logger.debug("set_metadata '%s' '%s' '%s' Key" % (path, metadata_name, key))
+                    logger.debug("set_metadata '%s' '%s' '%s' '%s' Key" % (path, metadata_name, metadata_values, key))
                 if key:
                     if metadata_name:
                         values = metadata_values
@@ -1190,7 +1190,7 @@ class YAS3FS(LoggingMixIn, Operations):
                                           if not (metadata_name == 'attr' and k == 'st_size')]) # For the size use the key.size
                             key.metadata[metadata_name] = s
                     if (not data) or (data and (not data.has('change'))):
-                        logger.debug("set_metadata writing '%s' '%s' S3" % (path, key))
+                        logger.debug("writing metadata '%s' '%s' S3" % (path, key))
                         md = key.metadata
                         md['Content-Type'] = key.content_type # Otherwise we loose the Content-Type with S3 Copy
                         retry = 0
@@ -2017,10 +2017,10 @@ class YAS3FS(LoggingMixIn, Operations):
             return 0
 
     def setxattr(self, path, name, value, options, position=0):
-        logger.debug("setxattr '%s' '%s'" % (path, name))
+        logger.debug("setxattr '%s' '%s' '%s' '%s' '%i'" % (path, name, value, options, position))
         with self.cache.get_lock(path):
             if self.cache.is_empty(path):
-                logger.debug("setxattr '%s' '%s' ENOENT" % (path, name))
+                logger.debug("setxattr '%s' '%s' '%s' '%s' '%i' ENOENT" % (path, name, value, options, position))
                 raise FuseOSError(errno.ENOENT)
             xattr = self.get_metadata(path, 'xattr')
             if xattr < 0:
