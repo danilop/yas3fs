@@ -160,24 +160,24 @@ class FSData():
         elif store == 'disk':
             previous_file = False
             filename = self.cache.get_cache_filename(self.path)
-            with self.cache.disk_lock:
-                if os.path.isfile(filename):
-                    # There's a file already there
-                    self.content = io.FileIO(filename, mode='rb+')
-                    self.update_size()
-                    self.content.close()
-                    self.set('new', None) # Not sure it is the latest version
-                    # Now search for an etag file
-                    etag_filename = self.cache.get_cache_etags_filename(self.path)
-                    if os.path.isfile(etag_filename):
-                        with open(etag_filename, 'r') as etag_file:
-                            self.etag = etag_file.read()
-                        previous_file = True
-                if not previous_file:
+            if os.path.isfile(filename):
+                # There's a file already there
+                self.content = io.FileIO(filename, mode='rb+')
+                self.update_size()
+                self.content.close()
+                self.set('new', None) # Not sure it is the latest version
+                # Now search for an etag file
+                etag_filename = self.cache.get_cache_etags_filename(self.path)
+                if os.path.isfile(etag_filename):
+                    with open(etag_filename, 'r') as etag_file:
+                        self.etag = etag_file.read()
+                    previous_file = True
+            if not previous_file:
+                logger.debug("creating new cache file '%s'" % filename)
+                with self.cache.disk_lock:
                     create_dirs_for_file(filename)
-                    logger.debug("creating new cache file '%s'" % filename)
                     open(filename, 'w').close() # To create an empty file (and overwrite a previous file)
-                    logger.debug("created new cache file '%s'" % filename)
+                logger.debug("created new cache file '%s'" % filename)
             self.content = None # Not open, yet
         else:
             raise FSData.unknown_store
@@ -257,6 +257,7 @@ class FSData():
                         if os.path.isfile(filename):
                             os.unlink(filename)
                             remove_empty_dirs_for_file(filename)
+                    with self.cache.disk_lock:
                         if os.path.isfile(etag_filename):
                             os.unlink(etag_filename)
                             remove_empty_dirs_for_file(etag_filename)
@@ -280,14 +281,17 @@ class FSData():
                 filename = self.cache.get_cache_filename(self.path)
                 new_filename = self.cache.get_cache_filename(new_path)
                 etag_filename = self.cache.get_cache_etags_filename(self.path)
+                new_etag_filename = self.cache.get_cache_etags_filename(new_path)
                 with self.cache.disk_lock:
                     create_dirs_for_file(new_filename)
                     os.rename(filename, new_filename)
+                with self.cache.disk_lock:
                     remove_empty_dirs_for_file(filename)
-                    if os.path.isfile(etag_filename):
-                        new_etag_filename = self.cache.get_cache_etags_filename(new_path)
+                if os.path.isfile(etag_filename):
+                    with self.cache.disk_lock:
                         create_dirs_for_file(new_etag_filename)
                         os.rename(etag_filename, new_etag_filename)
+                    with self.cache.disk_lock:
                         remove_empty_dirs_for_file(etag_filename)
                 if self.content:
                     self.content = io.FileIO(new_filename, mode='rb+')
@@ -1560,7 +1564,7 @@ class YAS3FS(LoggingMixIn, Operations):
             if not k:
                 logger.debug("rmdir '%s' key found ENOENT" % (path))
                 raise FuseOSError(errno.ENOENT)
-            if len(self.readdir(path)) > 2:
+            if len(self.readdir(path)) > 2: # More than [ '.', '..' ]
                 logger.debug("rmdir '%s' ENOTEMPTY" % (path))
                 raise FuseOSError(errno.ENOTEMPTY)
 
