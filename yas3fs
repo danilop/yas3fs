@@ -336,7 +336,7 @@ class FSData():
                     return False
                 else:
                     raise
-            self.remove_disk_lock(dirname)
+            self.cache.remove_disk_lock(dirname)
         return True
 
 class FSCache():
