@@ -1731,7 +1731,7 @@ class YAS3FS(LoggingMixIn, Operations):
             if not self.check_data(path):
                 self.mknod(path, flags)
             self.cache.get(path, 'data').open()
-        logger.debug("open '%s' '%i' '%s'" % (path, flags, self.cache.get(path, 'data').get('open')))
+            logger.debug("open '%s' '%i' '%s'" % (path, flags, self.cache.get(path, 'data').get('open')))
 	return 0
 
     def release(self, path, flags):
@@ -1742,7 +1742,9 @@ class YAS3FS(LoggingMixIn, Operations):
                 raise FuseOSError(errno.ENOENT)
             if self.cache.has(path, 'data'):
                 self.cache.get(path, 'data').close()
-        logger.debug("release '%s' '%i' '%s'" % (path, flags, self.cache.get(path, 'data').get('open')))
+                logger.debug("release '%s' '%i' '%s'" % (path, flags, self.cache.get(path, 'data').get('open')))
+            else:
+                logger.debug("release '%s' '%i'" % (path, flags))
 	return 0
 
     def read(self, path, length, offset, fh=None):
