@@ -160,7 +160,7 @@ class FSData():
         elif store == 'disk':
             previous_file = False
             filename = self.cache.get_cache_filename(self.path)
-            with self.cache.get_disk_lock_for_file(filename):
+            with self.cache.disk_lock:
                 if os.path.isfile(filename):
                     # There's a file already there
                     self.content = io.FileIO(filename, mode='rb+')
@@ -169,11 +169,10 @@ class FSData():
                     self.set('new', None) # Not sure it is the latest version
                     # Now search for an etag file
                     etag_filename = self.cache.get_cache_etags_filename(self.path)
-                    with self.cache.get_disk_lock_for_file(etag_filename):
-                        if os.path.isfile(etag_filename):
-                            with open(etag_filename, 'r') as etag_file:
-                                self.etag = etag_file.read()
-                            previous_file = True
+                    if os.path.isfile(etag_filename):
+                        with open(etag_filename, 'r') as etag_file:
+                            self.etag = etag_file.read()
+                        previous_file = True
                 if not previous_file:
                     self.create_dirs_for_file(filename)
                     logger.debug("creating new cache file '%s'" % filename)
@@ -204,7 +203,7 @@ class FSData():
                 self.etag = new_etag
                 if self.store == 'disk':
                     filename = self.cache.get_cache_etags_filename(self.path)
-                    with self.cache.get_disk_lock_for_file(filename):
+                    with self.cache.disk_lock:
                         self.create_dirs_for_file(filename)
                         with open(filename, 'w') as etag_file:
                             etag_file.write(new_etag)
@@ -253,12 +252,12 @@ class FSData():
             if prop == None:
                 if self.store == 'disk':
                     filename = self.cache.get_cache_filename(self.path)
-                    with self.cache.get_disk_lock_for_file(filename):
+                    with self.cache.disk_lock:
                         if os.path.isfile(filename):
                             os.unlink(filename)
                             self.remove_empty_dirs_for_file(filename)
                     etag_filename = self.cache.get_cache_etags_filename(self.path)
-                    with self.cache.get_disk_lock_for_file(etag_filename):
+                    with self.cache.disk_lock:
                         if os.path.isfile(etag_filename):
                             os.unlink(etag_filename)
                             self.remove_empty_dirs_for_file(etag_filename)
@@ -281,18 +280,17 @@ class FSData():
             if self.store == 'disk':
                 filename = self.cache.get_cache_filename(self.path)
                 new_filename = self.cache.get_cache_filename(new_path)
-                with self.cache.get_disk_lock_for_file(filename) and self.cache.get_disk_lock_for_file(new_filename):
+                with self.cache.disk_lock:
                     self.create_dirs_for_file(new_filename)
                     os.rename(filename, new_filename)
                     self.remove_empty_dirs_for_file(filename)
                 etag_filename = self.cache.get_cache_etags_filename(self.path)
-                with self.cache.get_disk_lock_for_file(etag_filename):
+                with self.cache.disk_lock:
                     if os.path.isfile(etag_filename):
                         new_etag_filename = self.cache.get_cache_etags_filename(new_path)
-                        with self.cache.get_disk_lock_for_file(new_etag_filename):
-                            self.create_dirs_for_file(new_etag_filename)
-                            os.rename(etag_filename, new_etag_filename)
-                            self.remove_empty_dirs_for_file(etag_filename)
+                        self.create_dirs_for_file(new_etag_filename)
+                        os.rename(etag_filename, new_etag_filename)
+                        self.remove_empty_dirs_for_file(etag_filename)
                 if self.content:
                     self.content = io.FileIO(new_filename, mode='rb+')
             self.path = new_path
@@ -315,28 +313,17 @@ class FSData():
         create_dirs(dirname)
     def remove_empty_dirs_for_file(self, filename):
         logger.debug("remove_empty_dirs_for_file '%s'" % filename)
-        dirname = filename
-        while True:
-            dirname = os.path.dirname(dirname)
-            if dirname == self.cache.cache_path:
-                break
-            if not self.remove_empty_dir(dirname):
-                break
-        logger.debug("remove_empty_dirs_for_file '%s' done" % (filename))
-    def remove_empty_dir(self, dirname):
-        logger.debug("remove_empty_dir '%s'" % (dirname))
-        logger.debug("remove_empty_dir '%s' listdir '%s'" % (dirname, os.listdir(dirname)))
-        with self.cache.get_disk_lock(dirname):
+        dirname = os.path.dirname(filename)
+        with self.cache.disk_lock:
             try:
-                os.rmdir(dirname)
-                logger.debug("remove_empty_dir '%s' done" % (dirname))
+                os.removedirs(dirname)
+                logger.debug("remove_empty_dirs_for_file '%s' done" % (dirname))
             except OSError as exc: # Python >2.5
                 if exc.errno == errno.ENOTEMPTY:
-                    logger.debug("remove_empty_dir '%s' nor empty" % (dirname))
+                    logger.debug("remove_empty_dirs_for_file '%s' nor empty" % (dirname))
                     return False
                 else:
                     raise
-            self.cache.remove_disk_lock(dirname)
         return True
 
 class FSCache():
@@ -352,7 +339,6 @@ class FSCache():
              self.entries = {}
              self.new_locks = {} # New locks (still) without entry in the cache
              self.unused_locks = {} # Paths with unused locks that will be removed on the next purge if remain unused
-             self.disk_locks = {} # To safely remove empty disk directories
              self.lru = LinkedList()
              self.size = {}
              for store in FSData.stores:
@@ -374,26 +360,6 @@ class FSCache():
                     new_lock = threading.RLock()
                     self.new_locks[path] = new_lock
                     return new_lock;
-    def get_disk_lock_for_file(self, filename):
-        dirname = os.path.dirname(filename)
-        return self.get_disk_lock(dirname)
-    def get_disk_lock(self, dirname):
-        with self.disk_lock:
-            try:
-                return self.disk_locks[dirname]
-            except KeyError:
-                new_lock = threading.RLock()
-                self.disk_locks[dirname] = new_lock
-                return new_lock
-    def remove_disk_lock_for_file(self, filename):
-        dirname = os.path.dirname(filename)
-        self.remove_disk_lock(dirname)
-    def remove_disk_lock(self, dirname):
-        with self.disk_lock:
-            try:
-                del self.disk_locks[dirname]
-            except KeyError:
-                pass
     def add(self, path):
         with self.get_lock(path):
             if not self.has(path):
