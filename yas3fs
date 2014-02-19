@@ -280,7 +280,6 @@ class FSData():
                     data_range.wake(False) # To make downloading threads go on... and then exit
     def rename(self, new_path):
         with self.get_lock():
-            self.path = new_path
             if self.store == 'disk':
                 filename = self.cache.get_cache_filename(self.path)
                 new_filename = self.cache.get_cache_filename(new_path)
@@ -300,6 +299,7 @@ class FSData():
                                 self.cache.remove_disk_lock(etag_filename)
                 if self.content:
                     self.content = io.FileIO(new_filename, mode='rb+')
+            self.path = new_path
     def inc(self, prop):
         with self.get_lock():
             if prop in self.props:
@@ -1672,8 +1672,8 @@ class YAS3FS(LoggingMixIn, Operations):
             target_path = target[len(self.s3_prefix):].rstrip('/')
             if target_path[0] != '/':
                 target_path = '/' + target_path
-            self.cache.rename(source_path, target_path)
             logger.debug("renaming '%s' ('%s') -> '%s' ('%s')" % (source, source_path, target, target_path))
+            self.cache.rename(source_path, target_path)
             key = self.s3_bucket.get_key(source)
             if key: # For files in cache but still not flushed to S3
                 md = key.metadata
