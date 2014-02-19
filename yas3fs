@@ -350,16 +350,21 @@ class FSCache():
                     self.new_locks[path] = new_lock
                     return new_lock;
     def get_disk_lock(self, filename):
+        logger.debug("get_disk_lock '%s'" % (filename))
         dirname = os.path.dirname(filename)
+        logger.debug("get_disk_lock '%s' dirname '%s'" % (filename, dirname))
         with self.disk_lock:
             try:
                 return self.disk_locks[dirname]
             except KeyError:
+                logger.debug("get_disk_lock '%s' dirname '%s' new lock" % (filename, dirname))
                 new_lock = threading.RLock()
                 self.disk_locks[dirname] = new_lock
                 return new_lock
     def remove_disk_lock(self, filename):
+        logger.debug("remove_disk_lock '%s'" % (filename))
         dirname = os.path.dirname(filename)
+        logger.debug("remove_disk_lock '%s' dirname '%s'" % (filename, dirname))
         with self.disk_lock:
             try:
                 del self.disk_locks[dirname]
@@ -2078,8 +2083,10 @@ def createDir(dirname):
     logger.debug("createDir '%s'" % dirname)
     try:
         os.makedirs(dirname)
+        logger.debug("createDir '%s' created" % dirname)
     except OSError as exc: # Python >2.5                                                                 
         if exc.errno == errno.EEXIST and os.path.isdir(dirname):
+            logger.debug("createDir '%s' already there" % dirname)
             pass
         else:
             raise
@@ -2087,13 +2094,15 @@ def createDir(dirname):
 def removeEmptyDirForFile(filename):
     logger.debug("removeEmptyDirForFile '%s'" % filename)
     dirname = os.path.dirname(filename)
-    logger.debug("dirname '%s'" % dirname)
-    logger.debug("listdir '%s'" % os.listdir(dirname))
+    logger.debug("removeEmptyDirForFile '%s' dirname '%s'" % (filename, dirname))
+    logger.debug("removeEmptyDirForFile '%s' listdir '%s'" % (filename, os.listdir(dirname)))
     try:
         os.removedirs(dirname)
+        logger.debug("removeEmptyDirForFile '%s' dirname '%s' removed" % (filename, dirname))
         return True
     except OSError as exc: # Python >2.5
         if exc.errno == errno.ENOTEMPTY:
+            logger.debug("removeEmptyDirForFile '%s' dirname '%s' nor empty" % (filename, dirname))
             return False
         else:
             raise
