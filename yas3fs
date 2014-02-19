@@ -317,22 +317,22 @@ class FSData():
         logger.debug("remove_empty_dirs_for_file '%s'" % filename)
         dirname = filename
         while True:
-            dirname = os.path.dirname(filename)
+            dirname = os.path.dirname(dirname)
             if dirname == self.cache.cache_path:
                 break
             if not self.remove_empty_dir(dirname):
                 break
         logger.debug("remove_empty_dirs_for_file '%s' done" % (filename))
     def remove_empty_dir(self, dirname):
-        logger.debug("removeEmptyDir '%s'" % (dirname))
-        logger.debug("removeEmptyDir '%s' listdir '%s'" % (dirname, os.listdir(dirname)))
+        logger.debug("remove_empty_dir '%s'" % (dirname))
+        logger.debug("remove_empty_dir '%s' listdir '%s'" % (dirname, os.listdir(dirname)))
         with self.cache.get_disk_lock(dirname):
             try:
                 os.rmdir(dirname)
-                logger.debug("removeEmptyDir '%s' done" % (dirname))
+                logger.debug("remove_empty_dir '%s' done" % (dirname))
             except OSError as exc: # Python >2.5
                 if exc.errno == errno.ENOTEMPTY:
-                    logger.debug("removeEmptyDir '%s' nor empty" % (dirname))
+                    logger.debug("remove_empty_dir '%s' nor empty" % (dirname))
                     return False
                 else:
                     raise
