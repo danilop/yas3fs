@@ -20,12 +20,12 @@ mv -v wordpress wp
 echo "Number of files in the wp/ path:"
 find wp | wc -l
 echo "Zipping wp/ in wp.zip ..."
-zip -r wp.zip wp
+zip -rv wp.zip wp
 echo "Removing wp/ path ..."
 rm -rfv wp
 echo "Checking zip file ..."
-unzip -t wp.zip
+unzip -tv wp.zip
 echo "Listing zip file ..."
-unzip -l wp.zip
-echo "Remiving zip file ..."
-rm wp.zip
+unzip -lv wp.zip
+echo "Removing zip file ..."
+rm -v wp.zip
