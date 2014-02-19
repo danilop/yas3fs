@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+!/usr/bin/env python
 
 """
 Yet Another S3-backed File System, or yas3fs
@@ -309,11 +309,11 @@ class FSData():
                     self.set(prop, self.props[prop] - 1)
                 else:
                     self.delete(prop)
-    def create_dirs_for_file(filename):
+    def create_dirs_for_file(self, filename):
         logger.debug("create_dirs_for_file '%s'" % filename)
         dirname = os.path.dirname(filename)
         create_dirs(dirname)
-    def remove_empty_dirs_for_file(filename):
+    def remove_empty_dirs_for_file(self, filename):
         logger.debug("remove_empty_dirs_for_file '%s'" % filename)
         dirname = filename
         while True:
@@ -323,7 +323,7 @@ class FSData():
             if not self.remove_empty_dir(dirname):
                 break
         logger.debug("remove_empty_dirs_for_file '%s' done" % (filename))
-    def remove_empty_dir(dirname):
+    def remove_empty_dir(self, dirname):
         logger.debug("removeEmptyDir '%s'" % (dirname))
         logger.debug("removeEmptyDir '%s' listdir '%s'" % (dirname, os.listdir(dirname)))
         with self.cache.get_disk_lock(dirname):
