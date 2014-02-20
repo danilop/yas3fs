@@ -207,6 +207,9 @@ To unmount the file system on a Mac you can use `umount`.
       --id=ID              a unique ID identifying this node in a cluster
       --mkdir              create mountpoint if not found (create intermediate
                            directories as required)
+      --uid=N              default UID (default is current UID)
+      --gid=N              default GID (default is current GID)
+      --umask=MASK         default umask (default is current umask)
       -l FILE, --log=FILE  the filename to use for logs
       -f, --foreground     run in foreground
       -d, --debug          print debug information (implies '-f')
