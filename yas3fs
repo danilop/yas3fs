@@ -1882,7 +1882,6 @@ class YAS3FS(LoggingMixIn, Operations):
                 self.set_metadata(path, 'attr', None, k) # To update key metadata before upload to S3
                 self.set_metadata(path, 'xattr', None, k) # To update key metadata before upload to S3
                 mimetype = mimetypes.guess_type(path)[0] or 'application/octet-stream'
-                data.content.seek(0) # Do I need this???
                 if k.size == None:
                     old_size = 0
                 else:
@@ -1902,6 +1901,7 @@ class YAS3FS(LoggingMixIn, Operations):
                     logger.debug("flush '%s' '%s' '%s' '%s' S3" % (path, fh, k, mimetype))
                     retry = 0
                     while retry < self.s3_retries:
+                        data.content.seek(0)
                         try:
                             k.set_contents_from_file(data.content, headers={'Content-Type': mimetype})
                             break
@@ -2294,6 +2294,9 @@ In an EC2 instance a IAM role can be used to give access to S3/SNS/SQS resources
         # mount_options['local'] = True # local option is quite unstable
     else:
         mount_options['big_writes'] = True # Not working on OSX
+
+    from signal import signal, SIGPIPE, SIG_DFL
+    signal(SIGPIPE,SIG_DFL) ### To avoid "Broken pipe"
 
     fuse = FUSE(YAS3FS(options), **mount_options)
 
