@@ -1135,6 +1135,8 @@ class YAS3FS(LoggingMixIn, Operations):
 	    if s:
 		for kv in s.split(';'):
 		    k, v = kv.split('=')
+                    ###k = k.encode('utf-8')
+                    ###v = v.encode('utf-8')
                     if v.isdigit():
                         metadata_values[k] = int(v)
                     elif v.replace(".", "", 1).isdigit():
@@ -1186,7 +1188,7 @@ class YAS3FS(LoggingMixIn, Operations):
                         if values == None:
                             del key.metadata[metadata_name]
                         else:
-                            s = ';'.join(['%s=%s' % (k,v) for k,v in values.iteritems()])
+                            s = ';'.join(['%s=%s' % (k.decode('utf-8'),v.decode('utf-8')) for k,v in values.iteritems()])
                                           ### if not (metadata_name == 'attr' and k == 'st_size')]) # For the size use the key.size
                             key.metadata[metadata_name] = s
                     if (not data) or (data and (not data.has('change'))):
