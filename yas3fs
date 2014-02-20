@@ -1891,7 +1891,7 @@ class YAS3FS(LoggingMixIn, Operations):
                 if self.multipart_num > 0:
                     full_size = attr['st_size']
                     if full_size > self.multipart_size:
-                        logger.debug("flush '%s' '%s' '%s' '%s' S3" % (path, fh, k, mimetype))
+                        logger.debug("flush '%s' '%s' '%s' '%s' S3 multipart" % (path, fh, k, mimetype))
                         complete = self.multipart_upload(k.name, data, full_size,
                                                       headers={'Content-Type': mimetype}, metadata=k.metadata)
                         etag = complete.etag[1:-1]
@@ -1909,12 +1909,14 @@ class YAS3FS(LoggingMixIn, Operations):
                             logger.exception(e)
                             time.sleep(1.0) # Better wait 1 second before retrying
                             retry += 1
+                            logger.debug("flush '%s' '%s' '%s' '%s' S3 metadata '%s'" % (path, fh, k, mimetype, k.metadata))
                             logger.info("flush '%s' '%s' '%s' '%s' S3 retry %i" % (path, fh, k, mimetype, retry))
                     etag = k.etag[1:-1]
                 data.update_etag(etag)
                 data.delete('change')
                 self.publish(['flush', path, etag])
 
+        logger.debug("flush '%s' '%s' done" % (path, fh))
         return 0
 
     def multipart_upload(self, key_path, data, full_size, headers, metadata):
@@ -2112,7 +2114,7 @@ def remove_empty_dirs(dirname):
         logger.debug("remove_empty_dirs '%s' done" % (dirname))
     except OSError as exc: # Python >2.5
         if exc.errno == errno.ENOTEMPTY:
-            logger.debug("remove_empty_dirs '%s' nor empty" % (dirname))
+            logger.debug("remove_empty_dirs '%s' not empty" % (dirname))
             pass
         else:
             raise
@@ -2296,7 +2298,7 @@ In an EC2 instance a IAM role can be used to give access to S3/SNS/SQS resources
         mount_options['big_writes'] = True # Not working on OSX
 
     from signal import signal, SIGPIPE, SIG_DFL
-    signal(SIGPIPE,SIG_DFL) ### To avoid "Broken pipe"
+    signal(SIGPIPE,SIG_DFL) ### Ignore SIGPIPE to avoid "Broken pipe" errors
 
     fuse = FUSE(YAS3FS(options), **mount_options)
 
