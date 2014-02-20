@@ -1210,7 +1210,7 @@ class YAS3FS(LoggingMixIn, Operations):
                             except Exception as e:
                                 time.sleep(1.0) # Better wait 1 second before retrying
                                 retry += 1
-                                logger.debug("writing metadata '%s' '%s' S3 retry %i" % (path, key, retry))
+                                logger.info("writing metadata '%s' '%s' S3 retry %i" % (path, key, retry))
                         self.publish(['md', metadata_name, path])
                     
     def getattr(self, path, fh=None):
@@ -1316,7 +1316,7 @@ class YAS3FS(LoggingMixIn, Operations):
                     except Exception as e:
                         time.sleep(1.0) # Better wait 1 second before retrying
                         retry += 1
-                        logger.debug("mkdir '%s' '%s' '%s' S3 retry" % (path, mode, k))
+                        logger.info("mkdir '%s' '%s' '%s' S3 retry" % (path, mode, k))
             data.delete('change')
             if path != '/': ### Do I need this???
                 self.publish(['mkdir', path])
@@ -1369,7 +1369,7 @@ class YAS3FS(LoggingMixIn, Operations):
                 except Exception as e:
                     time.sleep(1.0) # Better wait 1 second before retrying
                     retry += 1
-                    logger.debug("symlink '%s' '%s' '%s' S3 retry" % (path, link, k))
+                    logger.info("symlink '%s' '%s' '%s' S3 retry" % (path, link, k))
             data.delete('change')
             self.publish(['symlink', path])
 
@@ -1686,7 +1686,7 @@ class YAS3FS(LoggingMixIn, Operations):
                     except Exception as e:
                         time.sleep(1.0) # Better wait 1 second before retrying
                         retry += 1
-                        logger.debug("renaming '%s' ('%s') -> '%s' ('%s') retry %i" % (source, source_path, target, target_path, retry))
+                        logger.info("renaming '%s' ('%s') -> '%s' ('%s') retry %i" % (source, source_path, target, target_path, retry))
                 key.delete()
                 self.publish(['rename', source_path, target_path])
 
@@ -1903,7 +1903,7 @@ class YAS3FS(LoggingMixIn, Operations):
                         except Exception as e:
                             time.sleep(1.0) # Better wait 1 second before retrying
                             retry += 1
-                            logger.debug("flush '%s' '%s' '%s' '%s' S3 retry" % (path, fh, k, mimetype))
+                            logger.info("flush '%s' '%s' '%s' '%s' S3 retry" % (path, fh, k, mimetype))
                     etag = k.etag[1:-1]
                 data.update_etag(etag)
                 data.delete('change')
