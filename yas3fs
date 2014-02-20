@@ -1191,7 +1191,8 @@ class YAS3FS(LoggingMixIn, Operations):
                             for k,v in values.iteritems():
                                 try:
                                     clean_values[str(k)] = str(v);
-                                except UnicodeDecodeError:
+                                except UnicodeDecodeError as e:
+                                    logger.exception(e)
                                     logger.info("set_metadata '%s' '%s' '%s' unicode no decode, ignoring value"
                                                 % (path, metadata_name, key, metadata_values))
                                     pass # just not store this key/value pair
@@ -1208,6 +1209,7 @@ class YAS3FS(LoggingMixIn, Operations):
                                 key.copy(key.bucket.name, key.name, md, preserve_acl=False) # Do I need to preserve ACL?
                                 break
                             except Exception as e:
+                                logger.exception(e)
                                 time.sleep(1.0) # Better wait 1 second before retrying
                                 retry += 1
                                 logger.info("writing metadata '%s' '%s' S3 retry %i" % (path, key, retry))
@@ -1314,9 +1316,10 @@ class YAS3FS(LoggingMixIn, Operations):
                         k.set_contents_from_string('', headers={'Content-Type': 'application/x-directory'})
                         break
                     except Exception as e:
+                        logger.exception(e)
                         time.sleep(1.0) # Better wait 1 second before retrying
                         retry += 1
-                        logger.info("mkdir '%s' '%s' '%s' S3 retry" % (path, mode, k))
+                        logger.info("mkdir '%s' '%s' '%s' S3 retry %i" % (path, mode, k, retry))
             data.delete('change')
             if path != '/': ### Do I need this???
                 self.publish(['mkdir', path])
@@ -1367,9 +1370,10 @@ class YAS3FS(LoggingMixIn, Operations):
                     k.set_contents_from_string(link, headers={'Content-Type': 'application/x-symlink'})
                     break
                 except Exception as e:
+                    logger.exception(e)
                     time.sleep(1.0) # Better wait 1 second before retrying
                     retry += 1
-                    logger.info("symlink '%s' '%s' '%s' S3 retry" % (path, link, k))
+                    logger.info("symlink '%s' '%s' '%s' S3 retry %i" % (path, link, k, retry))
             data.delete('change')
             self.publish(['symlink', path])
 
@@ -1499,8 +1503,8 @@ class YAS3FS(LoggingMixIn, Operations):
                     n2=dt.datetime.now()
                 retry = False
             except Exception as e:
-                logger.info("download_data error '%s' %i-%i [thread '%s'] -> retrying" % (path, start, end, thread_name))
                 logger.exception(e)
+                logger.info("download_data error '%s' %i-%i [thread '%s'] -> retrying" % (path, start, end, thread_name))
                 time.sleep(1.0) # Better wait 1 second before retrying
                 key = copy.deepcopy(self.get_key(path)) # Do I need this to overcome error "caching" ???
 
@@ -1684,6 +1688,7 @@ class YAS3FS(LoggingMixIn, Operations):
                         key.copy(key.bucket.name, target, md, preserve_acl=False) # Do I need to preserve ACL?
                         break
                     except Exception as e:
+                        logger.exception(e)
                         time.sleep(1.0) # Better wait 1 second before retrying
                         retry += 1
                         logger.info("renaming '%s' ('%s') -> '%s' ('%s') retry %i" % (source, source_path, target, target_path, retry))
@@ -1901,9 +1906,10 @@ class YAS3FS(LoggingMixIn, Operations):
                             k.set_contents_from_file(data.content, headers={'Content-Type': mimetype})
                             break
                         except Exception as e:
+                            logger.exception(e)
                             time.sleep(1.0) # Better wait 1 second before retrying
                             retry += 1
-                            logger.info("flush '%s' '%s' '%s' '%s' S3 retry" % (path, fh, k, mimetype))
+                            logger.info("flush '%s' '%s' '%s' '%s' S3 retry %i" % (path, fh, k, mimetype, retry))
                     etag = k.etag[1:-1]
                 data.update_etag(etag)
                 data.delete('change')
@@ -1958,7 +1964,8 @@ class YAS3FS(LoggingMixIn, Operations):
                     logger.debug("begin upload of part %i retry %i" % (num, retry))
                     try:
                         mpu.upload_part_from_file(fp=part, part_num=num) # Manage retries???
-                    except:
+                    except Exception as e:
+                        logger.exception(e)
                         logger.info("error during multipart upload part %i retry %i: %s"
                                     % (num, retry, sys.exc_info()[0]))
                         pass
