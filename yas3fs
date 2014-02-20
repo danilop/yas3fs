@@ -1910,6 +1910,8 @@ class YAS3FS(LoggingMixIn, Operations):
                             time.sleep(1.0) # Better wait 1 second before retrying
                             retry += 1
                             logger.debug("flush '%s' '%s' '%s' '%s' S3 metadata '%s'" % (path, fh, k, mimetype, k.metadata))
+                            logget.debug("flush trying removing xattr")
+                            del k.metadata['xattr']
                             logger.info("flush '%s' '%s' '%s' '%s' S3 retry %i" % (path, fh, k, mimetype, retry))
                     etag = k.etag[1:-1]
                 data.update_etag(etag)
@@ -2297,8 +2299,8 @@ In an EC2 instance a IAM role can be used to give access to S3/SNS/SQS resources
     else:
         mount_options['big_writes'] = True # Not working on OSX
 
-    from signal import signal, SIGPIPE, SIG_DFL
-    signal(SIGPIPE,SIG_DFL) ### Ignore SIGPIPE to avoid "Broken pipe" errors
+    ### from signal import signal, SIGPIPE, SIG_DFL
+    ### signal(SIGPIPE,SIG_DFL) ### Ignore SIGPIPE to avoid "Broken pipe" errors
 
     fuse = FUSE(YAS3FS(options), **mount_options)
 
