@@ -1135,8 +1135,6 @@ class YAS3FS(LoggingMixIn, Operations):
 	    if s:
 		for kv in s.split(';'):
 		    k, v = kv.split('=')
-                    ###k = k.encode('utf-8')
-                    ###v = v.encode('utf-8')
                     if v.isdigit():
                         metadata_values[k] = int(v)
                     elif v.replace(".", "", 1).isdigit():
@@ -1176,7 +1174,8 @@ class YAS3FS(LoggingMixIn, Operations):
             if not metadata_values == None:
                 self.cache.set(path, metadata_name, metadata_values)
             data = self.cache.get(path, 'data')
-            if self.write_metadata and (key or (not data) or (data and not data.has('change'))): # No change in progress, I should write now
+            if self.write_metadata and (key or (not data) or (data and not data.has('change'))):
+                # No change in progress, I should write now
                 if not key:
                     key = self.get_key(path)
                     logger.debug("set_metadata '%s' '%s' '%s' Key" % (path, metadata_name, key))
@@ -1188,8 +1187,16 @@ class YAS3FS(LoggingMixIn, Operations):
                         if values == None:
                             del key.metadata[metadata_name]
                         else:
-                            s = ';'.join(['%s=%s' % (k.decode('utf-8'),v.decode('utf-8')) for k,v in values.iteritems()])
-                                          ### if not (metadata_name == 'attr' and k == 'st_size')]) # For the size use the key.size
+                            clean_values = {}
+                            for k,v in values.iteritems():
+                                try:
+                                    clean_values[str(k)] = str(v);
+                                except UnicodeDecodeError:
+                                    logger.info("set_metadata '%s' '%s' '%s' unicode no decode, ignoring value"
+                                                % (path, metadata_name, key, metadata_values))
+                                    pass # just not store this key/value pair
+                            s = ';'.join(['%s=%s' % (k,v) for k,v in clean_values.iteritems()
+                                          if not (metadata_name == 'attr' and k == 'st_size')]) # For the size use the key.size
                             key.metadata[metadata_name] = s
                     if (not data) or (data and (not data.has('change'))):
                         logger.debug("set_metadata writing '%s' '%s' S3" % (path, key))
