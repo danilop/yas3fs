@@ -1200,7 +1200,7 @@ class YAS3FS(LoggingMixIn, Operations):
                                           if not (metadata_name == 'attr' and k == 'st_size')]) # For size use key.size
                             key.metadata[metadata_name] = s
                     if (not data) or (data and (not data.has('change'))):
-                        logger.debug("set_metadata writing '%s' '%s' S3" % (path, key))
+                        logger.debug("set_metadata '%s' '%s' S3" % (path, key))
                         md = key.metadata
                         md['Content-Type'] = key.content_type # Otherwise we loose the Content-Type with S3 Copy
                         retry = 0
@@ -1212,7 +1212,12 @@ class YAS3FS(LoggingMixIn, Operations):
                                 logger.exception(e)
                                 time.sleep(1.0) # Better wait 1 second before retrying
                                 retry += 1
-                                logger.info("writing metadata '%s' '%s' S3 retry %i" % (path, key, retry))
+                                logger.debug("set_metadata '%s' '%s' S3 metadata '%s'" % (path, key, key.metadata))
+                                if 'xattr' in key.metadata: ### Workaround to avoid ASCII/Unicode issue in S3 user metadata -> TODO ???
+                                    del key.metadata['xattr']
+                                    logger.debug("set_metadata '%s' '%s' S3 trying removing xattr -> metadata '%s'"
+                                                 % (path, key, key.metadata))
+                                logger.info("set_metadata '%s' '%s' S3 retry %i" % (path, key, retry))
                         self.publish(['md', metadata_name, path])
                     
     def getattr(self, path, fh=None):
