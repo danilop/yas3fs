@@ -1913,7 +1913,7 @@ class YAS3FS(LoggingMixIn, Operations):
                             if 'xattr' in k.metadata: ### Workaround to avoid ASCII/Unicode issue in S3 user metadata -> TODO ???
                                 del k.metadata['xattr']
                                 logger.debug("flush '%s' '%s' '%s' '%s' S3 trying removing xattr -> metadata '%s'"
-                                             % (path, fh, k, mimetype, k.metadatS3 metadata -> trying removing xattr")
+                                             % (path, fh, k, mimetype, k.metadata))
                             logger.info("flush '%s' '%s' '%s' '%s' S3 retry %i" % (path, fh, k, mimetype, retry))
                     etag = k.etag[1:-1]
                 data.update_etag(etag)
