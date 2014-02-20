@@ -546,7 +546,7 @@ class YAS3FS(LoggingMixIn, Operations):
         ### self.http_listen_path_length = 30
         self.running = True
         self.check_status_interval = 5.0 # Seconds, no need to configure that
-        self.s3_copy_retries = 3 # Maximum number of S3 Copy retries
+        self.s3_retries = 3 # Maximum number of S3 retries (outside of boto)
 
         # Initialization
         global debug
@@ -1203,7 +1203,7 @@ class YAS3FS(LoggingMixIn, Operations):
                         md = key.metadata
                         md['Content-Type'] = key.content_type # Otherwise we loose the Content-Type with S3 Copy
                         retry = 0
-                        while retry < self.s3_copy_retries:
+                        while retry < self.s3_retries:
                             try:
                                 key.copy(key.bucket.name, key.name, md, preserve_acl=False) # Do I need to preserve ACL?
                                 break
@@ -1308,7 +1308,15 @@ class YAS3FS(LoggingMixIn, Operations):
             if path != '/' or self.write_metadata:
                 k.key = self.join_prefix(full_path)
                 logger.debug("mkdir '%s' '%s' '%s' S3" % (path, mode, k))
-                k.set_contents_from_string('', headers={'Content-Type': 'application/x-directory'})
+                retry = 0
+                while retry < self.s3_retries:
+                    try:
+                        k.set_contents_from_string('', headers={'Content-Type': 'application/x-directory'})
+                        break
+                    except Exception as e:
+                        time.sleep(1.0) # Better wait 1 second before retrying
+                        retry += 1
+                        logger.debug("mkdir '%s' '%s' '%s' S3 retry" % (path, mode, k))
             data.delete('change')
             if path != '/': ### Do I need this???
                 self.publish(['mkdir', path])
@@ -1352,9 +1360,16 @@ class YAS3FS(LoggingMixIn, Operations):
             k.key = self.join_prefix(path)
             self.cache.set(path, 'key', k)
             self.add_to_parent_readdir(path)
-
             logger.debug("symlink '%s' '%s' '%s' S3" % (path, link, k))
-            k.set_contents_from_string(link, headers={'Content-Type': 'application/x-symlink'})
+            retry = 0
+            while retry < self.s3_retries:
+                try:
+                    k.set_contents_from_string(link, headers={'Content-Type': 'application/x-symlink'})
+                    break
+                except Exception as e:
+                    time.sleep(1.0) # Better wait 1 second before retrying
+                    retry += 1
+                    logger.debug("symlink '%s' '%s' '%s' S3 retry" % (path, link, k))
             data.delete('change')
             self.publish(['symlink', path])
 
@@ -1664,7 +1679,7 @@ class YAS3FS(LoggingMixIn, Operations):
                 md = key.metadata
                 md['Content-Type'] = key.content_type # Otherwise we loose the Content-Type with S3 Copy
                 retry = 0
-                while retry < self.s3_copy_retries:
+                while retry < self.s3_retries:
                     try:
                         key.copy(key.bucket.name, target, md, preserve_acl=False) # Do I need to preserve ACL?
                         break
@@ -1861,7 +1876,7 @@ class YAS3FS(LoggingMixIn, Operations):
                 attr['st_mtime'] = now
                 self.set_metadata(path, 'attr', None, k) # To update key metadata before upload to S3
                 self.set_metadata(path, 'xattr', None, k) # To update key metadata before upload to S3
-                type = mimetypes.guess_type(path)[0] or 'application/octet-stream'
+                mimetype = mimetypes.guess_type(path)[0] or 'application/octet-stream'
                 data.content.seek(0) # Do I need this???
                 if k.size == None:
                     old_size = 0
@@ -1872,15 +1887,23 @@ class YAS3FS(LoggingMixIn, Operations):
                 if self.multipart_num > 0:
                     full_size = attr['st_size']
                     if full_size > self.multipart_size:
-                        logger.debug("flush '%s' '%s' '%s' '%s' S3" % (path, fh, k, type))
+                        logger.debug("flush '%s' '%s' '%s' '%s' S3" % (path, fh, k, mimetype))
                         complete = self.multipart_upload(k.name, data, full_size,
-                                                      headers={'Content-Type': type}, metadata=k.metadata)
+                                                      headers={'Content-Type': mimetype}, metadata=k.metadata)
                         etag = complete.etag[1:-1]
                         new_k = self.get_key(path, cache=False) # To refresh the S3 key cache
                         written = True
                 if not written:
-                    logger.debug("flush '%s' '%s' '%s' '%s' S3" % (path, fh, k, type))
-                    k.set_contents_from_file(data.content, headers={'Content-Type': type})
+                    logger.debug("flush '%s' '%s' '%s' '%s' S3" % (path, fh, k, mimetype))
+                    retry = 0
+                    while retry < self.s3_retries:
+                        try:
+                            k.set_contents_from_file(data.content, headers={'Content-Type': mimetype})
+                            break
+                        except Exception as e:
+                            time.sleep(1.0) # Better wait 1 second before retrying
+                            retry += 1
+                            logger.debug("flush '%s' '%s' '%s' '%s' S3 retry" % (path, fh, k, mimetype))
                     etag = k.etag[1:-1]
                 data.update_etag(etag)
                 data.delete('change')
