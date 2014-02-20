@@ -1132,6 +1132,15 @@ class YAS3FS(LoggingMixIn, Operations):
                 s = key.get_metadata(metadata_name)
             else:
                 s = None
+	    if s:
+		for kv in s.split(';'):
+		    k, v = kv.split('=')
+                    if v.isdigit():
+                        metadata_values[k] = int(v)
+                    elif v.replace(".", "", 1).isdigit():
+                        metadata_values[k] = float(v)
+                    else:
+                        metadata_values[k] = v
             if metadata_name == 'attr': # Custom exception(s)
                 if key:
                     metadata_values['st_size'] = key.size
@@ -1152,15 +1161,6 @@ class YAS3FS(LoggingMixIn, Operations):
                     metadata_values['st_mtime'] = now
                     metadata_values['st_atime'] = now
                     metadata_values['st_ctime'] = now
-	    if s:
-		for kv in s.split(';'):
-		    k, v = kv.split('=')
-                    if v.isdigit():
-                        metadata_values[k] = int(v)
-                    elif v.replace(".", "", 1).isdigit():
-                        metadata_values[k] = float(v)
-                    else:
-                        metadata_values[k] = v
 	    self.cache.add(path)
 	    self.cache.set(path, metadata_name, metadata_values)
         else:
@@ -1186,8 +1186,8 @@ class YAS3FS(LoggingMixIn, Operations):
                         if values == None:
                             del key.metadata[metadata_name]
                         else:
-                            s = ';'.join(['%s=%s' % (k,v) for k,v in values.iteritems()
-                                          if not (metadata_name == 'attr' and k == 'st_size')]) # For the size use the key.size
+                            s = ';'.join(['%s=%s' % (k,v) for k,v in values.iteritems()])
+                                          ### if not (metadata_name == 'attr' and k == 'st_size')]) # For the size use the key.size
                             key.metadata[metadata_name] = s
                     if (not data) or (data and (not data.has('change'))):
                         logger.debug("set_metadata writing '%s' '%s' S3" % (path, key))
