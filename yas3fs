@@ -1197,7 +1197,7 @@ class YAS3FS(LoggingMixIn, Operations):
                                                 % (path, metadata_name, key, metadata_values))
                                     pass # just not store this key/value pair
                             s = ';'.join(['%s=%s' % (k,v) for k,v in clean_values.iteritems()
-                                          if not (metadata_name == 'attr' and k == 'st_size')]) # For the size use the key.size
+                                          if not (metadata_name == 'attr' and k == 'st_size')]) # For size use key.size
                             key.metadata[metadata_name] = s
                     if (not data) or (data and (not data.has('change'))):
                         logger.debug("set_metadata writing '%s' '%s' S3" % (path, key))
@@ -1910,8 +1910,10 @@ class YAS3FS(LoggingMixIn, Operations):
                             time.sleep(1.0) # Better wait 1 second before retrying
                             retry += 1
                             logger.debug("flush '%s' '%s' '%s' '%s' S3 metadata '%s'" % (path, fh, k, mimetype, k.metadata))
-                            logger.debug("flush trying removing xattr")
-                            del k.metadata['xattr']
+                            if 'xattr' in k.metadata: ### Workaround to avoid ASCII/Unicode issue in S3 user metadata -> TODO ???
+                                del k.metadata['xattr']
+                                logger.debug("flush '%s' '%s' '%s' '%s' S3 trying removing xattr -> metadata '%s'"
+                                             % (path, fh, k, mimetype, k.metadatS3 metadata -> trying removing xattr")
                             logger.info("flush '%s' '%s' '%s' '%s' S3 retry %i" % (path, fh, k, mimetype, retry))
                     etag = k.etag[1:-1]
                 data.update_etag(etag)
