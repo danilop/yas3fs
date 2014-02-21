@@ -1190,7 +1190,10 @@ class YAS3FS(LoggingMixIn, Operations):
                         if values == None:
                             del key.metadata[metadata_name]
                         else:
-                            key.metadata[metadata_name] = json.dumps(values)
+                            try:
+                                key.metadata[metadata_name] = json.dumps(values)
+                            except UnicodeDecodeError:
+                                pass # Ignore the binary values - something better TODO ???
                     if (not data) or (data and (not data.has('change'))):
                         logger.debug("set_metadata '%s' '%s' S3" % (path, key))
                         md = key.metadata
