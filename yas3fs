@@ -1208,10 +1208,6 @@ class YAS3FS(LoggingMixIn, Operations):
                                 time.sleep(1.0) # Better wait 1 second before retrying
                                 retry += 1
                                 logger.debug("set_metadata '%s' '%s' S3 metadata '%s'" % (path, key, key.metadata))
-                                if 'xattr' in key.metadata: ### Workaround to avoid ASCII/Unicode issue in S3 user metadata -> TODO ???
-                                    del key.metadata['xattr']
-                                    logger.debug("set_metadata '%s' '%s' S3 trying removing xattr -> metadata '%s'"
-                                                 % (path, key, key.metadata))
                                 logger.info("set_metadata '%s' '%s' S3 retry %i" % (path, key, retry))
                         self.publish(['md', metadata_name, path])
                     
@@ -1909,11 +1905,8 @@ class YAS3FS(LoggingMixIn, Operations):
                             logger.exception(e)
                             time.sleep(1.0) # Better wait 1 second before retrying
                             retry += 1
-                            logger.debug("flush '%s' '%s' '%s' '%s' S3 metadata '%s'" % (path, fh, k, mimetype, k.metadata))
-                            if 'xattr' in k.metadata: ### Workaround to avoid ASCII/Unicode issue in S3 user metadata -> TODO ???
-                                del k.metadata['xattr']
-                                logger.debug("flush '%s' '%s' '%s' '%s' S3 trying removing xattr -> metadata '%s'"
-                                             % (path, fh, k, mimetype, k.metadata))
+                            logger.debug("flush '%s' '%s' '%s' '%s' S3 metadata '%s'"
+                                         % (path, fh, k, mimetype, k.metadata))
                             logger.info("flush '%s' '%s' '%s' '%s' S3 retry %i" % (path, fh, k, mimetype, retry))
                     etag = k.etag[1:-1]
                 data.update_etag(etag)
