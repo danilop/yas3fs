@@ -1194,7 +1194,7 @@ class YAS3FS(LoggingMixIn, Operations):
                                 key.metadata[metadata_name] = json.dumps(values)
                             except UnicodeDecodeError:
                                 logger.info("set_metadata '%s' '%s' '%s' cannot decode unicode, not written on S3"
-                                            % (path, metadata_name, key)
+                                            % (path, metadata_name, key))
                                 pass # Ignore the binary values - something better TODO ???
                     if (not data) or (data and (not data.has('change'))):
                         logger.debug("set_metadata '%s' '%s' S3" % (path, key))
