@@ -162,7 +162,7 @@ class FSData():
         elif store == 'disk':
             previous_file = False
             filename = self.cache.get_cache_filename(self.path)
-            if os.path.isfile(filename.decode('utf-8')):
+            if os.path.isfile(filename):
                 # There's a file already there
                 self.content = io.FileIO(filename, mode='rb+')
                 self.update_size()
@@ -170,7 +170,7 @@ class FSData():
                 self.set('new', None) # Not sure it is the latest version
                 # Now search for an etag file
                 etag_filename = self.cache.get_cache_etags_filename(self.path)
-                if os.path.isfile(etag_filename.decode('utf-8')):
+                if os.path.isfile(etag_filename):
                     with open(etag_filename, 'r') as etag_file:
                         self.etag = etag_file.read()
                     previous_file = True
@@ -269,11 +269,11 @@ class FSData():
                     filename = self.cache.get_cache_filename(self.path)
                     etag_filename = self.cache.get_cache_etags_filename(self.path)
                     with self.cache.disk_lock:
-                        if os.path.isfile(filename.decode('utf-8')):
+                        if os.path.isfile(filename):
                             os.unlink(filename)
                             remove_empty_dirs_for_file(filename)
                     with self.cache.disk_lock:
-                        if os.path.isfile(etag_filename.decode('utf-8')):
+                        if os.path.isfile(etag_filename):
                             os.unlink(etag_filename)
                             remove_empty_dirs_for_file(etag_filename)
                 self.content = None # If not
@@ -302,7 +302,7 @@ class FSData():
                     os.rename(filename, new_filename)
                 with self.cache.disk_lock:
                     remove_empty_dirs_for_file(filename)
-                if os.path.isfile(etag_filename.decode('utf-8')):
+                if os.path.isfile(etag_filename):
                     with self.cache.disk_lock:
                         create_dirs_for_file(new_etag_filename)
                         os.rename(etag_filename, new_etag_filename)
@@ -1047,7 +1047,7 @@ class YAS3FS(LoggingMixIn, Operations):
 
     def add_to_parent_readdir(self, path):
         logger.debug("add_to_parent_readdir '%s'" % (path))
-        (parent_path, dir) = os.path.split(path.decode('utf-8'))
+        (parent_path, dir) = os.path.split(path)
         logger.debug("add_to_parent_readdir '%s' parent_path '%s'" % (path, parent_path))
         with self.cache.get_lock(parent_path):
             dirs = self.cache.get(parent_path, 'readdir')
@@ -1056,7 +1056,7 @@ class YAS3FS(LoggingMixIn, Operations):
 
     def remove_from_parent_readdir(self, path):
         logger.debug("remove_from_parent_readdir '%s'" % (path))
-        (parent_path, dir) = os.path.split(path.decode('utf-8'))
+        (parent_path, dir) = os.path.split(path)
         logger.debug("remove_from_parent_readdir '%s' parent_path '%s'" % (path, parent_path))
         with self.cache.get_lock(parent_path):
             dirs = self.cache.get(parent_path, 'readdir')
@@ -1065,7 +1065,7 @@ class YAS3FS(LoggingMixIn, Operations):
 
     def reset_parent_readdir(self, path):
         logger.debug("reset_parent_readdir '%s'" % (path))
-        (parent_path, dir) = os.path.split(path.decode('utf-8'))
+        (parent_path, dir) = os.path.split(path)
         logger.debug("reset_parent_readdir '%s' parent_path '%s'" % (path, parent_path))
         self.cache.delete(parent_path, 'readdir')
 
@@ -1086,7 +1086,7 @@ class YAS3FS(LoggingMixIn, Operations):
                 return key
         look_on_S3 = True
         if path != '/':
-            (parent_path, file) = os.path.split(path.decode('utf-8'))
+            (parent_path, file) = os.path.split(path)
             dirs = self.cache.get(parent_path, 'readdir')
             if dirs and file not in dirs:
                 look_on_S3 = False # We know it's not there
@@ -1649,7 +1649,7 @@ class YAS3FS(LoggingMixIn, Operations):
         if not key and not self.cache.has(path):
             logger.debug("rename '%s' '%s' ENOENT" % (path, new_path))
             raise FuseOSError(errno.ENOENT)
-        new_parent_key = self.get_key(os.path.dirname(new_path.decode('utf-8')))
+        new_parent_key = self.get_key(os.path.dirname(new_path))
         if not new_parent_key:
             logger.debug("rename '%s' '%s' ENOENT" % (path, new_path))
             raise FuseOSError(errno.ENOENT)
@@ -2102,7 +2102,7 @@ def create_dirs(dirname):
         os.makedirs(dirname)
         logger.debug("create_dirs '%s' done" % dirname)
     except OSError as exc: # Python >2.5                                                                 
-        if exc.errno == errno.EEXIST and os.path.isdir(dirname.decode('utf-8')):
+        if exc.errno == errno.EEXIST and os.path.isdir(dirname):
             logger.debug("create_dirs '%s' already there" % dirname)
             pass
         else:
@@ -2122,12 +2122,12 @@ def remove_empty_dirs(dirname):
 
 def create_dirs_for_file(filename):
     logger.debug("create_dirs_for_file '%s'" % filename)
-    dirname = os.path.dirname(filename.decode('utf-8'))
+    dirname = os.path.dirname(filename)
     create_dirs(dirname)
 
 def remove_empty_dirs_for_file(filename):
     logger.debug("remove_empty_dirs_for_file '%s'" % filename)
-    dirname = os.path.dirname(filename.decode('utf-8'))
+    dirname = os.path.dirname(filename)
     remove_empty_dirs(dirname)
 
 def get_current_time():
@@ -2290,7 +2290,7 @@ In an EC2 instance a IAM role can be used to give access to S3/SNS/SQS resources
         mount_options['umask'] = options.umask
 
     if sys.platform == "darwin":
-        mount_options['volname'] = os.path.basename(mountpoint.decode('utf-8'))
+        mount_options['volname'] = os.path.basename(mountpoint)
         mount_options['noappledouble'] = True
         mount_options['daemon_timeout'] = 3600
         mount_options['auto_xattr'] = True
