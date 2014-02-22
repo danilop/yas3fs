@@ -636,11 +636,7 @@ class YAS3FS(LoggingMixIn, Operations):
         if not self.aws_region in (r.name for r in boto.s3.regions()):
             errorAndExit("wrong AWS region '%s' for S3" % self.aws_region)
         try:
-            if self.aws_region == 'us-east-1':
-                # For US Standard use Northern Virginia endpoint only
-                self.s3 = boto.connect_s3(host='s3-external-1.amazonaws.com')
-            else:
-                self.s3 = boto.s3.connect_to_region(self.aws_region)
+            self.s3 = boto.connect_s3()
         except boto.exception.NoAuthHandlerFound:
             errorAndExit("no AWS credentials found")
         if not self.s3:
@@ -1189,7 +1185,12 @@ class YAS3FS(LoggingMixIn, Operations):
                             values = self.cache.get(path, metadata_name)
                         if values == None:
                             del key.metadata[metadata_name]
-                        else:
+                        elif any(values): # To avoid writing empy dicts on S3
+                            if metadata_name == 'attr':
+                                try:
+                                    del values['st_size'] # Don't need that on S3
+                                except KeyError:
+                                    pass
                             try:
                                 key.metadata[metadata_name] = json.dumps(values)
                             except UnicodeDecodeError:
@@ -1198,12 +1199,12 @@ class YAS3FS(LoggingMixIn, Operations):
                                 pass # Ignore the binary values - something better TODO ???
                     if (not data) or (data and (not data.has('change'))):
                         logger.debug("set_metadata '%s' '%s' S3" % (path, key))
-                        md = key.metadata
-                        md['Content-Type'] = key.content_type # Otherwise we loose the Content-Type with S3 Copy
+                        ###md = key.metadata
+                        ###md['Content-Type'] = key.content_type # Otherwise we loose the Content-Type with S3 Copy
                         retry = 0
                         while retry < self.s3_retries:
                             try:
-                                key.copy(key.bucket.name, key.name, md, preserve_acl=False) # Do I need to preserve ACL?
+                                key.copy(key.bucket.name, key.name, key.metadata, preserve_acl=False) # Do I need to preserve ACL?
                                 break
                             except Exception as e:
                                 logger.exception(e)
@@ -1280,14 +1281,14 @@ class YAS3FS(LoggingMixIn, Operations):
                 raise FuseOSError(errno.EEXIST)
             now = get_current_time()
             uid, gid = get_uid_gid()
-            attr = {}
-            attr['st_uid'] = uid
-            attr['st_gid'] = gid
-            attr['st_atime'] = now
-            attr['st_mtime'] = now
-            attr['st_ctime'] = now
-            attr['st_size'] = 0
-            attr['st_mode'] = (stat.S_IFDIR | mode)
+            attr = { 'st_uid': uid,
+                     'st_gid': gid,
+                     'st_atime': now,
+                     'st_mtime': now,
+                     'st_ctime': now,
+                     'st_size': 0,
+                     'st_mode': (stat.S_IFDIR | mode)
+                 }
             self.cache.delete(path)
             self.cache.add(path)
             data = FSData(self.cache, 'mem', path)
