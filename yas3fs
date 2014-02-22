@@ -1180,7 +1180,7 @@ class YAS3FS(LoggingMixIn, Operations):
                     logger.debug("set_metadata '%s' '%s' '%s' Key" % (path, metadata_name, key))
                 if key:
                     if metadata_name:
-                        values = copy.copy(metadata_values) # To avoid issues when removing 'st_size' from 'attr'
+                        values = copy.deepcopy(metadata_values) # To avoid issues when removing 'st_size' from 'attr'
                         if values == None:
                             values = self.cache.get(path, metadata_name)
                         if values == None:
