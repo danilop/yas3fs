@@ -1188,7 +1188,7 @@ class YAS3FS(LoggingMixIn, Operations):
                         elif any(values): # To avoid writing empy dicts on S3
                             if metadata_name == 'attr':
                                 try:
-                                    del values['st_size'] # Don't need that on S3
+                                    del values['st_size'] # Don't need st_size on S3
                                 except KeyError:
                                     pass
                             try:
@@ -1199,12 +1199,10 @@ class YAS3FS(LoggingMixIn, Operations):
                                 pass # Ignore the binary values - something better TODO ???
                     if (not data) or (data and (not data.has('change'))):
                         logger.debug("set_metadata '%s' '%s' S3" % (path, key))
-                        ###md = key.metadata
-                        ###md['Content-Type'] = key.content_type # Otherwise we loose the Content-Type with S3 Copy
                         retry = 0
                         while retry < self.s3_retries:
                             try:
-                                key.copy(key.bucket.name, key.name, key.metadata, preserve_acl=False) # Do I need to preserve ACL?
+                                key.copy(key.bucket.name, key.name, key.metadata, preserve_acl=False) # To preserve metadata
                                 break
                             except Exception as e:
                                 logger.exception(e)
