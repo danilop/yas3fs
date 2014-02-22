@@ -1180,17 +1180,13 @@ class YAS3FS(LoggingMixIn, Operations):
                     logger.debug("set_metadata '%s' '%s' '%s' Key" % (path, metadata_name, key))
                 if key:
                     if metadata_name:
+                        values = metadata_values
                         values = copy.deepcopy(metadata_values) # To avoid issues when removing 'st_size' from 'attr'
                         if values == None:
                             values = self.cache.get(path, metadata_name)
                         if values == None:
                             del key.metadata[metadata_name]
                         elif any(values): # To avoid writing empy dicts on S3
-                            if metadata_name == 'attr':
-                                try:
-                                    del values['st_size'] # Don't need st_size on S3
-                                except KeyError:
-                                    pass
                             try:
                                 key.metadata[metadata_name] = json.dumps(values)
                             except UnicodeDecodeError:
