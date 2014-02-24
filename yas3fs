@@ -1236,38 +1236,35 @@ class YAS3FS(LoggingMixIn, Operations):
 
     def readdir(self, path, fh=None):
         logger.debug("readdir '%s' '%s'" % (path, fh))
+        with self.cache.get_lock(path):
+            if self.cache.is_empty(path):
+                logger.debug("readdir '%s' '%s' ENOENT" % (path, fh))
+                raise FuseOSError(errno.ENOENT)
+            self.cache.add(path)
+            dirs = self.cache.get(path, 'readdir')
+            if not dirs:
+                logger.debug("readdir '%s' '%s' no cache" % (path, fh))
+                full_path = self.join_prefix(path)
+                if full_path == '.':
+                    full_path = ''
+                elif full_path != '' and full_path[-1] != '/':
+                    full_path += '/'
+                logger.debug("readdir '%s' '%s' S3 list '%s'" % (path, fh, full_path))
+                key_list = self.s3_bucket.list(full_path, '/')
+                dirs = ['.', '..']
+                for k in key_list:
+                    logger.debug("readdir '%s' '%s' S3 list key '%s'" % (path, fh, k))
+                    d = k.name[len(full_path):]
+                    if len(d) > 0:
+                        if d == '.':
+                            continue # I need this for whole S3 buckets mounted without a prefix, I use '.' for '/' metadata
+                        if d[-1] == '/':
+                            d = d[:-1]
+                        dirs.append(d)
+                self.cache.set(path, 'readdir', dirs)
 
-	if self.cache.is_empty(path):
-            logger.debug("readdir '%s' '%s' ENOENT" % (path, fh))
-	    raise FuseOSError(errno.ENOENT)
-
-	self.cache.add(path)
-
-        dirs = self.cache.get(path, 'readdir')
-
-	if not dirs:
-            logger.debug("readdir '%s' '%s' no cache" % (path, fh))
-	    full_path = self.join_prefix(path)
-            if full_path == '.':
-                full_path = ''
-            elif full_path != '' and full_path[-1] != '/':
-                full_path += '/'
-            logger.debug("readdir '%s' '%s' S3 list '%s'" % (path, fh, full_path))
-	    key_list = self.s3_bucket.list(full_path, '/')
-	    dirs = ['.', '..']
-	    for k in key_list:
-                logger.debug("readdir '%s' '%s' S3 list key '%s'" % (path, fh, k))
-		d = k.name[len(full_path):]
-		if len(d) > 0:
-                    if d == '.':
-                        continue # I need this for whole S3 buckets mounted without a prefix, I use '.' for '/' metadata
-		    if d[-1] == '/':
-			d = d[:-1]
-		    dirs.append(d)
-	    self.cache.set(path, 'readdir', dirs)
-
-        logger.debug("readdir '%s' '%s' '%s'" % (path, fh, dirs))
-	return dirs
+            logger.debug("readdir '%s' '%s' '%s'" % (path, fh, dirs))
+            return dirs
 
     def mkdir(self, path, mode):
         logger.debug("mkdir '%s' '%s'" % (path, mode))
@@ -1470,16 +1467,19 @@ class YAS3FS(LoggingMixIn, Operations):
                 return
             data_range = data.get('range')
             if not data_range:
-                logger.debug("download_data no range (before) '%s' [thread '%s']" % (path, thread_name))
+                logger.debug("download_data no range (before) '%s' [thread '%s']"
+                             % (path, thread_name))
                 return
             new_interval = [start, min(end, key.size - 1)]
             if data_range.interval.contains(new_interval): ### Can be removed ???
-                logger.debug("download_data '%s' %i-%i [thread '%s'] already downloaded" % (path, start, end, thread_name))
+                logger.debug("download_data '%s' %i-%i [thread '%s'] already downloaded"
+                             % (path, start, end, thread_name))
                 return
             else:
                 for i in data_range.ongoing_intervals.itervalues():
                     if i[0] <= new_interval[0] and i[1] >= new_interval[1]:
-                        logger.debug("download_data '%s' %i-%i [thread '%s'] already downloading" % (path, start, end, thread_name))
+                        logger.debug("download_data '%s' %i-%i [thread '%s'] already downloading"
+                                     % (path, start, end, thread_name))
                         return
             data_range.ongoing_intervals[thread_name] = new_interval
 
@@ -1555,33 +1555,34 @@ class YAS3FS(LoggingMixIn, Operations):
 
     def readlink(self, path):
         logger.debug("readlink '%s'" % (path))
-	if self.cache.is_empty(path):
-            logger.debug("readlink '%s' ENONENT" % (path))
-	    raise FuseOSError(errno.ENOENT)
-	self.cache.add(path)
-	if stat.S_ISLNK(self.getattr(path)['st_mode']):
-	    if not self.check_data(path):
+        with self.cache.get_lock(path):
+            if self.cache.is_empty(path):
                 logger.debug("readlink '%s' ENONENT" % (path))
-		raise FuseOSError(errno.ENOENT)
-            data = self.cache.get(path, 'data')
-            if data == None:
-                raise FuseOSError(errno.ENOENT) # ??? That should not happen
-            data_range = data.get('range')
-            if data_range:
-                self.enqueue_download_data(path)
-                while True:
-                    logger.debug("readlink wait '%s'" % (path))
-                    data_range.wait()
-                    logger.debug("readlink awake '%s'" % (path))
-                    data_range = data.get('range')
-                    if not data_range:
-                        break
-            data.open()
-            link = data.get_content_as_string()
-            data.close()
-	    return link
-        logger.debug("readlink '%s' EINVAL" % (path))
-	raise FuseOSError(errno.EINVAL)
+                raise FuseOSError(errno.ENOENT)
+            self.cache.add(path)
+            if stat.S_ISLNK(self.getattr(path)['st_mode']):
+                if not self.check_data(path):
+                    logger.debug("readlink '%s' ENONENT" % (path))
+                    raise FuseOSError(errno.ENOENT)
+                data = self.cache.get(path, 'data')
+                if data == None:
+                    raise FuseOSError(errno.ENOENT) # ??? That should not happen
+                data_range = data.get('range')
+                if data_range:
+                    self.enqueue_download_data(path)
+                    while True:
+                        logger.debug("readlink wait '%s'" % (path))
+                        data_range.wait()
+                        logger.debug("readlink awake '%s'" % (path))
+                        data_range = data.get('range')
+                        if not data_range:
+                            break
+                data.open()
+                link = data.get_content_as_string()
+                data.close()
+                return link
+            logger.debug("readlink '%s' EINVAL" % (path))
+            raise FuseOSError(errno.EINVAL)
  
     def rmdir(self, path):
         logger.debug("rmdir '%s'" % (path))
@@ -1644,18 +1645,19 @@ class YAS3FS(LoggingMixIn, Operations):
     ### Should work for files in cache but not flushed to S3...
     def rename(self, path, new_path):
         logger.debug("rename '%s' '%s'" % (path, new_path))
-        if self.cache.is_empty(path):
-            logger.debug("rename '%s' '%s' ENOENT" % (path, new_path))
-            raise FuseOSError(errno.ENOENT)
-        key = self.get_key(path)
-        if not key and not self.cache.has(path):
-            logger.debug("rename '%s' '%s' ENOENT" % (path, new_path))
-            raise FuseOSError(errno.ENOENT)
-        new_parent_key = self.get_key(os.path.dirname(new_path))
-        if not new_parent_key:
-            logger.debug("rename '%s' '%s' ENOENT" % (path, new_path))
-            raise FuseOSError(errno.ENOENT)
-        to_copy = {}
+        with self.cache.get_lock(path):
+            if self.cache.is_empty(path):
+                logger.debug("rename '%s' '%s' ENOENT" % (path, new_path))
+                raise FuseOSError(errno.ENOENT)
+            key = self.get_key(path)
+            if not key and not self.cache.has(path):
+                logger.debug("rename '%s' '%s' ENOENT" % (path, new_path))
+                raise FuseOSError(errno.ENOENT)
+            new_parent_key = self.get_key(os.path.dirname(new_path))
+            if not new_parent_key:
+                logger.debug("rename '%s' '%s' ENOENT" % (path, new_path))
+                raise FuseOSError(errno.ENOENT)
+            to_copy = {}
         if key:
             if key.name[-1] == '/':
                 key_list = self.s3_bucket.list(key.name)
