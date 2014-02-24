@@ -1215,23 +1215,24 @@ class YAS3FS(LoggingMixIn, Operations):
                     
     def getattr(self, path, fh=None):
         logger.debug("getattr -> '%s' '%s'" % (path, fh))
-        if self.cache.is_empty(path):
-            logger.debug("getattr <- '%s' '%s' cache ENOENT" % (path, fh))
-            raise FuseOSError(errno.ENOENT)
-	attr = self.get_metadata(path, 'attr')
-        if attr == None:
-            logger.debug("getattr <- '%s' '%s' ENOENT" % (path, fh))
-            raise FuseOSError(errno.ENOENT)
-        if attr['st_size'] == 0 and stat.S_ISDIR(attr['st_mode']):
-            attr['st_size'] = 4096 # For compatibility...
-	attr['st_nlink'] = 1 # Something better TODO ???
-        if self.full_prefetch: # Prefetch
-            if stat.S_ISDIR(attr['st_mode']):
-                self.readdir(path)
-            else:
-                self.check_data(path)
-        logger.debug("getattr <- '%s' '%s' '%s'" % (path, fh, attr))
-        return attr
+        with self.cache.get_lock(path): # To avoid consistency issues, e.g. with a concurrent purge
+            if self.cache.is_empty(path):
+                logger.debug("getattr <- '%s' '%s' cache ENOENT" % (path, fh))
+                raise FuseOSError(errno.ENOENT)
+            attr = self.get_metadata(path, 'attr')
+            if attr == None:
+                logger.debug("getattr <- '%s' '%s' ENOENT" % (path, fh))
+                raise FuseOSError(errno.ENOENT)
+            if attr['st_size'] == 0 and stat.S_ISDIR(attr['st_mode']):
+                attr['st_size'] = 4096 # For compatibility...
+            attr['st_nlink'] = 1 # Something better TODO ???
+            if self.full_prefetch: # Prefetch
+                if stat.S_ISDIR(attr['st_mode']):
+                    self.readdir(path)
+                else:
+                    self.check_data(path)
+            logger.debug("getattr <- '%s' '%s' '%s'" % (path, fh, attr))
+            return attr
 
     def readdir(self, path, fh=None):
         logger.debug("readdir '%s' '%s'" % (path, fh))
