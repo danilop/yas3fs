@@ -1104,68 +1104,73 @@ class YAS3FS(LoggingMixIn, Operations):
 
     def get_metadata(self, path, metadata_name, key=None):
         logger.debug("get_metadata -> '%s' '%s' '%s'" % (path, metadata_name, key))
-        if not self.cache.has(path, metadata_name):
-            if not key:
-                key = self.get_key(path)
-            if not key:
-                if path == '/': # First time mount of a new file system
-                    self.mkdir(path, 0755)
-                    logger.debug("get_metadata -> '%s' '%s' '%s' First time mount" % (path, metadata_name, key))
-                    return self.cache.get(path, metadata_name)
-                else:
-                    full_path = self.join_prefix(path + '/')
-                    logger.debug("get_metadata -> '%s' '%s' '%s' S3 list '%s'" % (path, metadata_name, key, full_path))
-                    key_list = self.s3_bucket.list(full_path) # Don't need to set a delimeter here
-                    ### if len(list(key_list)) == 0: ### Too slow, especially for paths with a lot of files
-                    if not has_elements(key_list):
-                        self.cache.add(path) # It is empty to cache further checks
-                        logger.debug("get_metadata '%s' '%s' '%s' S3 no list '%s' return None" % (path, metadata_name, key, full_path))
-                        return None
+        with self.cache.get_lock(path): # To avoid consistency issues, e.g. with a concurrent purge
+            if not self.cache.has(path, metadata_name):
+                if not key:
+                    key = self.get_key(path)
+                if not key:
+                    if path == '/': # First time mount of a new file system
+                        self.mkdir(path, 0755)
+                        logger.debug("get_metadata -> '%s' '%s' '%s' First time mount"
+                                     % (path, metadata_name, key))
+                        return self.cache.get(path, metadata_name)
                     else:
-                        logger.debug("get_metadata '%s' '%s' '%s' S3 list '%s' OK" % (path, metadata_name, key, full_path))
-            metadata_values = {}
-            if key:
-                s = key.get_metadata(metadata_name)
-            else:
-                s = None
-	    if s:
-                try:
-                    metadata_values = json.loads(s)
-                except ValueError: # For legacy atrribute encoding
-                    for kv in s.split(';'):
-                        k, v = kv.split('=')
-                        if v.isdigit():
-                            metadata_values[k] = int(v)
-                        elif v.replace(".", "", 1).isdigit():
-                            metadata_values[k] = float(v)
+                        full_path = self.join_prefix(path + '/')
+                        logger.debug("get_metadata -> '%s' '%s' '%s' S3 list '%s'"
+                                     % (path, metadata_name, key, full_path))
+                        key_list = self.s3_bucket.list(full_path) # Don't need to set a delimeter here
+                        ### if len(list(key_list)) == 0: ### Too slow, especially for paths with a lot of files
+                        if not has_elements(key_list):
+                            self.cache.add(path) # It is empty to cache further checks
+                            logger.debug("get_metadata '%s' '%s' '%s' S3 no list '%s' return None"
+                                         % (path, metadata_name, key, full_path))
+                            return None
                         else:
-                            metadata_values[k] = v
-            if metadata_name == 'attr': # Custom exception(s)
+                            logger.debug("get_metadata '%s' '%s' '%s' S3 list '%s' OK"
+                                         % (path, metadata_name, key, full_path))
+                metadata_values = {}
                 if key:
-                    metadata_values['st_size'] = key.size
+                    s = key.get_metadata(metadata_name)
                 else:
-                    metadata_values['st_size'] = 0
-                if not s: # Set default attr to browse any S3 bucket TODO directories
-		    uid, gid = get_uid_gid()
- 		    metadata_values['st_uid'] = uid
- 		    metadata_values['st_gid'] = gid
-                    if key and key.name != '' and key.name[-1] != '/':
-                        metadata_values['st_mode'] = (stat.S_IFREG | 0755)
+                    s = None
+                if s:
+                    try:
+                        metadata_values = json.loads(s)
+                    except ValueError: # For legacy atrribute encoding
+                        for kv in s.split(';'):
+                            k, v = kv.split('=')
+                            if v.isdigit():
+                                metadata_values[k] = int(v)
+                            elif v.replace(".", "", 1).isdigit():
+                                metadata_values[k] = float(v)
+                            else:
+                                metadata_values[k] = v
+                if metadata_name == 'attr': # Custom exception(s)
+                    if key:
+                        metadata_values['st_size'] = key.size
                     else:
-                        metadata_values['st_mode'] = (stat.S_IFDIR | 0755)
-                    if key and key.last_modified:
-                        now = time.mktime(time.strptime(key.last_modified, "%a, %d %b %Y %H:%M:%S %Z"))
-                    else:
-                        now = get_current_time()
-                    metadata_values['st_mtime'] = now
-                    metadata_values['st_atime'] = now
-                    metadata_values['st_ctime'] = now
-	    self.cache.add(path)
-	    self.cache.set(path, metadata_name, metadata_values)
-        else:
-            metadata_values = self.cache.get(path, metadata_name)
-        logger.debug("get_metadata <- '%s' '%s' '%s' '%s'" % (path, metadata_name, key, metadata_values))
-	return metadata_values
+                        metadata_values['st_size'] = 0
+                    if not s: # Set default attr to browse any S3 bucket TODO directories
+                        uid, gid = get_uid_gid()
+                        metadata_values['st_uid'] = uid
+                        metadata_values['st_gid'] = gid
+                        if key and key.name != '' and key.name[-1] != '/':
+                            metadata_values['st_mode'] = (stat.S_IFREG | 0755)
+                        else:
+                            metadata_values['st_mode'] = (stat.S_IFDIR | 0755)
+                        if key and key.last_modified:
+                            now = time.mktime(time.strptime(key.last_modified, "%a, %d %b %Y %H:%M:%S %Z"))
+                        else:
+                            now = get_current_time()
+                        metadata_values['st_mtime'] = now
+                        metadata_values['st_atime'] = now
+                        metadata_values['st_ctime'] = now
+                self.cache.add(path)
+                self.cache.set(path, metadata_name, metadata_values)
+            else:
+                metadata_values = self.cache.get(path, metadata_name)
+            logger.debug("get_metadata <- '%s' '%s' '%s' '%s'" % (path, metadata_name, key, metadata_values))
+            return metadata_values
 
     def set_metadata(self, path, metadata_name=None, metadata_values=None, key=None):
         logger.debug("set_metadata '%s' '%s' '%s'" % (path, metadata_name, key))
