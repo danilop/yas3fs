@@ -1666,7 +1666,7 @@ class YAS3FS(LoggingMixIn, Operations):
             to_copy = {}
         if key:
             if key.name[-1] == '/':
-                key_list = self.s3_bucket.list(key.name)
+                key_list = self.s3_bucket.list(key.name) # Don't need to set a delimeter here
                 for k in key_list:
                     source = k.name
                     target = self.join_prefix(new_path + source[len(key.name) - 1:])
@@ -1675,7 +1675,8 @@ class YAS3FS(LoggingMixIn, Operations):
                 to_copy[key.name] = self.join_prefix(new_path)
         else:
             ### Should I manage a "full" search in cache for files in path ???
-            to_copy[self.join_prefix(path)] = self.join_prefix(new_path) # For files in cache but still not flushed to S3, doesn't work for dirs!!!
+            # For files in cache but still not flushed to S3, doesn't work for dirs!!!
+            to_copy[self.join_prefix(path)] = self.join_prefix(new_path)
         for source, target in to_copy.iteritems():
             source_path = source[len(self.s3_prefix):].rstrip('/')
             if source_path[0] != '/':
