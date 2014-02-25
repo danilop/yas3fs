@@ -1056,7 +1056,7 @@ class YAS3FS(LoggingMixIn, Operations):
         logger.debug("remove_from_parent_readdir '%s' parent_path '%s'" % (path, parent_path))
         with self.cache.get_lock(parent_path):
             dirs = self.cache.get(parent_path, 'readdir')
-            if dirs != None and dirs.count(dir) > 0:
+            if dirs != None:
                 dirs.remove(dir)
 
     def reset_parent_readdir(self, path):
@@ -1073,6 +1073,12 @@ class YAS3FS(LoggingMixIn, Operations):
                 return '.' # To handle '/' with empty s3_prefix
         else:
             return self.s3_prefix + path
+
+    def folder_has_contents(self, path, num=1):
+        logger.debug("folder_has_contents '%s' %i" % (path, num))
+        full_path = self.join_prefix(path + '/')
+        key_list = self.s3_bucket.list(full_path) # Don't need to set a delimeter here
+        return has_elements(key_list, num)
 
     def get_key(self, path, cache=True):
         if cache:
@@ -1115,19 +1121,14 @@ class YAS3FS(LoggingMixIn, Operations):
                                      % (path, metadata_name, key))
                         return self.cache.get(path, metadata_name)
                     else:
-                        full_path = self.join_prefix(path + '/')
-                        logger.debug("get_metadata -> '%s' '%s' '%s' S3 list '%s'"
-                                     % (path, metadata_name, key, full_path))
-                        key_list = self.s3_bucket.list(full_path) # Don't need to set a delimeter here
-                        ### if len(list(key_list)) == 0: ### Too slow, especially for paths with a lot of files
-                        if not has_elements(key_list):
+                        if not self.folder_has_contents(path):
                             self.cache.add(path) # It is empty to cache further checks
-                            logger.debug("get_metadata '%s' '%s' '%s' S3 no list '%s' return None"
-                                         % (path, metadata_name, key, full_path))
+                            logger.debug("get_metadata '%s' '%s' '%s' no S3 return None"
+                                         % (path, metadata_name, key))
                             return None
                         else:
-                            logger.debug("get_metadata '%s' '%s' '%s' S3 list '%s' OK"
-                                         % (path, metadata_name, key, full_path))
+                            logger.debug("get_metadata '%s' '%s' '%s' S3 found"
+                                         % (path, metadata_name, key))
                 metadata_values = {}
                 if key:
                     s = key.get_metadata(metadata_name)
@@ -1594,10 +1595,15 @@ class YAS3FS(LoggingMixIn, Operations):
             if not k:
                 logger.debug("rmdir '%s' key found ENOENT" % (path))
                 raise FuseOSError(errno.ENOENT)
-            if len(self.readdir(path)) > 2: # More than [ '.', '..' ]
-                logger.debug("rmdir '%s' ENOTEMPTY" % (path))
-                raise FuseOSError(errno.ENOTEMPTY)
-
+            dirs = self.cache.get(path, 'readdir')
+            if dirs == None:
+                if self.folder_has_contents(path, 2): # There is something inside the folder
+                    logger.debug("rmdir '%s' S3 ENOTEMPTY" % (path))
+                    raise FuseOSError(errno.ENOTEMPTY)
+            else:
+                if len(dirs) > 2:
+                    logger.debug("rmdir '%s' cache ENOTEMPTY" % (path))
+                    raise FuseOSError(errno.ENOTEMPTY)
             logger.debug("rmdir '%s' '%s' S3" % (path, k))
             k.delete()
             self.publish(['rmdir', path])
@@ -2139,15 +2145,13 @@ def get_uid_gid():
     return int(uid), int(gid)
 
 def has_elements(iter, num=1):
-    found = False
     c = 0
     for k in iter:
         logger.debug("has_element '%s' -> '%s'" % (iter, k))
         c += 1
         if c >= num:
-            found = True
-            break
-    return found
+            return True
+    return False
 
 ### Main
 
