@@ -2145,12 +2145,15 @@ def get_uid_gid():
     return int(uid), int(gid)
 
 def has_elements(iter, num=1):
+    logger.debug("has_element '%s' %i" % (iter, num))
     c = 0
     for k in iter:
         logger.debug("has_element '%s' -> '%s'" % (iter, k))
         c += 1
         if c >= num:
+            logger.debug("has_element '%s' OK" % (iter))
             return True
+    logger.debug("has_element '%s' KO" % (iter))
     return False
 
 ### Main
