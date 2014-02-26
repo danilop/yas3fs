@@ -322,7 +322,3 @@ To the previous message all yas3fs instances will answer publishing a message on
       cache disk size, download queue length, prefetch queue length ]
 
 Happy File Sharing!
-
-
-[![Bitdeli Badge](https://d2weczhvl823v0.cloudfront.net/danilop/yas3fs/trend.png)](https://bitdeli.com/free "Bitdeli Badge")
-
