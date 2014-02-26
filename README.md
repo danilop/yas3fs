@@ -81,6 +81,7 @@ If you want to do a quick test here's the installation procedure depending on th
 
     sudo yum -y install fuse fuse-libs
     sudo easy_install pip
+    sudo pip install -U setuptools # need updated version
     sudo pip install yas3fs # assume root installation
     sudo sed -i'' 's/^# *user_allow_other/user_allow_other/' /etc/fuse.conf # uncomment user_allow_other
     yas3fs -h # See the usage
