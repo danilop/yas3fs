@@ -8,7 +8,7 @@ if sys.version_info[:2] < (2, 7):
 
 setup(
     name='yas3fs',
-    version='2.1.0',
+    version='2.1.1',
     description='YAS3FS (Yet Another S3-backed File System) is a Filesystem in Userspace (FUSE) interface to Amazon S3.',
     packages=['yas3fs'],
     author='Danilo Poccia',
