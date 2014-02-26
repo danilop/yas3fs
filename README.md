@@ -4,7 +4,7 @@ YAS3FS (Yet Another S3-backed File System) is a [Filesystem in Userspace (FUSE)]
 interface to [Amazon S3](http://aws.amazon.com/s3/).
 It was inspired by [s3fs](http://code.google.com/p/s3fs/) but rewritten from scratch to implement
 a distributed cache synchronized by [Amazon SNS](http://aws.amazon.com/sns/) notifications.
-A web console is provided to easily monitor the nodes of a cluster.
+A web console is provided to easily monitor the nodes of a cluster through the [YAS3FS Console](https://github.com/danilop/yas3fs-console) project.
 
 **If you use YAS3FS please share your experience on the [wiki](https://github.com/danilop/yas3fs/wiki), thanks!**
 
@@ -42,7 +42,7 @@ When everything works it can be interrupted (with `^C`) and restarted to run in 
 
 To mount an S3 bucket without using SNS (i.e. for a single node):
 
-    yas3fs /path/to/mount --url s3://bucket/path 
+    yas3fs s3://bucket/path /path/to/mount
 
 To persist file system metadata such as attr/xattr yas3fs is using S3 User Metadata.
 To mount an S3 bucket without actually writing metadata in it,
@@ -51,11 +51,11 @@ you can use the `--no-metadata` option.
 
 To mount an S3 bucket using SNS and listening to an SQS endpoint:
 
-    yas3fs /path/to/mount --url s3://bucket/path --topic TOPIC-ARN --new-queue
+    yas3fs s3://bucket/path /path/to/mount --topic TOPIC-ARN --new-queue
 
 To mount an S3 bucket using SNS and listening to an HTTP endpoint (on EC2):
 
-    yas3fs /path/to/mount --url s3://bucket/path --topic TOPIC-ARN --ec2-hostname --port N
+    yas3fs s3://bucket/path /path/to/mount --url --topic TOPIC-ARN --ec2-hostname --port N
 
 On EC2 the security group must allow inbound traffic from SNS on the selected port.
 
@@ -64,71 +64,64 @@ within an [Auto Scaling](http://aws.amazon.com/autoscaling/) group.
 
 ### Quick Installation
 
+Requires [Python](http://www.python.org/download/) 2.6 or higher.
+Install using [pip](http://www.pip-installer.org/en/latest/).
+
+    pip install yas3fs
+
 If you want to do a quick test here's the installation procedure depending on the OS flavor (Linux or Mac):
 
 * Create an S3 bucket in the AWS region you prefer.
 * You don't need to create anything in the bucket as the initial path (if any) is created by the tool on the first mount.
 * If you want to use an existing S3 bucket you can use the `--no-metadata` option to not use user metadata to persist file system attr/xattr.
-* Create an SNS topic in the same region as the S3 bucket and write down the full topic ARN (you need it to run the tool if more than one client is connected to the same bucket/path).
+* If you want to have more than one node in sync, create an SNS topic in the same region as the S3 bucket and write down the full topic ARN (you need it to run the tool if more than one client is connected to the same bucket/path).
 * Create a IAM Role that gives access to the S3 and SNS/SQS resources you need or pass the AWS credentials to the tool using environment variables (see `-h`).
-* I used the `eu-west-1` region in my sample, but you can replace that with any region you want. If no region is specified it defaults to `us-east-1`.
 
-**On EC2 with Amazon Linux**
+**On Amazon Linux**
 
-    sudo yum -y install fuse fuse-libs git
+    sudo yum -y install fuse fuse-libs
     sudo easy_install pip
-    sudo pip install -U boto fusepy
+    sudo pip install yas3fs # assume root installation
     sudo sed -i'' 's/^# *user_allow_other/user_allow_other/' /etc/fuse.conf # uncomment user_allow_other
-    cd /opt # To install yas3fs under /opt/yas3fs
-    sudo git clone git://github.com/danilop/yas3fs.git
-    cd yas3fs
-    ./yas3fs -h # See the usage
+    yas3fs -h # See the usage
     mkdir LOCAL-PATH
     # For single host mount
-    ./yas3fs LOCAL-PATH --url s3://BUCKET/PATH
+    yas3fs s3://BUCKET/PATH LOCAL-PATH
     # For multiple hosts mount
-    ./yas3fs LOCAL-PATH --url s3://BUCKET/PATH --topic TOPIC-ARN --new-queue
+    yas3fs s3://BUCKET/PATH LOCAL-PATH --topic TOPIC-ARN --new-queue
 
-**On EC2 with Ubuntu systems**
+**On Ubuntu Linux**
 
-    sudo apt-get install fuse-utils libfuse2 python-pip git
-    sudo pip install -U boto fusepy
+    sudo apt-get install fuse-utils libfuse2 python-pip 
+    sudo pip install yas3fs # assume root installation
     sudo sed -i'' 's/^# *user_allow_other/user_allow_other/' /etc/fuse.conf # uncomment user_allow_other
-    cd /opt # To install yas3fs under /opt/yas3fs
-    sudo git clone git://github.com/danilop/yas3fs.git
-    cd yas3fs
-    ./yas3fs -h # See the usage
     sudo chmod a+r /etc/fuse.conf # make it readable by anybody, it is not the default on Ubuntu
+    yas3fs -h # See the usage
     mkdir LOCAL-PATH
     # For single host mount
-    ./yas3fs LOCAL-PATH --url s3://BUCKET/PATH
+    yas3fs s3://BUCKET/PATH LOCAL-PATH
     # For multiple hosts mount
-    ./yas3fs LOCAL-PATH --url s3://BUCKET/PATH --topic TOPIC-ARN --new-queue
+    yas3fs s3://BUCKET/PATH LOCAL-PATH --topic TOPIC-ARN --new-queue
 
 **On a Mac with OS X**
 
-Install FUSE for OS X from <http://osxfuse.github.com>
+Install FUSE for OS X from <http://osxfuse.github.com>.
 
-    sudo easy_install boto
-    sudo easy_install fusepy
-    cd /opt # To install yas3fs under /opt/yas3fs
-    sudo git clone git://github.com/danilop/yas3fs.git
-    cd yas3fs
-    ./yas3fs -h # See the usage
+    sudo pip install yas3fs # assume root installation
     mkdir LOCAL-PATH
     # For single host mount
-    ./yas3fs LOCAL-PATH --url s3://BUCKET/PATH
+    yas3fs LOCAL-PATH --url s3://BUCKET/PATH
     # For multiple hosts mount
-    ./yas3fs LOCAL-PATH --url s3://BUCKET/PATH --topic TOPIC-ARN --new-queue
+    yas3fs LOCAL-PATH --url s3://BUCKET/PATH --topic TOPIC-ARN --new-queue
 
-To listen to SNS HTTP notifications (I usually suggest to use SQS instead)
+To listen to SNS HTTP notifications (I usually suggest to use SQS instead) with a Mac
 you need to install the Python [M2Crypto](http://chandlerproject.org/Projects/MeTooCrypto) module,
 download the most suitable "egg" from
 <http://chandlerproject.org/Projects/MeTooCrypto#Downloads>.
 
     sudo easy_install M2Crypto-*.egg
 
-If something does not work as expected you can use the `-df` options to run in foreground in debug mode.
+If something does not work as expected you can use the `-df` options to run in foreground and in debug mode.
 
 **Unmount**
 
@@ -142,106 +135,97 @@ To unmount the file system on a Mac you can use `umount`.
 
     yas3fs -h
 
-    Usage: yas3fs <mountpoint> [options]
+    usage: yas3fs [-h] [--region REGION] [--topic ARN] [--new-queue]
+		  [--queue NAME] [--queue-wait N] [--queue-polling N]
+		  [--hostname HOSTNAME] [--use-ec2-hostname] [--port N]
+		  [--cache-entries N] [--cache-mem-size N] [--cache-disk-size N]
+		  [--cache-path PATH] [--cache-on-disk N] [--cache-check N]
+		  [--download-num N] [--prefetch-num N] [--buffer-size N]
+		  [--buffer-prefetch N] [--no-metadata] [--prefetch] [--mp-size N]
+		  [--mp-num N] [--mp-retries N] [--id ID] [--mkdir MKDIR]
+		  [--uid N] [--gid N] [--umask MASK] [-l FILE] [-f] [-d]
+		  S3Path LocalPath
 
-    YAS3FS (Yet Another S3-backed File System) is a Filesystem in Userspace (FUSE) interface to Amazon S3.
+    YAS3FS (Yet Another S3-backed File System) is a Filesystem in Userspace (FUSE)
+    interface to Amazon S3. It allows to mount an S3 bucket (or a part of it, if
+    you specify a path) as a local folder. It works on Linux and Mac OS X. For
+    maximum speed all data read from S3 is cached locally on the node, in memory
+    or on disk, depending of the file size. Parallel multi-part downloads are used
+    if there are reads in the middle of the file (e.g. for streaming). Parallel
+    multi-part uploads are used for files larger than a specified size. With
+    buffering enabled (the default) files can be accessed during the download from
+    S3 (e.g. for streaming). It can be used on more than one node to create a
+    "shared" file system (i.e. a yas3fs "cluster"). SNS notifications are used to
+    update other nodes in the cluster that something has changed on S3 and they
+    need to invalidate their cache. Notifications can be delivered to HTTP or SQS
+    endpoints. If the cache grows to its maximum size, the less recently accessed
+    files are removed. AWS credentials can be passed using AWS_ACCESS_KEY_ID and
+    AWS_SECRET_ACCESS_KEY environment variables. In an EC2 instance a IAM role can
+    be used to give access to S3/SNS/SQS resources. AWS_DEFAULT_REGION environment
+    variable can be used to set the default AWS region.
 
-    It allows to mount an S3 bucket (or a part of it, if you specify a path) as a local folder.
-    It works on Linux and Mac OS X.
-    For maximum speed all data read from S3 is cached locally on the node, in memory or on disk, depending of the file size.
-    Parallel multi-part downloads are used if there are reads in the middle of the file (e.g. for streaming).
-    Parallel multi-part uploads are used for files larger than a specified size.
-    With buffering enabled (the default) files can be accessed during the download from S3 (e.g. for streaming).
-    It can be used on more than one node to create a "shared" file system (i.e. a yas3fs "cluster").
-    SNS notifications are used to update other nodes in the cluster that something has changed on S3 and they need to invalidate their cache.
-    Notifications can be listened using HTTP or SQS endpoints.
-    If the cache grows to its maximum size, the less recently accessed files are removed.
-    AWS credentials can be passed using AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY environment variables.
-    In an EC2 instance a IAM role can be used to give access to S3/SNS/SQS resources.
+    positional arguments:
+      S3Path               the S3 path to mount in s3://BUCKET/PATH format, PATH
+			   can be empty, can contain subfolders and is created on
+			   first mount if not found in the BUCKET
+      LocalPath            the local mount point
 
-    Options:
+    optional arguments:
       -h, --help           show this help message and exit
-      --url=URL            the S3 path to mount in s3://BUCKET/PATH format, PATH
-                           can be empty, can contain subfolders and is created on
-                           first mount if not found in the BUCKET
-      --region=REGION      AWS region to use for SNS/SQS (default is us-east-1)
-      --topic=ARN          SNS topic ARN
-      --hostname=HOST      hostname to listen to SNS HTTP notifications
-      --ec2-hostname       get public hostname from EC2 instance metadata
-                           (overrides '--hostname')
-      --port=N             TCP port to listen to SNS HTTP notifications
-      --queue=NAME         SQS queue name, a new queue is created if it doesn't
-                           exist
-      --new-queue          create a new SQS queue that is deleted on unmount
-                           (overrides '--queue', queue name is BUCKET-PATH-ID with
-                           alphanumeric characters only)
-      --queue-wait=N       SQS queue wait time in seconds (using long polling, 0
-                           to disable, default is 20 seconds)
-      --queue-polling=N    SQS queue polling interval in seconds (default is 0
-                           seconds)
-      --cache-entries=N    max number of entries to cache (default is 1000000
-                           entries)
-      --cache-mem-size=N   max size of the memory cache in MB (default is 1024 MB)
-      --cache-disk-size=N  max size of the disk cache in MB (default is 10240 MB)
-      --cache-path=PATH    local path to use for disk cache (default is
-                           '/tmp/yas3fs/BUCKET/PATH')
-      --cache-on-disk=N    use disk (instead of memory) cache for files greater
-                           than the given size in MB (default is 100 MB)
-      --cache-check=N      interval between cache memory checks in seconds
-                           (default is 10 seconds)
-      --download-num=N     number of parallel downloads (default is 4)
-      --prefetch-num=N     number of parallel prefetching downloads (default is 1)
-      --buffer-size=N      download buffer size in KB (0 to disable buffering,
-                           default is 10240 KB)
-      --buffer-prefetch=N  number of buffers to prefetch (default is 0)
+      --region REGION      AWS region to use for SNS and SQS (default is us-
+			   east-1)
+      --topic ARN          SNS topic ARN
+      --new-queue          create a new SQS queue that is deleted on unmount to
+			   listen to SNS notifications, overrides --queue, queue
+			   name is BUCKET-PATH-ID with alphanumeric characters
+			   only
+      --queue NAME         SQS queue name to listen to SNS notifications, a new
+			   queue is created if it doesn't exist
+      --queue-wait N       SQS queue wait time in seconds (using long polling, 0
+			   to disable, default is 20 seconds)
+      --queue-polling N    SQS queue polling interval in seconds (default is 0
+			   seconds)
+      --hostname HOSTNAME  public hostname to listen to SNS HTTP notifications
+      --use-ec2-hostname   get public hostname to listen to SNS HTTP notifications
+			   from EC2 instance metadata (overrides --hostname)
+      --port N             TCP port to listen to SNS HTTP notifications
+      --cache-entries N    max number of entries to cache (default is 100000
+			   entries)
+      --cache-mem-size N   max size of the memory cache in MB (default is 128 MB)
+      --cache-disk-size N  max size of the disk cache in MB (default is 1024 MB)
+      --cache-path PATH    local path to use for disk cache (default is
+			   /tmp/yas3fs/BUCKET/PATH)
+      --cache-on-disk N    use disk (instead of memory) cache for files greater
+			   than the given size in bytes (default is 0 bytes)
+      --cache-check N      interval between cache size checks in seconds (default
+			   is 5 seconds)
+      --download-num N     number of parallel downloads (default is 4)
+      --prefetch-num N     number of parallel prefetching downloads (default is 2)
+      --buffer-size N      download buffer size in KB (0 to disable buffering,
+			   default is 10240 KB)
+      --buffer-prefetch N  number of buffers to prefetch (default is 0)
       --no-metadata        don't write user metadata on S3 to persist file system
-                           attr/xattr
-      --prefetch           start downloading file content as soon as the file is
-                           discovered
-      --mp-size=N          size of parts to use for multipart upload in KB
-                           (default value is 10240 KB, the minimum allowed is 5120
-                           KB)
-      --mp-num=N           max number of parallel multipart uploads per file (0 to
-                           disable multipart upload, default is 4)
-      --mp-retries=N       max number of retries in uploading a part (default is 3)
-      --id=ID              a unique ID identifying this node in a cluster
-      --mkdir              create mountpoint if not found (create intermediate
-                           directories as required)
-      --uid=N              default UID (default is current UID)
-      --gid=N              default GID (default is current GID)
-      --umask=MASK         default umask (default is current umask)
-      -l FILE, --log=FILE  the filename to use for logs
+			   attr/xattr
+      --prefetch           download file/directory content as soon as the file is
+			   discovered(doesn't download file content if download
+			   buffers are used)
+      --mp-size N          size of parts to use for multipart upload in MB
+			   (default value is 100 MB, the minimum allowed by S3 is
+			   5 MB)
+      --mp-num N           max number of parallel multipart uploads per file (0 to
+			   disable multipart upload, default is 4)
+      --mp-retries N       max number of retries in uploading a part (default is
+			   3)
+      --id ID              a unique ID identifying this node in a cluster (default
+			   is a UUID)
+      --mkdir MKDIR        create mountpoint if not found (and create intermediate
+			   directories as required)
+      --uid N              default UID
+      --gid N              default GID
+      --umask MASK         default umask
+      -l FILE, --log FILE  filename for logs
       -f, --foreground     run in foreground
-      -d, --debug          print debug information (implies '-f')
-
-### Web console
-
-A web console to easy monitor the nodes of a cluster (i.e. that are listening to the same SNS topic)
-is in the "yas3fs-console/" subdirectory.
-
-* AWS credentials can be passed using AWS\_ACCESS\_KEY\_ID and AWS\_SECRET\_ACCESS\_KEY environment variables.
-* The AWS_REGION environment variable must point to a valid AWS reagion (e.g. eu-west-1)
-* In an [EC2](http://aws.amazon.com/ec2/) instance a [IAM](http://aws.amazon.com/iam/) role can be used to give access to S3/SNS/SQS resources.
-
-It is based on [Node.js](http://nodejs.org) and once "node" is [installed](http://nodejs.org/download/) you can run it with:
-
-    git clone git://github.com/danilop/yas3fs.git
-    cd yas3fs/yas3fs-console
-    npm install
-    node server.js
-
-It is using the 3000 port by default (e.g. "http://localhost:3000"), but you can change it using the PORT environment variable, e.g.:
-
-    export PORT=8080
-    node yas3fs-console/server.js
-
-Here’s a sample screenshot of the web interface:
-
-![YAS3FS Console screenshot](http://blog.danilopoccia.net/wp-content/uploads/sites/2/2013/06/yas3fs-console.png)
-
-The list of nodes and the attributes are updated dynamically depending on the configuration parameters.
-
-In the future I’d like to add management capabilities as well into the console, such as “cache reset on a node”, or alarms, such as “disk cache is running out of space”.
+      -d, --debug          show debug info
 
 ### Notification Syntax & Use
 

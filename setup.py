@@ -3,8 +3,8 @@ import sys
 
 # Versions of Python pre-2.7 require argparse separately. 2.7+ and 3+ all
 # include this as the replacement for optparse.
-#if sys.version_info[:2] < (2, 7):
-#    install_requires.append("argparse")
+if sys.version_info[:2] < (2, 7):
+    install_requires.append("argparse")
 
 setup(
     name='yas3fs',
