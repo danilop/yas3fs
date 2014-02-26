@@ -46,6 +46,8 @@ from boto.s3.key import Key
 
 from fuse import FUSE, FuseOSError, Operations, LoggingMixIn, fuse_get_context
 
+from _version import __version__
+
 class Interval():
     """ Simple integer interval arthmetic."""
     def __init__(self):
@@ -2258,6 +2260,7 @@ AWS_DEFAULT_REGION environment variable can be used to set the default AWS regio
                       help='run in foreground')
     parser.add_argument('-d', '--debug', action='store_true',
                       help='show debug info')
+    parser.add_argument('-V', '--version', action='version', version='%(prog)s {version}'.format(version=__version__))
 
     options = parser.parse_args()
 

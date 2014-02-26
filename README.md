@@ -226,6 +226,7 @@ To unmount the file system on a Mac you can use `umount`.
       -l FILE, --log FILE  filename for logs
       -f, --foreground     run in foreground
       -d, --debug          show debug info
+      -V, --version        show program's version number and exit
 
 ### Notification Syntax & Use
 
