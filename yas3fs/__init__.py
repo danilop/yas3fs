@@ -7,9 +7,11 @@ caching data locally and using SNS to notify
 other nodes for changes that need cache invalidation.
 """
 
+import argparse
 import errno  
 import stat  
 import time
+import os
 import os.path
 import mimetypes
 import sys
@@ -38,8 +40,7 @@ import boto.sns
 import boto.sqs
 import boto.utils
 
-from sys import argv, exit
-from optparse import OptionParser
+from sys import exit
 
 from boto.s3.key import Key 
 
@@ -552,12 +553,9 @@ class YAS3FS(LoggingMixIn, Operations):
         global debug
         debug = options.debug
 
-        self.aws_region = options.region
-
         # Parameters and options handling
-        if not options.url:
-            errorAndExit("The S3 path to mount in URL format must be provided")
-        s3url = urlparse.urlparse(options.url.lower())
+        self.aws_region = options.region
+        s3url = urlparse.urlparse(options.s3path.lower())
         if s3url.scheme != 's3':
             errorAndExit("The S3 path to mount must be in URL format: s3://BUCKET/PATH")
         self.s3_bucket_name = s3url.netloc
@@ -568,64 +566,64 @@ class YAS3FS(LoggingMixIn, Operations):
             errorAndExit("The S3 bucket cannot be empty")
         self.sns_topic_arn = options.topic
         if self.sns_topic_arn:
-            logger.info("AWS region for S3 endpoint, SNS and SQS: '" + self.aws_region + "'")
+            logger.info("AWS region for SNS and SQS: '" + self.aws_region + "'")
             logger.info("SNS topic ARN: '%s'" % self.sns_topic_arn)
         self.sqs_queue_name = options.queue # must be different for each client
         self.new_queue = options.new_queue
-        self.queue_wait_time = int(options.queue_wait_time)
-        self.queue_polling_interval = int(options.queue_polling_interval)
+        self.queue_wait_time = options.queue_wait
+        self.queue_polling_interval = options.queue_polling
         if self.sqs_queue_name:
             logger.info("SQS queue name: '%s'" % self.sqs_queue_name)
         if self.sqs_queue_name or self.new_queue:
             logger.info("SQS queue wait time (in seconds): '%i'" % self.queue_wait_time)
             logger.info("SQS queue polling interval (in seconds): '%i'" % self.queue_polling_interval)
-        self.cache_entries = int(options.cache_entries)
+        self.cache_entries = options.cache_entries
         logger.info("Cache entries: '%i'" % self.cache_entries)
-        self.cache_mem_size = int(options.cache_mem_size) * (1024 * 1024) # To convert MB to bytes
+        self.cache_mem_size = options.cache_mem_size * (1024 * 1024) # To convert MB to bytes
         logger.info("Cache memory size (in bytes): '%i'" % self.cache_mem_size)
-        self.cache_disk_size = int(options.cache_disk_size) * (1024 * 1024) # To convert MB to bytes
+        self.cache_disk_size = options.cache_disk_size * (1024 * 1024) # To convert MB to bytes
         logger.info("Cache disk size (in bytes): '%i'" % self.cache_disk_size)
-        self.cache_on_disk = int(options.cache_on_disk) # Bytes
+        self.cache_on_disk = options.cache_on_disk # Bytes
         logger.info("Cache on disk if file size greater than (in bytes): '%i'" % self.cache_on_disk)
-        self.cache_check_interval = int(options.cache_check_interval) # seconds
+        self.cache_check_interval = options.cache_check # seconds
         logger.info("Cache check interval (in seconds): '%i'" % self.cache_check_interval)
-        if options.ec2_hostname:
-            instance_metadata = boto.utils.get_instance_metadata() # This is very slow (to fail) if used outside of EC2
+        if options.use_ec2_hostname:
+            instance_metadata = boto.utils.get_instance_metadata() # Very slow (to fail) outside of EC2
             self.hostname = instance_metadata['public-hostname']
         else:
             self.hostname = options.hostname
         if self.hostname:
-            logger.info("Hostname to listen to SNS HTTP notifications: '%s'" % self.hostname)
+            logger.info("Public hostname to listen to SNS HTTP notifications: '%s'" % self.hostname)
         self.sns_http_port = int(options.port or '0')
         if options.port:
             import M2Crypto # Required to check integrity of SNS HTTP notifications
-            logger.info(" TCP port to listen to SNS HTTP notifications: '%i'" % self.sns_http_port)
-        self.download_num = int(options.download_num)
+            logger.info("TCP port to listen to SNS HTTP notifications: '%i'" % self.sns_http_port)
+        self.download_num = options.download_num
         logger.info("Number of parallel donwloading threads: '%i'" % self.download_num)
-        self.prefetch_num = int(options.prefetch_num)
+        self.prefetch_num = options.prefetch_num
         logger.info("Number of parallel prefetching threads: '%i'" % self.prefetch_num)
-        self.buffer_size = int(options.buffer_size) * 1024 # To convert KB to bytes
+        self.buffer_size = options.buffer_size * 1024 # To convert KB to bytes
         logger.info("Download buffer size (in KB, 0 to disable buffering): '%i'" % self.buffer_size)
-        self.buffer_prefetch = int(options.buffer_prefetch)
+        self.buffer_prefetch = options.buffer_prefetch
         logger.info("Number of buffers to prefetch: '%i'" % self.buffer_prefetch)
-        self.write_metadata = options.write_metadata
+        self.write_metadata = not options.no_metadata
         logger.info("Write metadata (file system attr/xattr) on S3: '%s'" % str(self.write_metadata))
-        self.full_prefetch = options.full_prefetch
+        self.full_prefetch = options.prefetch
         logger.info("Download prefetch: '%s'" % str(self.full_prefetch))
-        self.multipart_size = int(options.multipart_size) * 1024
+        self.multipart_size = options.mp_size * (1024 * 1024) # To convert MB to bytes
         logger.info("Multipart size: '%s'" % str(self.multipart_size))
-        self.multipart_num = options.multipart_num
+        self.multipart_num = options.mp_num
         logger.info("Multipart maximum number of parallel threads: '%s'" % str(self.multipart_num))
-        self.multipart_retries = options.multipart_retries
+        self.multipart_retries = options.mp_retries
         logger.info("Multipart maximum number of retries per part: '%s'" % str(self.multipart_retries))
 
         # Internal Initialization
-        if options.cache_path == '':
+        if options.cache_path:
+            cache_path = options.cache_path
+        else:
             cache_path = '/tmp/yas3fs/' + self.s3_bucket_name
             if not self.s3_prefix == '':
                 cache_path += '/' + self.s3_prefix
-        else:
-            cache_path = options.cache_path
         logger.info("Cache path (on disk): '%s'" % cache_path)
         self.cache = FSCache(cache_path)
         self.publish_queue = Queue.Queue()
@@ -954,9 +952,9 @@ class YAS3FS(LoggingMixIn, Operations):
                            self.download_queue.qsize(), self.prefetch_queue.qsize()))
 
             if debug:
+                logger.debug("new_locks, unused_locks: %i, %i" % (len(self.cache.new_locks), len(self.cache.unused_locks)))
                 (threshold0, threshold1, threshold2) = gc.get_threshold()
                 (count0, count1, count2) = gc.get_count()
-                logger.debug("new_locks, unused_locks: %i, %i" % (len(self.cache.new_locks), len(self.cache.unused_locks)))
                 logger.debug("gc count0/threshold0, count1/threshold1, count2/threshold2: %i/%i, %i/%i, %i/%i"
                              % (count0,threshold0,count1,threshold1,count2,threshold2))
 
@@ -2160,8 +2158,13 @@ def has_elements(iter, num=1):
 ### Main
 
 def main():
-    usage = """%prog <mountpoint> [options]
 
+    try:
+        default_aws_region = os.environ['AWS_DEFAULT_REGION']
+    except KeyError:
+        default_aws_region = 'us-east-1'
+
+    description = """
 YAS3FS (Yet Another S3-backed File System) is a Filesystem in Userspace (FUSE) interface to Amazon S3.
 
 It allows to mount an S3 bucket (or a part of it, if you specify a path) as a local folder.
@@ -2172,115 +2175,123 @@ Parallel multi-part uploads are used for files larger than a specified size.
 With buffering enabled (the default) files can be accessed during the download from S3 (e.g. for streaming).
 It can be used on more than one node to create a "shared" file system (i.e. a yas3fs "cluster").
 SNS notifications are used to update other nodes in the cluster that something has changed on S3 and they need to invalidate their cache.
-Notifications can be listened using HTTP or SQS endpoints.
+Notifications can be delivered to HTTP or SQS endpoints.
 If the cache grows to its maximum size, the less recently accessed files are removed.
-AWS credentials can be passed using AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY environmental variables.
-In an EC2 instance a IAM role can be used to give access to S3/SNS/SQS resources."""
+AWS credentials can be passed using AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY environment variables.
+In an EC2 instance a IAM role can be used to give access to S3/SNS/SQS resources.
+AWS_DEFAULT_REGION environment variable can be used to set the default AWS region."""
 
-    parser = OptionParser(usage=usage)
+    parser = argparse.ArgumentParser(description=description)
 
-    parser.add_option("--url", dest="url",
-                      help="the S3 path to mount in s3://BUCKET/PATH format, "
-                      + "PATH can be empty, can contain subfolders and is created on first mount if not found in the BUCKET",
-                      metavar="URL")
-    parser.add_option("--region", dest="region",
-                      help="AWS region to use for the S3 endpoint, SNS and SQS (default is %default)",
-                      metavar="REGION", default="us-east-1")
-    parser.add_option("--topic", dest="topic",
-                      help="SNS topic ARN", metavar="ARN")
-    parser.add_option("--hostname", dest="hostname",
-                      help="hostname to listen to SNS HTTP notifications", metavar="HOST")
-    parser.add_option("--ec2-hostname", action="store_true", dest="ec2_hostname", default=False,
-                      help="get public hostname from EC2 instance metadata (overrides '--hostname')")
-    parser.add_option("--port", dest="port",
-                      help="TCP port to listen to SNS HTTP notifications", metavar="N")
-    parser.add_option("--queue", dest="queue",
-                      help="SQS queue name, a new queue is created if it doesn't exist", metavar="NAME")
-    parser.add_option("--new-queue", action="store_true", dest="new_queue", default=False,
-                      help="create a new SQS queue that is deleted on unmount (overrides '--queue', queue name is BUCKET-PATH-ID with alphanumeric characters only)")
-    parser.add_option("--queue-wait", dest="queue_wait_time",
-                      help="SQS queue wait time in seconds (using long polling, 0 to disable, default is %default seconds)", metavar="N", default=20)
-    parser.add_option("--queue-polling", dest="queue_polling_interval",
-                      help="SQS queue polling interval in seconds (default is %default seconds)", metavar="N", default=0)
-    parser.add_option("--cache-entries", dest="cache_entries",
-                      help="max number of entries to cache (default is %default entries)", metavar="N", default=100000)
-    parser.add_option("--cache-mem-size", dest="cache_mem_size",
-                      help="max size of the memory cache in MB (default is %default MB)", metavar="N", default=128)
-    parser.add_option("--cache-disk-size", dest="cache_disk_size",
-                      help="max size of the disk cache in MB (default is %default MB)", metavar="N", default=1024)
-    parser.add_option("--cache-path", dest="cache_path",
-                      help="local path to use for disk cache (default is '/tmp/yas3fs/BUCKET/PATH')", metavar="PATH", default="")
-    parser.add_option("--cache-on-disk", dest="cache_on_disk",
-                      help="use disk (instead of memory) cache for files greater than the given size in bytes (default is %default bytes)",
-                      metavar="N", default=0)
-    parser.add_option("--cache-check", dest="cache_check_interval",
-                      help="interval between cache memory checks in seconds (default is %default seconds)", metavar="N", default=5)
-    parser.add_option("--download-num", dest="download_num",
-                      help="number of parallel downloads (default is %default)", metavar="N", default=4)
-    parser.add_option("--prefetch-num", dest="prefetch_num",
-                      help="number of parallel prefetching downloads (default is %default)", metavar="N", default=2)
-    parser.add_option("--buffer-size", dest="buffer_size",
-                      help="download buffer size in KB (0 to disable buffering, default is %default KB)", metavar="N", default=10240)
-    parser.add_option("--buffer-prefetch", dest="buffer_prefetch",
-                      help="number of buffers to prefetch (default is %default)", metavar="N", default=0)
-    parser.add_option("--no-metadata", action="store_false", dest="write_metadata", default=True,
-                      help="don't write user metadata on S3 to persist file system attr/xattr")
-    parser.add_option("--prefetch", action="store_true", dest="full_prefetch", default=False,
-                      help="start downloading file content as soon as the file is discovered")
-    parser.add_option("--mp-size", dest="multipart_size",
-                      help="size of parts to use for multipart upload in KB (default value is %default KB, the minimum allowed is 5120 KB)", metavar="N", default=102400)
-    parser.add_option("--mp-num", dest="multipart_num",
-                      help="max number of parallel multipart uploads per file (0 to disable multipart upload, default is %default)", metavar="N", default=4)
-    parser.add_option("--mp-retries", dest="multipart_retries",
-                      help="max number of retries in uploading a part (default is %default)", metavar="N", default=3)
-    parser.add_option("--id", dest="id",
-                      help="a unique ID identifying this node in a cluster", metavar="ID")
-    parser.add_option("--mkdir", action="store_true", dest="mkdir", default=False,
-                      help="create mountpoint if not found (create intermediate directories as required)")
-    parser.add_option("--uid", dest="uid",
-                      help="default UID (default is current UID)", metavar="N", default="")
-    parser.add_option("--gid", dest="gid",
-                      help="default GID (default is current GID)", metavar="N", default="")
-    parser.add_option("--umask", dest="umask",
-                      help="default umask (default is current umask)", metavar="MASK", default="")
-    parser.add_option("-l", "--log", dest="logfile",
-                      help="the filename to use for logs", metavar="FILE", default="")
-    parser.add_option("-f", "--foreground", action="store_true", dest="foreground", default=False,
-                      help="run in foreground")
-    parser.add_option("-d", "--debug", action="store_true", dest="debug", default=False,
-                      help="print debug information in log")
+    parser.add_argument('s3path', metavar='S3Path',
+                        help='the S3 path to mount in s3://BUCKET/PATH format, ' +
+                        'PATH can be empty, can contain subfolders and is created on first mount if not found in the BUCKET')
+    parser.add_argument('mountpoint', metavar='LocalPath',
+                        help='the local mount point')
+    parser.add_argument('--region', default=default_aws_region,
+                        help='AWS region to use for SNS and SQS (default is %(default)s)')
+    parser.add_argument('--topic', metavar='ARN',
+                        help='SNS topic ARN')
+    parser.add_argument('--new-queue', action='store_true',
+                        help='create a new SQS queue that is deleted on unmount to listen to SNS notifications, ' +
+                        'overrides --queue, queue name is BUCKET-PATH-ID with alphanumeric characters only')
+    parser.add_argument('--queue', metavar='NAME',
+                        help='SQS queue name to listen to SNS notifications, a new queue is created if it doesn\'t exist')
+    parser.add_argument('--queue-wait', metavar='N', type=int, default=20,
+                        help='SQS queue wait time in seconds (using long polling, 0 to disable, default is %(default)s seconds)')
+    parser.add_argument('--queue-polling', metavar='N', type=int, default=0,
+                        help='SQS queue polling interval in seconds (default is %(default)s seconds)')
+    parser.add_argument('--hostname',
+                        help='public hostname to listen to SNS HTTP notifications')
+    parser.add_argument('--use-ec2-hostname', action='store_true',
+                        help='get public hostname to listen to SNS HTTP notifications ' +
+                        'from EC2 instance metadata (overrides --hostname)')
+    parser.add_argument('--port', metavar='N',
+                        help='TCP port to listen to SNS HTTP notifications')
+    parser.add_argument('--cache-entries', metavar='N', type=int, default=100000,
+                        help='max number of entries to cache (default is %(default)s entries)')
+    parser.add_argument('--cache-mem-size', metavar='N', type=int, default=128,
+                        help='max size of the memory cache in MB (default is %(default)s MB)')
+    parser.add_argument('--cache-disk-size', metavar='N', type=int, default=1024,
+                        help='max size of the disk cache in MB (default is %(default)s MB)')
+    parser.add_argument('--cache-path', metavar='PATH', default='',
+                        help='local path to use for disk cache (default is /tmp/yas3fs/BUCKET/PATH)')
+    parser.add_argument('--cache-on-disk', metavar='N', type=int, default=0,
+                        help='use disk (instead of memory) cache for files greater than the given size in bytes ' +
+                        '(default is %(default)s bytes)')
+    parser.add_argument('--cache-check', metavar='N', type=int, default=5,
+                        help='interval between cache size checks in seconds (default is %(default)s seconds)')
+    parser.add_argument('--download-num', metavar='N', type=int, default=4,
+                        help='number of parallel downloads (default is %(default)s)')
+    parser.add_argument('--prefetch-num', metavar='N', type=int, default=2,
+                        help='number of parallel prefetching downloads (default is %(default)s)')
+    parser.add_argument('--buffer-size', metavar='N', type=int, default=10240,
+                        help='download buffer size in KB (0 to disable buffering, default is %(default)s KB)')
+    parser.add_argument('--buffer-prefetch', metavar='N', type=int, default=0,
+                        help='number of buffers to prefetch (default is %(default)s)')
+    parser.add_argument('--no-metadata', action='store_true',
+                        help='don\'t write user metadata on S3 to persist file system attr/xattr')
+    parser.add_argument('--prefetch', action='store_true',
+                        help='download file/directory content as soon as the file is discovered' +
+                        '(doesn\'t download file content if download buffers are used)')
+    parser.add_argument('--mp-size',metavar='N', type=int, default=100,
+                        help='size of parts to use for multipart upload in MB ' +
+                        '(default value is %(default)s MB, the minimum allowed by S3 is 5 MB)')
+    parser.add_argument('--mp-num', metavar='N', type=int, default=4,
+                        help='max number of parallel multipart uploads per file ' +
+                        '(0 to disable multipart upload, default is %(default)s)')
+    parser.add_argument('--mp-retries', metavar='N', type=int, default=3,
+                        help='max number of retries in uploading a part (default is %(default)s)')
+    parser.add_argument('--id',
+                        help='a unique ID identifying this node in a cluster (default is a UUID)')
+    parser.add_argument('--mkdir',
+                        help='create mountpoint if not found (and create intermediate directories as required)')
+    parser.add_argument('--uid', metavar='N',
+                      help='default UID')
+    parser.add_argument('--gid', metavar='N',
+                      help='default GID')
+    parser.add_argument('--umask', metavar='MASK',
+                      help='default umask')
+    parser.add_argument('-l', '--log', metavar='FILE',
+                      help='filename for logs')
+    parser.add_argument('-f', '--foreground', action='store_true',
+                      help='run in foreground')
+    parser.add_argument('-d', '--debug', action='store_true',
+                      help='show debug info')
 
-    (options, args) = parser.parse_args()
+    options = parser.parse_args()
 
-    if options.logfile != '':
-        logHandler = logging.handlers.RotatingFileHandler(options.logfile, maxBytes=1024*1024*1024, backupCount=10)
-    else:
-        logHandler = logging.StreamHandler()
-
+    global logger
+    logger = logging.getLogger('yas3fs')
     formatter = logging.Formatter('%(asctime)s %(levelname)s %(message)s')
-    logHandler.setFormatter(formatter)
-    logger.addHandler(logHandler)
+    if options.log: # Rotate log files at 100MB size
+        logHandler = logging.handlers.RotatingFileHandler(options.log, maxBytes=100*1024*1024, backupCount=10)
+        logHandler.setFormatter(formatter)
+        logger.addHandler(logHandler)
+    if options.foreground or not options.log:
+        logHandler = logging.StreamHandler()
+        logHandler.setFormatter(formatter)
+        logger.addHandler(logHandler)
 
     if options.debug:
         logger.setLevel(logging.DEBUG)
-        gc.set_debug(gc.DEBUG_STATS)
-        (threshold0, threshold1, threshold2) = gc.get_threshold()
-        logger.debug("gc threshold0, threshold1, threshold2 = %i, %i, %i" % (threshold0, threshold1, threshold2))
     else:
         logger.setLevel(logging.INFO)
-        
-    if len(args) < 1:
-        errorAndExit("mountpoint must be provided")
-    elif len(args) > 1:
-        errorAndExit("not more than one mountpoint must be provided")
 
-    mountpoint = args[0]
+    def custom_sys_excepthook(type, value, traceback):
+        logger.error("Uncaught Exception")
+        logger.error("Type: %s" % type)
+        logger.error("Vaue: %s" % value)
+        logger.error("Traceback: %s" % traceback)
+    sys.excepthook = custom_sys_excepthook
+        
+    logger.debug("options = %s" % options)
 
     if options.mkdir:
-        create_dirs(mountpoint)
+        create_dirs(options.mountpoint)
 
     mount_options = {
-        'mountpoint':mountpoint,
+        'mountpoint':options.mountpoint,
         'fsname':'yas3fs',
         'foreground':options.foreground,
         'allow_other':True,
@@ -2299,7 +2310,7 @@ In an EC2 instance a IAM role can be used to give access to S3/SNS/SQS resources
         mount_options['umask'] = options.umask
 
     if sys.platform == "darwin":
-        mount_options['volname'] = os.path.basename(mountpoint)
+        mount_options['volname'] = os.path.basename(options.mountpoint)
         mount_options['noappledouble'] = True
         mount_options['daemon_timeout'] = 3600
         mount_options['auto_xattr'] = True
@@ -2307,17 +2318,8 @@ In an EC2 instance a IAM role can be used to give access to S3/SNS/SQS resources
     else:
         mount_options['big_writes'] = True # Not working on OSX
 
-    ### from signal import signal, SIGPIPE, SIG_DFL
-    ### signal(SIGPIPE,SIG_DFL) ### Ignore SIGPIPE to avoid "Broken pipe" errors
-
     fuse = FUSE(YAS3FS(options), **mount_options)
 
 if __name__ == '__main__':
 
-    logger = logging.getLogger('yas3fs')
-
-    try:
-        main()
-    except Exception as e:
-        logger.exception(e)
-        raise
+    main()
