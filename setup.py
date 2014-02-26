@@ -3,6 +3,8 @@ import sys
 
 execfile('yas3fs/_version.py')
 
+install_requires = ['boto>=2.25.0', 'fusepy>=2.0.2']
+
 # Versions of Python pre-2.7 require argparse separately. 2.7+ and 3+ all
 # include this as the replacement for optparse.
 if sys.version_info[:2] < (2, 7):
@@ -15,6 +17,6 @@ setup(
     packages=['yas3fs'],
     author='Danilo Poccia',
     author_email='dpoccia@gmail.com',
-    install_requires=['boto>=2.25.0', 'fusepy>=2.0.2'],
+    install_requires=install_requires,
     entry_points = { 'console_scripts': ['yas3fs = yas3fs:main'] },
     )
