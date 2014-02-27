@@ -545,6 +545,7 @@ class PartOfFSData():
 class YAS3FS(LoggingMixIn, Operations):
     """ Main FUSE Operations class for fusepy """
     def __init__(self, options):
+        logger.info("Version: %s" % __version__)
         # Some constants
         ### self.http_listen_path_length = 30
         self.running = True
@@ -1271,11 +1272,11 @@ class YAS3FS(LoggingMixIn, Operations):
         logger.debug("mkdir '%s' '%s'" % (path, mode))
         with self.cache.get_lock(path):
             if self.cache.is_not_empty(path):
-                logger.debug("mkdir cache '%s'" % self.cache.get(path))
+                logger.debug("mkdir cache '%s' EEXIST" % self.cache.get(path))
                 raise FuseOSError(errno.EEXIST)
             k = self.get_key(path)
             if k:
-                logger.debug("mkdir key found '%s'" % self.cache.get(path))
+                logger.debug("mkdir key '%s' EEXIST" % self.cache.get(path))
                 raise FuseOSError(errno.EEXIST)
             now = get_current_time()
             uid, gid = get_uid_gid()
@@ -1327,11 +1328,11 @@ class YAS3FS(LoggingMixIn, Operations):
         logger.debug("symlink '%s' '%s'" % (path, link))
         with self.cache.get_lock(path):
             if self.cache.is_not_empty(path):
-                logger.debug("symlink cache '%s' '%s'" % (path, link))
+                logger.debug("symlink cache '%s' '%s' EEXIST" % (path, link))
                 raise FuseOSError(errno.EEXIST)
             k = self.get_key(path)
             if k:
-                logger.debug("symlink key found '%s' '%s'" % (path, link))
+                logger.debug("symlink key '%s' '%s' EEXIST" % (path, link))
                 raise FuseOSError(errno.EEXIST)
             now = get_current_time()
             uid, gid = get_uid_gid()
@@ -1558,15 +1559,16 @@ class YAS3FS(LoggingMixIn, Operations):
         logger.debug("readlink '%s'" % (path))
         with self.cache.get_lock(path):
             if self.cache.is_empty(path):
-                logger.debug("readlink '%s' ENONENT" % (path))
+                logger.debug("readlink '%s' ENOENT" % (path))
                 raise FuseOSError(errno.ENOENT)
             self.cache.add(path)
             if stat.S_ISLNK(self.getattr(path)['st_mode']):
                 if not self.check_data(path):
-                    logger.debug("readlink '%s' ENONENT" % (path))
+                    logger.debug("readlink '%s' ENOENT" % (path))
                     raise FuseOSError(errno.ENOENT)
                 data = self.cache.get(path, 'data')
                 if data == None:
+                    logger.error("readlink '%s' no data ENOENT" % (path))
                     raise FuseOSError(errno.ENOENT) # ??? That should not happen
                 data_range = data.get('range')
                 if data_range:
@@ -1593,7 +1595,7 @@ class YAS3FS(LoggingMixIn, Operations):
                 raise FuseOSError(errno.ENOENT)
             k = self.get_key(path)
             if not k:
-                logger.debug("rmdir '%s' key found ENOENT" % (path))
+                logger.debug("rmdir '%s' key ENOENT" % (path))
                 raise FuseOSError(errno.ENOENT)
             dirs = self.cache.get(path, 'readdir')
             if dirs == None:
@@ -1625,6 +1627,7 @@ class YAS3FS(LoggingMixIn, Operations):
             while True:
                 data = self.cache.get(path, 'data')
                 if not data:
+                    logger.error("truncate '%s' '%i' no data ENOENT" % (path, size))
                     raise FuseOSError(errno.ENOENT) # ??? That should not happen
                 data_range = data.get('range')
                 if not data_range:
@@ -1715,7 +1718,7 @@ class YAS3FS(LoggingMixIn, Operations):
             else:
                 k = self.get_key(path)
                 if k:
-                    logger.debug("mknod '%s' '%i' '%s' key found EEXIST" % (path, mode, dev))
+                    logger.debug("mknod '%s' '%i' '%s' key EEXIST" % (path, mode, dev))
                     raise FuseOSError(errno.EEXIST)
                 self.cache.add(path)
             now = get_current_time()
@@ -1755,7 +1758,7 @@ class YAS3FS(LoggingMixIn, Operations):
                 k.delete()
                 self.publish(['unlink', path])
 
-            self.cache.reset(path)
+            self.cache.reset(path) # Cache invaliation
             self.remove_from_parent_readdir(path)
 	return 0
 
@@ -1995,8 +1998,9 @@ class YAS3FS(LoggingMixIn, Operations):
             attr = self.get_metadata(path, 'attr')
             if attr < 0:
                 return attr
-            attr['st_mode'] = mode
-            self.set_metadata(path, 'attr')
+            if attr['st_mode'] != mode:
+                attr['st_mode'] = mode
+                self.set_metadata(path, 'attr')
             return 0
 
     def chown(self, path, uid, gid):
@@ -2008,11 +2012,15 @@ class YAS3FS(LoggingMixIn, Operations):
             attr = self.get_metadata(path, 'attr')
             if attr < 0:
                 return attr
-            if uid != -1:
+            changed = False
+            if uid != -1 and attr['st_uid'] != uid:
                 attr['st_uid'] = uid
-            if gid != -1:
+                changed = True
+            if gid != -1 and attr['st_gid'] != gid:
                 attr['st_gid'] = gid
-            self.set_metadata(path, 'attr')
+                changed = True
+            if changed:
+                self.set_metadata(path, 'attr')
             return 0
 
     def utime(self, path, times=None):
@@ -2074,8 +2082,9 @@ class YAS3FS(LoggingMixIn, Operations):
             xattr = self.get_metadata(path, 'xattr')
             if xattr < 0:
                 return xattr
-            xattr[name] = value
-            self.set_metadata(path, 'xattr')
+            if xattr[name] != value:
+                xattr[name] = value
+                self.set_metadata(path, 'xattr')
             return 0
 
     def statfs(self, path):
