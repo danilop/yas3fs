@@ -2283,7 +2283,7 @@ AWS_DEFAULT_REGION environment variable can be used to set the default AWS regio
     def custom_sys_excepthook(type, value, traceback):
         logger.error("Uncaught Exception")
         logger.error("Type: %s" % type)
-        logger.error("Vaue: %s" % value)
+        logger.error("Value: %s" % value)
         logger.error("Traceback: %s" % traceback)
     sys.excepthook = custom_sys_excepthook
         
