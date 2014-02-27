@@ -94,7 +94,7 @@ If you want to do a quick test here's the installation procedure depending on th
 **On Ubuntu Linux**
 
     sudo apt-get upgrade
-    sudo apt-get install fuse python-pip 
+    sudo apt-get -y install fuse python-pip 
     sudo pip install yas3fs # assume root installation
     sudo sed -i'' 's/^# *user_allow_other/user_allow_other/' /etc/fuse.conf # uncomment user_allow_other
     sudo chmod a+r /etc/fuse.conf # make it readable by anybody, it is not the default on Ubuntu
