@@ -863,7 +863,7 @@ class YAS3FS(LoggingMixIn, Operations):
             elif c[1] == 'rename' and c[2] != None and c[3] != None:
                 self.delete_cache(c[2])
                 self.delete_cache(c[3])
-            elif c[1] == 'flush':
+            elif c[1] == 'upload':
                 if c[2] != None:
                     self.invalidate_cache(c[2], c[3])
                 else: # Invalidate all the cached data
@@ -1779,8 +1779,11 @@ class YAS3FS(LoggingMixIn, Operations):
             if self.cache.is_empty(path):
                 logger.debug("release '%s' '%i' ENOENT" % (path, flags))
                 raise FuseOSError(errno.ENOENT)
-            if self.cache.has(path, 'data'):
-                self.cache.get(path, 'data').close()
+            data = self.cache.has(path, 'data')
+            if data:
+                data.close()
+                if not data.has('open') and data.has('change'):
+                    self.upload_to_s3(path)
                 logger.debug("release '%s' '%i' '%s'" % (path, flags, self.cache.get(path, 'data').get('open')))
             else:
                 logger.debug("release '%s' '%i'" % (path, flags))
@@ -1873,58 +1876,60 @@ class YAS3FS(LoggingMixIn, Operations):
             attr['st_atime'] = now
         return length
 
+    def upload_to_s3(self, path):
+        k = self.get_key(path)
+        if not k:
+            k = Key(self.s3_bucket)
+            k.key = self.join_prefix(path)
+            self.cache.set(path, 'key', k)
+        now = get_current_time()
+        attr = self.get_metadata(path, 'attr', k)
+        attr['st_atime'] = now
+        attr['st_mtime'] = now
+        self.set_metadata(path, 'attr', None, k) # To update key metadata before upload to S3
+        self.set_metadata(path, 'xattr', None, k) # To update key metadata before upload to S3
+        mimetype = mimetypes.guess_type(path)[0] or 'application/octet-stream'
+        if k.size == None:
+            old_size = 0
+        else:
+            old_size = k.size
+
+        written = False
+        if self.multipart_num > 0:
+            full_size = attr['st_size']
+            if full_size > self.multipart_size:
+                logger.debug("flush '%s' '%s' '%s' '%s' S3 multipart" % (path, fh, k, mimetype))
+                complete = self.multipart_upload(k.name, data, full_size,
+                                              headers={'Content-Type': mimetype}, metadata=k.metadata)
+                etag = complete.etag[1:-1]
+                new_k = self.get_key(path, cache=False) # To refresh the S3 key cache
+                written = True
+        if not written:
+            logger.debug("flush '%s' '%s' '%s' '%s' S3" % (path, fh, k, mimetype))
+            retry = 0
+            while retry < self.s3_retries:
+                data.content.seek(0)
+                try:
+                    k.set_contents_from_file(data.content, headers={'Content-Type': mimetype})
+                    break
+                except Exception as e:
+                    logger.exception(e)
+                    time.sleep(1.0) # Better wait 1 second before retrying
+                    retry += 1
+                    logger.debug("flush '%s' '%s' '%s' '%s' S3 metadata '%s'"
+                                 % (path, fh, k, mimetype, k.metadata))
+                    logger.info("flush '%s' '%s' '%s' '%s' S3 retry %i" % (path, fh, k, mimetype, retry))
+            etag = k.etag[1:-1]
+        data.update_etag(etag)
+        data.delete('change')
+        self.publish(['upload', path, etag])
+
     def flush(self, path, fh=None):
         logger.debug("flush '%s' '%s'" % (path, fh))
         with self.cache.get_lock(path):
             data = self.cache.get(path, 'data')
             if data and data.has('change'):
-                k = self.get_key(path)
-                if not k:
-                    k = Key(self.s3_bucket)
-                    k.key = self.join_prefix(path)
-                    self.cache.set(path, 'key', k)
-                now = get_current_time()
-                attr = self.get_metadata(path, 'attr', k)
-                attr['st_atime'] = now
-                attr['st_mtime'] = now
-                self.set_metadata(path, 'attr', None, k) # To update key metadata before upload to S3
-                self.set_metadata(path, 'xattr', None, k) # To update key metadata before upload to S3
-                mimetype = mimetypes.guess_type(path)[0] or 'application/octet-stream'
-                if k.size == None:
-                    old_size = 0
-                else:
-                    old_size = k.size
-
-                written = False
-                if self.multipart_num > 0:
-                    full_size = attr['st_size']
-                    if full_size > self.multipart_size:
-                        logger.debug("flush '%s' '%s' '%s' '%s' S3 multipart" % (path, fh, k, mimetype))
-                        complete = self.multipart_upload(k.name, data, full_size,
-                                                      headers={'Content-Type': mimetype}, metadata=k.metadata)
-                        etag = complete.etag[1:-1]
-                        new_k = self.get_key(path, cache=False) # To refresh the S3 key cache
-                        written = True
-                if not written:
-                    logger.debug("flush '%s' '%s' '%s' '%s' S3" % (path, fh, k, mimetype))
-                    retry = 0
-                    while retry < self.s3_retries:
-                        data.content.seek(0)
-                        try:
-                            k.set_contents_from_file(data.content, headers={'Content-Type': mimetype})
-                            break
-                        except Exception as e:
-                            logger.exception(e)
-                            time.sleep(1.0) # Better wait 1 second before retrying
-                            retry += 1
-                            logger.debug("flush '%s' '%s' '%s' '%s' S3 metadata '%s'"
-                                         % (path, fh, k, mimetype, k.metadata))
-                            logger.info("flush '%s' '%s' '%s' '%s' S3 retry %i" % (path, fh, k, mimetype, retry))
-                    etag = k.etag[1:-1]
-                data.update_etag(etag)
-                data.delete('change')
-                self.publish(['flush', path, etag])
-
+                self.upload_to_s3(path)
         logger.debug("flush '%s' '%s' done" % (path, fh))
         return 0
 

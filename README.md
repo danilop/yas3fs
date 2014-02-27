@@ -250,7 +250,7 @@ The following `action`(s) are currently implemented:
 * `unlink` (remove file): `[ "node_id", "unlink", "path" ]`
 * `symlink` (new symbolic link): `[ "node_id", "symlink", "path" ]`
 * `rename` (rename file or directory): `[ "node_id", "rename", "old_path", "new_path" ]`
-* `flush` (updated file): `[ "node_id", "flush", "path", "new_md5" ]` (`path` and `new_md5` are optional)
+* `upload` (new or updated file): `[ "node_id", "upload", "path", "new_md5" ]` (`path` and `new_md5` are optional)
 * `md` (updated metadata, e.g. attr/xattr): `[ "node_id", "md", "path", "metadata_name" ]`
 * `reset` (reset cache): `[ "node_id", "reset" ]`
 * `cache` (change cache config): `[ "node_id", "cache" , "entries" or "mem" or "disk", new_value ]`
@@ -269,7 +269,7 @@ To send the notification you can use the SNS web console or any command line too
 In the same way, if you uploaded a new file (or updated an old one) directly on S3 
 you can invalidate the caches of all the nodes in the yas3fs cluster for that `path` sending this SNS notification:
 
-    [ "all", "flush", "path" ]
+    [ "all", "upload", "path" ]
 
 The `path` is the relative path of the file system (`/` corresponding to the mount point)
 and doesn't include any S3 path (i.e. prefix) as given in the `--url` option.
