@@ -762,7 +762,7 @@ class YAS3FS(LoggingMixIn, Operations):
             for path in self.cache.entries:
                 data = self.cache.get(path, 'data')
                 if data and data.has('change'):
-                    self.flush(path)
+                    self.upload_to_s3(path, data)
  
     def destroy(self, path):
         logger.debug("destroy '%s'" % (path))
@@ -1779,12 +1779,12 @@ class YAS3FS(LoggingMixIn, Operations):
             if self.cache.is_empty(path):
                 logger.debug("release '%s' '%i' ENOENT" % (path, flags))
                 raise FuseOSError(errno.ENOENT)
-            data = self.cache.has(path, 'data')
+            data = self.cache.get(path, 'data')
             if data:
-                data.close()
-                if not data.has('open') and data.has('change'):
-                    self.upload_to_s3(path)
-                logger.debug("release '%s' '%i' '%s'" % (path, flags, self.cache.get(path, 'data').get('open')))
+                if data.has('change') and data.has('open') and data.get('open') == 1: # Last one to release the file
+                    self.upload_to_s3(path, data)
+                data.close() # Close after upload to have data.content populated for disk cache
+                logger.debug("release '%s' '%i' '%s'" % (path, flags, data.get('open')))
             else:
                 logger.debug("release '%s' '%i'" % (path, flags))
 	return 0
@@ -1876,9 +1876,10 @@ class YAS3FS(LoggingMixIn, Operations):
             attr['st_atime'] = now
         return length
 
-    def upload_to_s3(self, path):
+    def upload_to_s3(self, path, data):
+        logger.debug("upload_to_s3 '%s'" % path)
         k = self.get_key(path)
-        if not k:
+        if not k: # New key
             k = Key(self.s3_bucket)
             k.key = self.join_prefix(path)
             self.cache.set(path, 'key', k)
@@ -1898,14 +1899,14 @@ class YAS3FS(LoggingMixIn, Operations):
         if self.multipart_num > 0:
             full_size = attr['st_size']
             if full_size > self.multipart_size:
-                logger.debug("flush '%s' '%s' '%s' '%s' S3 multipart" % (path, fh, k, mimetype))
+                logger.debug("upload_to_s3 '%s' '%s' '%s' S3 multipart" % (path, k, mimetype))
                 complete = self.multipart_upload(k.name, data, full_size,
                                               headers={'Content-Type': mimetype}, metadata=k.metadata)
                 etag = complete.etag[1:-1]
                 new_k = self.get_key(path, cache=False) # To refresh the S3 key cache
                 written = True
         if not written:
-            logger.debug("flush '%s' '%s' '%s' '%s' S3" % (path, fh, k, mimetype))
+            logger.debug("upload_to_s3 '%s' '%s' '%s' S3" % (path, k, mimetype))
             retry = 0
             while retry < self.s3_retries:
                 data.content.seek(0)
@@ -1916,22 +1917,15 @@ class YAS3FS(LoggingMixIn, Operations):
                     logger.exception(e)
                     time.sleep(1.0) # Better wait 1 second before retrying
                     retry += 1
-                    logger.debug("flush '%s' '%s' '%s' '%s' S3 metadata '%s'"
-                                 % (path, fh, k, mimetype, k.metadata))
-                    logger.info("flush '%s' '%s' '%s' '%s' S3 retry %i" % (path, fh, k, mimetype, retry))
+                    logger.debug("upload_to_s3 '%s' '%s' '%s' S3 metadata '%s'"
+                                 % (path, k, mimetype, k.metadata))
+                    logger.info("upload_to_s3 '%s' '%s' '%s' S3 retry %i" % (path, k, mimetype, retry))
             etag = k.etag[1:-1]
+
         data.update_etag(etag)
         data.delete('change')
         self.publish(['upload', path, etag])
-
-    def flush(self, path, fh=None):
-        logger.debug("flush '%s' '%s'" % (path, fh))
-        with self.cache.get_lock(path):
-            data = self.cache.get(path, 'data')
-            if data and data.has('change'):
-                self.upload_to_s3(path)
-        logger.debug("flush '%s' '%s' done" % (path, fh))
-        return 0
+        logger.debug("upload_to_s3 '%s' done" % path)
 
     def multipart_upload(self, key_path, data, full_size, headers, metadata):
         logger.debug("multipart_upload '%s' '%s' '%s'" % (key_path, data, headers))
