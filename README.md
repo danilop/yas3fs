@@ -55,7 +55,7 @@ To mount an S3 bucket using SNS and listening to an SQS endpoint:
 
 To mount an S3 bucket using SNS and listening to an HTTP endpoint (on EC2):
 
-    yas3fs s3://bucket/path /path/to/mount --url --topic TOPIC-ARN --ec2-hostname --port N
+    yas3fs s3://bucket/path /path/to/mount --topic TOPIC-ARN --ec2-hostname --port N
 
 On EC2 the security group must allow inbound traffic from SNS on the selected port.
 
@@ -112,9 +112,9 @@ Install FUSE for OS X from <http://osxfuse.github.com>.
     sudo pip install yas3fs # assume root installation
     mkdir LOCAL-PATH
     # For single host mount
-    yas3fs LOCAL-PATH --url s3://BUCKET/PATH
+    yas3fs s3://BUCKET/PATH LOCAL-PATH
     # For multiple hosts mount
-    yas3fs LOCAL-PATH --url s3://BUCKET/PATH --topic TOPIC-ARN --new-queue
+    yas3fs s3://BUCKET/PATH LOCAL-PATH --topic TOPIC-ARN --new-queue
 
 To listen to SNS HTTP notifications (I usually suggest to use SQS instead) with a Mac
 you need to install the Python [M2Crypto](http://chandlerproject.org/Projects/MeTooCrypto) module,
