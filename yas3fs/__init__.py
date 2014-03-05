@@ -239,32 +239,28 @@ class FSData():
             raise FSData.unknown_store
     def has(self, prop):
         with self.get_lock():
-            if prop in self.props:
-                return True
-            else:
-                return False
+            return prop in self.props
     def get(self, prop):
         with self.get_lock():
-            if prop in self.props:
+            try:
                 return self.props[prop]
-            else:
+            except KeyError:
                 return None
     def set(self, prop, value):
         with self.get_lock():
             self.props[prop] = value
     def inc(self, prop):
         with self.get_lock():
-            if prop in self.props:
-                self.set(prop, self.props[prop] + 1)
-            else:
-                self.set(prop, 1)
+            try:
+                self.props[prop] += 1
+            except KeyError:
+                self.props[prop] = 1
     def dec(self, prop):
         with self.get_lock():
-            if prop in self.props:
-                if self.props[prop] > 1:
-                    self.set(prop, self.props[prop] - 1)
-                else:
-                    self.delete(prop)
+            try:
+                self.props[prop] -= 1
+            except KeyError:
+                del self.props[prop]
     def delete(self, prop=None):
         with self.get_lock():
             if prop == None:
@@ -281,7 +277,7 @@ class FSData():
                             remove_empty_dirs_for_file(etag_filename)
                 self.content = None # If not
                 self.update_size(True)
-                for p in self.props.keys():
+                for p in self.props:
                     self.delete(p)
             elif prop in self.props:
                 if prop == 'range':
@@ -351,7 +347,7 @@ class FSCache():
                     return new_lock;
     def add(self, path):
         with self.get_lock(path):
-            if not self.has(path):
+            if not path in self.entries:
                 self.entries[path] = {}
                 self.entries[path]['lock'] = self.new_locks[path]
                 del self.new_locks[path]
@@ -360,7 +356,7 @@ class FSCache():
         with self.get_lock(path):
             if path in self.entries:
                 if prop == None:
-                    for p in self.entries[path].keys():
+                    for p in self.entries[path]:
                         self.delete(path, p)
                     del self.entries[path]
                     self.lru.delete(path)
@@ -370,7 +366,8 @@ class FSCache():
                             data = self.entries[path][prop]
                             data.delete() # To clean stuff, e.g. remove cache files
                         elif prop == 'lock':
-                            self.new_locks[path] = self.entries[path][prop] # Preserve lock, let the unused locks check remove it later
+                            # Preserve lock, let the unused locks check remove it later
+                            self.new_locks[path] = self.entries[path][prop]
                         del self.entries[path][prop]
     def rename(self, path, new_path):
         with self.get_lock(path) and self.get_lock(new_path):
@@ -391,8 +388,7 @@ class FSCache():
             if prop == None:
                 return self.entries[path]
             else:
-                if prop in self.entries[path]:
-                    return self.entries[path][prop]
+                return self.entries[path][prop]
         except KeyError:
             return None
     def set(self, path, prop, value):
@@ -412,22 +408,18 @@ class FSCache():
     def has(self, path, prop=None):
         self.lru.move_to_the_tail(path) # Move to the tail of the LRU cache
         if prop == None:
-            if path in self.entries:
-                return True
-            return False
+            return path in self.entries
         else:
             try:
-                if prop in self.entries[path]:
-                    return True
+                return prop in self.entries[path]
             except KeyError:
-                pass
-            return False
-    def is_empty(self, path): # A wrapper to improve readability
+                return False
+    def is_empty(self, path): # To improve readability
         try:
             return len(self.get(path)) <= 1 # Empty or just with 'lock'
         except TypeError: # if get returns None
             return False
-    def is_not_empty(self, path): # A wrapper to improve readability
+    def is_not_empty(self, path): # To improve readability
         try:
             return len(self.get(path)) > 1 # More than just 'lock'
         except TypeError: # if get returns None
@@ -787,8 +779,10 @@ class YAS3FS(LoggingMixIn, Operations):
             self.sns.unsubscribe(self.sqs_subscription)
             logger.info("Unsubscribed SNS SQS endpoint")
             if self.new_queue:
-                self.sqs.delete_queue(self.queue, force_deletion=True)
-                logger.info("New queue deleted")
+                if self.sqs.delete_queue(self.queue):
+                    logger.info("New queue deleted")
+                else:
+                    logger.error("New queue was not deleted")
 
         self.flush_all_cache()
 
@@ -838,14 +832,14 @@ class YAS3FS(LoggingMixIn, Operations):
             self.cache.delete(path, 'key')
             self.cache.delete(path, 'attr')
             self.cache.delete(path, 'xattr')
-            if self.cache.has(path, 'data'):
-                if self.cache.get(path, 'data').has('range'):
+            data = self.cache.get(path, 'data')
+            if data:
+                if data.has('range'):
                     self.cache.delete(path, 'data')
                 else:
-                    self.cache.get(path, 'data').set('new', etag)
+                    data.set('new', etag)
             if self.cache.is_empty(path):
-                self.cache.delete(path)
-                self.reset_parent_readdir(path)
+                self.cache.delete(path) # But keep it in the parent readdir
 
     def delete_cache(self, path):
         logger.debug("delete_cache '%s'" % (path))
@@ -955,20 +949,21 @@ class YAS3FS(LoggingMixIn, Operations):
                            self.download_queue.qsize(), self.prefetch_queue.qsize()))
 
             if debug:
-                logger.debug("new_locks, unused_locks: %i, %i" % (len(self.cache.new_locks), len(self.cache.unused_locks)))
+                logger.debug("new_locks, unused_locks: %i, %i"
+                             % (len(self.cache.new_locks), len(self.cache.unused_locks)))
                 (threshold0, threshold1, threshold2) = gc.get_threshold()
                 (count0, count1, count2) = gc.get_count()
                 logger.debug("gc count0/threshold0, count1/threshold1, count2/threshold2: %i/%i, %i/%i, %i/%i"
                              % (count0,threshold0,count1,threshold1,count2,threshold2))
 
             if self.running:
-                for i in self.download_threads.keys():
+                for i in self.download_threads:
                     if not self.download_threads[i].is_alive():
                         logger.debug("Download thread restarted!")
                         self.download_threads[i] = threading.Thread(target=self.download)
                         self.download_threads[i].deamon = True
                         self.download_threads[i].start()
-                for i in self.prefetch_threads.keys():
+                for i in self.prefetch_threads:
                     if not self.prefetch_threads[i].is_alive():
                         logger.debug("Prefetch thread restarted!")
                         self.prefetch_threads[i] = threading.Thread(target=self.download, args=(True,))
@@ -1021,7 +1016,7 @@ class YAS3FS(LoggingMixIn, Operations):
                             self.cache.lru.append(path) # The entry is still there, let's append it again at the end of the RLU list
             else:
                 # Check for unused locks to be removed
-                for path in self.cache.unused_locks.keys():
+                for path in self.cache.unused_locks:
                     logger.debug("purge unused lock: '%s'" % (path))
                     try:
                         with self.cache.lock and self.cache.new_locks[path]:
@@ -1035,7 +1030,7 @@ class YAS3FS(LoggingMixIn, Operations):
                     except KeyError:
                         pass
                 # Look for unused locks to be removed at next iteration (if still "new")
-                for path in self.cache.new_locks.keys():
+                for path in self.cache.new_locks:
                     logger.debug("purge unused lock: '%s' added to list" % (path))
                     self.cache.unused_locks[path] = True # Just a flag
 
@@ -1112,7 +1107,9 @@ class YAS3FS(LoggingMixIn, Operations):
     def get_metadata(self, path, metadata_name, key=None):
         logger.debug("get_metadata -> '%s' '%s' '%s'" % (path, metadata_name, key))
         with self.cache.get_lock(path): # To avoid consistency issues, e.g. with a concurrent purge
-            if not self.cache.has(path, metadata_name):
+            if self.cache.has(path, metadata_name):
+                metadata_values = self.cache.get(path, metadata_name)
+            else:
                 if not key:
                     key = self.get_key(path)
                 if not key:
@@ -1169,8 +1166,6 @@ class YAS3FS(LoggingMixIn, Operations):
                         metadata_values['st_ctime'] = now
                 self.cache.add(path)
                 self.cache.set(path, metadata_name, metadata_values)
-            else:
-                metadata_values = self.cache.get(path, metadata_name)
             logger.debug("get_metadata <- '%s' '%s' '%s' '%s'" % (path, metadata_name, key, metadata_values))
             return metadata_values
 
@@ -1188,12 +1183,14 @@ class YAS3FS(LoggingMixIn, Operations):
                 if key:
                     if metadata_name:
                         values = metadata_values
-                        values = copy.deepcopy(metadata_values) # To avoid issues when removing 'st_size' from 'attr'
                         if values == None:
                             values = self.cache.get(path, metadata_name)
-                        if values == None:
-                            del key.metadata[metadata_name]
-                        elif any(values): # To avoid writing empy dicts on S3
+                        if values == None or not any(values):
+                            try:
+                                del key.metadata[metadata_name]
+                            except KeyError:
+                                pass
+                        else:
                             try:
                                 key.metadata[metadata_name] = json.dumps(values)
                             except UnicodeDecodeError:
@@ -1205,7 +1202,7 @@ class YAS3FS(LoggingMixIn, Operations):
                         retry = 0
                         while retry < self.s3_retries:
                             try:
-                                key.copy(key.bucket.name, key.name, key.metadata, preserve_acl=False) # To preserve metadata
+                                key.copy(key.bucket.name, key.name, key.metadata, preserve_acl=False)
                                 break
                             except Exception as e:
                                 logger.exception(e)
@@ -1691,12 +1688,12 @@ class YAS3FS(LoggingMixIn, Operations):
             self.cache.rename(source_path, target_path)
             key = self.s3_bucket.get_key(source)
             if key: # For files in cache but still not flushed to S3
-                md = key.metadata
-                md['Content-Type'] = key.content_type # Otherwise we loose the Content-Type with S3 Copy
+                # Otherwise we loose the Content-Type with S3 Copy
+                key.metadata['Content-Type'] = key.content_type
                 retry = 0
                 while retry < self.s3_retries:
                     try:
-                        key.copy(key.bucket.name, target, md, preserve_acl=False) # Do I need to preserve ACL?
+                        key.copy(key.bucket.name, target, key.metadata, preserve_acl=False)
                         break
                     except Exception as e:
                         logger.exception(e)
@@ -1784,7 +1781,7 @@ class YAS3FS(LoggingMixIn, Operations):
                 raise FuseOSError(errno.ENOENT)
             data = self.cache.get(path, 'data')
             if data:
-                if data.has('change') and data.has('open') and data.get('open') == 1: # Last one to release the file
+                if data.has('change') and data.get('open') == 1: # Last one to release the file
                     self.upload_to_s3(path, data)
                 data.close() # Close after upload to have data.content populated for disk cache
                 logger.debug("release '%s' '%i' '%s'" % (path, flags, data.get('open')))
