@@ -1,15 +1,6 @@
 from setuptools import setup, find_packages
-from BeautifulSoup import BeautifulSoup
-from markdown import markdown
 
 import sys
-
-with open('README.md') as file:
-    md_description = file.read()
-html_description = markdown(md_description)
-long_description = ''.join(BeautifulSoup(html_description).findAll(text=True))
-with open('README.txt', 'w') as file:
-    file.write(long_description)
 
 execfile('yas3fs/_version.py')
 
