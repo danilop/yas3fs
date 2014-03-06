@@ -15,7 +15,6 @@ setup(
     name='yas3fs',
     version=__version__,
     description='YAS3FS (Yet Another S3-backed File System) is a Filesystem in Userspace (FUSE) interface to Amazon S3.',
-    long_description=long_description,
     packages=find_packages(),
     author='Danilo Poccia',
     author_email='dpoccia@gmail.com',
