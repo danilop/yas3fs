@@ -356,7 +356,7 @@ class FSCache():
         with self.get_lock(path):
             if path in self.entries:
                 if prop == None:
-                    for p in self.entries[path]:
+                    for p in self.entries[path].keys():
                         self.delete(path, p)
                     del self.entries[path]
                     self.lru.delete(path)
