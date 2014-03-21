@@ -2280,7 +2280,7 @@ AWS_DEFAULT_REGION environment variable can be used to set the default AWS regio
     parser.add_argument('--no-metadata', action='store_true',
                         help='don\'t write user metadata on S3 to persist file system attr/xattr')
     parser.add_argument('--prefetch', action='store_true',
-                        help='download file/directory content as soon as the file is discovered' +
+                        help='download file/directory content as soon as it is discovered ' +
                         '(doesn\'t download file content if download buffers are used)')
     parser.add_argument('--mp-size',metavar='N', type=int, default=100,
                         help='size of parts to use for multipart upload in MB ' +
