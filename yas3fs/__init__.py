@@ -2292,20 +2292,20 @@ AWS_DEFAULT_REGION environment variable can be used to set the default AWS regio
                         help='max number of retries in uploading a part (default is %(default)s)')
     parser.add_argument('--id',
                         help='a unique ID identifying this node in a cluster (default is a UUID)')
-    parser.add_argument('--mkdir',
+    parser.add_argument('--mkdir', action='store_true',
                         help='create mountpoint if not found (and create intermediate directories as required)')
     parser.add_argument('--uid', metavar='N',
-                      help='default UID')
+                        help='default UID')
     parser.add_argument('--gid', metavar='N',
-                      help='default GID')
+                        help='default GID')
     parser.add_argument('--umask', metavar='MASK',
-                      help='default umask')
+                        help='default umask')
     parser.add_argument('-l', '--log', metavar='FILE',
-                      help='filename for logs')
+                        help='filename for logs')
     parser.add_argument('-f', '--foreground', action='store_true',
-                      help='run in foreground')
+                        help='run in foreground')
     parser.add_argument('-d', '--debug', action='store_true',
-                      help='show debug info')
+                        help='show debug info')
     parser.add_argument('-V', '--version', action='version', version='%(prog)s {version}'.format(version=__version__))
 
     options = parser.parse_args()
