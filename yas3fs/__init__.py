@@ -258,9 +258,12 @@ class FSData():
     def dec(self, prop):
         with self.get_lock():
             try:
-                self.props[prop] -= 1
+                if self.props[prop] > 1:
+                    self.props[prop] -= 1
+                else:
+                    del self.props[prop]
             except KeyError:
-                del self.props[prop]
+                pass # Nothing to do
     def delete(self, prop=None):
         with self.get_lock():
             if prop == None:
