@@ -1209,6 +1209,13 @@ class YAS3FS(LoggingMixIn, Operations):
                 if not key:
                     key = self.get_key(path)
                     logger.debug("set_metadata '%s' '%s' '%s' Key" % (path, metadata_name, key))
+                new_key = False
+                if not key and self.folder_has_contents(path):
+                    if path != '/' or self.write_metadata:
+                        full_path = path + '/'
+                        key = Key(self.s3_bucket)
+                        key.key = self.join_prefix(full_path)
+                        new_key = True
                 if key:
                     if metadata_name:
                         values = metadata_values
@@ -1231,7 +1238,11 @@ class YAS3FS(LoggingMixIn, Operations):
                         retry = 0
                         while retry < self.s3_retries:
                             try:
-                                key.copy(key.bucket.name, key.name, key.metadata, preserve_acl=False)
+                                if new_key:
+                                    logger.debug("set_metadata '%s' '%s' S3 new key" % (path, key))
+                                    key.set_contents_from_string('', headers={'Content-Type': 'application/x-directory'})
+                                else:
+                                    key.copy(key.bucket.name, key.name, key.metadata, preserve_acl=False)
                                 break
                             except Exception as e:
                                 logger.exception(e)
@@ -1322,14 +1333,13 @@ class YAS3FS(LoggingMixIn, Operations):
             k = Key(self.s3_bucket)
             self.set_metadata(path, 'attr', attr, k)
             self.set_metadata(path, 'xattr', {}, k)
-            if path != '/':
-                full_path = path + '/'
-            else:
-                full_path = path # To manage '/' with an empty s3_prefix
             self.cache.set(path, 'key', k)
             if path != '/':
+                full_path = path + '/'
                 self.cache.set(path, 'readdir', ['.', '..']) # the directory is empty
                 self.add_to_parent_readdir(path)
+            else:
+                full_path = path # To manage '/' with an empty s3_prefix
 
             if path != '/' or self.write_metadata:
                 k.key = self.join_prefix(full_path)
