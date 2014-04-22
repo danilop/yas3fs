@@ -513,6 +513,7 @@ class PartOfFSData():
         self.start = start
         self.length = length
         self.pos = 0
+        self.lock = threading.Lock()
     def seek(self, offset, whence=0):
         logger.debug("seek '%i' '%i'" % (offset, whence))
         if whence == 0:
@@ -530,7 +531,7 @@ class PartOfFSData():
             n = min([n, self.length - self.pos])
             logger.debug("read before lock '%i' '%s' '%s' at '%i' starting from '%i' for '%i'"
                          % (n, self.data, self.data.content, self.pos, self.start, self.length))
-            with self.data.get_lock():
+            with self.lock:
                 logger.debug("read within lock '%i' '%s' '%s' at '%i' starting from '%i' for '%i'"
                              % (n, self.data, self.data.content, self.pos, self.start, self.length))
                 self.data.content.seek(self.start + self.pos)
