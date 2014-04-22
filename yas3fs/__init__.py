@@ -528,9 +528,15 @@ class PartOfFSData():
                      % (n, self.data, self.data.content, self.pos, self.start, self.length))
         if n >= 0:
             n = min([n, self.length - self.pos])
+            logger.debug("read before lock '%i' '%s' '%s' at '%i' starting from '%i' for '%i'"
+                         % (n, self.data, self.data.content, self.pos, self.start, self.length))
             with self.data.get_lock():
+                logger.debug("read within lock '%i' '%s' '%s' at '%i' starting from '%i' for '%i'"
+                             % (n, self.data, self.data.content, self.pos, self.start, self.length))
                 self.data.content.seek(self.start + self.pos)
                 s = self.data.content.read(n)
+            logger.debug("read after lock '%i' '%s' '%s' at '%i' starting from '%i' for '%i'"
+                         % (n, self.data, self.data.content, self.pos, self.start, self.length))
             self.pos += len(s)
             return s
         else:
