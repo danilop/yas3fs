@@ -1954,11 +1954,12 @@ class YAS3FS(LoggingMixIn, Operations):
         logger.debug("upload_to_s3 '%s' done" % path)
 
     def multipart_upload(self, key_path, data, full_size, headers, metadata):
-        logger.debug("multipart_upload '%s' '%s' '%s'" % (key_path, data, headers))
+        logger.debug("multipart_upload '%s' '%s' '%s' '%s'" % (key_path, data, full_size, headers))
         part_num = 0
         part_pos = 0
         part_queue = Queue.Queue()
         multipart_size = max(self.multipart_size, full_size / 100) # No more than 100 parts...
+        logger.debug("multipart_upload '%s' multipart_size '%s'" % (key_path, multipart_size))
         while part_pos < full_size:
             bytes_left = full_size - part_pos
             if bytes_left > self.multipart_size:
@@ -1970,8 +1971,9 @@ class YAS3FS(LoggingMixIn, Operations):
             part_pos += part_size
             logger.debug("part from %i for %i" % (part_pos, part_size))
         logger.debug("initiate_multipart_upload '%s' '%s'" % (key_path, headers))
-        mpu = self.s3_bucket.initiate_multipart_upload(key_path, headers=headers, metadata=metadata)
         num_threads = min(part_num, self.multipart_num)
+        logger.debug("multipart_upload '%s' num_threads '%s'" % (key_path, num_threads))
+        mpu = self.s3_bucket.initiate_multipart_upload(key_path, headers=headers, metadata=metadata)
         for i in range(num_threads):
             t = TracebackLoggingThread(target=self.part_upload, args=(mpu, part_queue))
             t.demon = True
