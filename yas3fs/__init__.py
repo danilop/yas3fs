@@ -1988,8 +1988,9 @@ class YAS3FS(LoggingMixIn, Operations):
         num_threads = min(part_num, self.multipart_num)
         logger.debug("multipart_upload '%s' num_threads '%s'" % (key_path, num_threads))
         mpu = self.s3_bucket.initiate_multipart_upload(key_path, headers=headers, metadata=metadata)
-        for i in range(num_threads):
-            t = TracebackLoggingThread(target=self.part_upload, args=(mpu, part_queue))
+        for i in range(num_threads): 
+            ###t = TracebackLoggingThread(target=self.part_upload, args=(mpu, part_queue))
+            t = threading.Thread(target=self.part_upload, args=(mpu, part_queue))
             t.demon = True
             t.start()
             logger.debug("multipart_upload thread '%i' started" % i)
@@ -2015,7 +2016,7 @@ class YAS3FS(LoggingMixIn, Operations):
                 for retry in range(self.multipart_retries):
                     logger.debug("begin upload of part %i retry %i" % (num, retry))
                     try:
-                        mpu.upload_part_from_file(fp=part, part_num=num) # Manage retries???
+                        mpu.upload_part_from_file(fp=part, part_num=num)
                     except Exception as e:
                         logger.exception(e)
                         logger.info("error during multipart upload part %i retry %i: %s"
