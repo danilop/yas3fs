@@ -1991,8 +1991,7 @@ class YAS3FS(LoggingMixIn, Operations):
         logger.debug("multipart_upload '%s' num_threads '%s'" % (key_path, num_threads))
         mpu = self.s3_bucket.initiate_multipart_upload(key_path, headers=headers, metadata=metadata)
         for i in range(num_threads): 
-            ###t = TracebackLoggingThread(target=self.part_upload, args=(mpu, part_queue))
-            t = threading.Thread(target=self.part_upload, args=(mpu, part_queue))
+            t = TracebackLoggingThread(target=self.part_upload, args=(mpu, part_queue))
             t.demon = True
             t.start()
             logger.debug("multipart_upload thread '%i' started" % i)
@@ -2156,6 +2155,7 @@ class TracebackLoggingThread(threading.Thread):
             raise
         except Exception:
             logger.exception("Uncaught Exception in Thread")
+            raise
 
 ### Utility functions
 
