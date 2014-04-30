@@ -720,7 +720,7 @@ class YAS3FS(LoggingMixIn, Operations):
             if thread_is_not_alive(self.s3_threads[i]):
                 logger.debug("%s S3 thread #%i" % (display, i))
                 self.s3_threads[i] = TracebackLoggingThread(target=self.get_to_do_on_s3)
-                self.s3_threads[i].deamon = True
+                self.s3_threads[i].deamon = False
                 self.s3_threads[i].start()
 
         for i in range(self.download_num):
@@ -1617,6 +1617,7 @@ class YAS3FS(LoggingMixIn, Operations):
                     kargs = None
             else:
                 args = None
+                kargs = None
 
             logger.debug("do_on_s3_now action '%s' key '%s' args '%s' kargs '%s'" % (action, key, args, kargs))
 
@@ -1693,7 +1694,7 @@ class YAS3FS(LoggingMixIn, Operations):
             ###self.publish(['rmdir', path])
             pub = [ 'rmdir', path ]
             cmds = [ pub, [ k, 'delete'] ]
-            self._do_on_s3(cmds)
+            self.do_on_s3(cmds)
 
             self.cache.reset(path) # Cache invaliation
             self.remove_from_parent_readdir(path)
@@ -1842,7 +1843,7 @@ class YAS3FS(LoggingMixIn, Operations):
                 ###self.publish(['unlink', path])
                 pub = [ 'unlink', path ]
                 cmds = [ pub, [ k, 'delete'] ]
-                self._do_on_s3(cmds)
+                self.do_on_s3(cmds)
 
             self.cache.reset(path) # Cache invaliation
             self.remove_from_parent_readdir(path)
