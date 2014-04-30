@@ -1237,8 +1237,7 @@ class YAS3FS(LoggingMixIn, Operations):
                                 pass # Ignore the binary values - something better TODO ???
                     if (not data) or (data and (not data.has('change'))):
                         logger.debug("set_metadata '%s' '%s' S3" % (path, key))
-                        retry = 0
-                        while retry < self.s3_retries:
+                        for retry in range(self.s3_retries):
                             try:
                                 if new_key:
                                     logger.debug("set_metadata '%s' '%s' S3 new key" % (path, key))
@@ -1249,7 +1248,6 @@ class YAS3FS(LoggingMixIn, Operations):
                             except Exception as e:
                                 logger.exception(e)
                                 time.sleep(1.0) # Better wait 1 second before retrying
-                                retry += 1
                                 logger.debug("set_metadata '%s' '%s' S3 metadata '%s'" % (path, key, key.metadata))
                                 logger.info("set_metadata '%s' '%s' S3 retry %i" % (path, key, retry))
                         self.publish(['md', metadata_name, path])
@@ -1346,15 +1344,13 @@ class YAS3FS(LoggingMixIn, Operations):
             if path != '/' or self.write_metadata:
                 k.key = self.join_prefix(full_path)
                 logger.debug("mkdir '%s' '%s' '%s' S3" % (path, mode, k))
-                retry = 0
-                while retry < self.s3_retries:
+                for retry in range(self.s3_retries):
                     try:
                         k.set_contents_from_string('', headers={'Content-Type': 'application/x-directory'})
                         break
                     except Exception as e:
                         logger.exception(e)
                         time.sleep(1.0) # Better wait 1 second before retrying
-                        retry += 1
                         logger.info("mkdir '%s' '%s' '%s' S3 retry %i" % (path, mode, k, retry))
             data.delete('change')
             if path != '/': ### Do I need this???
@@ -1400,15 +1396,13 @@ class YAS3FS(LoggingMixIn, Operations):
             self.cache.set(path, 'key', k)
             self.add_to_parent_readdir(path)
             logger.debug("symlink '%s' '%s' '%s' S3" % (path, link, k))
-            retry = 0
-            while retry < self.s3_retries:
+            for retry in range(self.s3_retries):
                 try:
                     k.set_contents_from_string(link, headers={'Content-Type': 'application/x-symlink'})
                     break
                 except Exception as e:
                     logger.exception(e)
                     time.sleep(1.0) # Better wait 1 second before retrying
-                    retry += 1
                     logger.info("symlink '%s' '%s' '%s' S3 retry %i" % (path, link, k, retry))
             data.delete('change')
             self.publish(['symlink', path])
@@ -1729,23 +1723,24 @@ class YAS3FS(LoggingMixIn, Operations):
             self.cache.rename(source_path, target_path)
             key = self.s3_bucket.get_key(source)
             if key: # For files in cache but still not flushed to S3
-                # Otherwise we loose the Content-Type with S3 Copy
-                key.metadata['Content-Type'] = key.content_type
-                retry = 0
-                while retry < self.s3_retries:
-                    try:
-                        key.copy(key.bucket.name, target, key.metadata, preserve_acl=False)
-                        break
-                    except Exception as e:
-                        logger.exception(e)
-                        time.sleep(1.0) # Better wait 1 second before retrying
-                        retry += 1
-                        logger.info("renaming '%s' ('%s') -> '%s' ('%s') retry %i" % (source, source_path, target, target_path, retry))
-                key.delete()
-                self.publish(['rename', source_path, target_path])
+                rename_on_S3(key, target)
 
         self.remove_from_parent_readdir(path)
         self.add_to_parent_readdir(new_path)
+
+    def rename_on_S3(key, target):
+        # Otherwise we loose the Content-Type with S3 Copy
+        key.metadata['Content-Type'] = key.content_type
+        for retry in range(self.s3_retries):
+            try:
+                key.copy(key.bucket.name, target, key.metadata, preserve_acl=False)
+                break
+            except Exception as e:
+                logger.exception(e)
+                time.sleep(1.0) # Better wait 1 second before retrying
+                logger.info("renaming '%s' ('%s') -> '%s' ('%s') retry %i" % (source, source_path, target, target_path, retry))
+        key.delete()
+        self.publish(['rename', source_path, target_path])
 
     def mknod(self, path, mode, dev=None):
         logger.debug("mknod '%s' '%i' '%s'" % (path, mode, dev))
@@ -1948,8 +1943,7 @@ class YAS3FS(LoggingMixIn, Operations):
                 written = True
         if not written:
             logger.debug("upload_to_s3 '%s' '%s' '%s' S3" % (path, k, mimetype))
-            retry = 0
-            while retry < self.s3_retries:
+            for retry in range(self.s3_retries):
                 data.content.seek(0)
                 try:
                     k.set_contents_from_file(data.content, headers={'Content-Type': mimetype})
@@ -1957,7 +1951,6 @@ class YAS3FS(LoggingMixIn, Operations):
                 except Exception as e:
                     logger.exception(e)
                     time.sleep(1.0) # Better wait 1 second before retrying
-                    retry += 1
                     logger.debug("upload_to_s3 '%s' '%s' '%s' S3 metadata '%s'"
                                  % (path, k, mimetype, k.metadata))
                     logger.info("upload_to_s3 '%s' '%s' '%s' S3 retry %i" % (path, k, mimetype, retry))
@@ -2013,18 +2006,16 @@ class YAS3FS(LoggingMixIn, Operations):
             while (True):
                 logger.debug("trying to get a part from the queue")
                 [ num, part ] = part_queue.get(False)
-                retry = 0
                 for retry in range(self.multipart_retries):
                     logger.debug("begin upload of part %i retry %i" % (num, retry))
                     try:
                         mpu.upload_part_from_file(fp=part, part_num=num)
+                        break
                     except Exception as e:
                         logger.exception(e)
                         logger.info("error during multipart upload part %i retry %i: %s"
                                     % (num, retry, sys.exc_info()[0]))
-                        pass
-                    else:
-                        break
+                        time.sleep(1.0) # Better wait 1 second before retrying  
                 logger.debug("end upload of part %i retry %i" % (num, retry))
                 part_queue.task_done()
         except Queue.Empty:
