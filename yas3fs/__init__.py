@@ -166,21 +166,21 @@ class FSData():
             filename = self.cache.get_cache_filename(self.path)
             if os.path.isfile(filename):
                 # There's a file already there
-                self.content = io.FileIO(filename, mode='rb+')
+                self.content = open(filename, mode='rb+')
                 self.update_size()
                 self.content.close()
                 self.set('new', None) # Not sure it is the latest version
                 # Now search for an etag file
                 etag_filename = self.cache.get_cache_etags_filename(self.path)
                 if os.path.isfile(etag_filename):
-                    with open(etag_filename, 'r') as etag_file:
+                    with open(etag_filename, mode='r') as etag_file:
                         self.etag = etag_file.read()
                     previous_file = True
             if not previous_file:
                 logger.debug("creating new cache file '%s'" % filename)
                 with self.cache.disk_lock:
                     create_dirs_for_file(filename)
-                    open(filename, 'w').close() # To create an empty file (and overwrite a previous file)
+                    open(filename, mode='w').close() # To create an empty file (and overwrite a previous file)
                 logger.debug("created new cache file '%s'" % filename)
             self.content = None # Not open, yet
         else:
@@ -192,7 +192,7 @@ class FSData():
             if not self.has('open'):
                 if self.store == 'disk':
                     filename = self.cache.get_cache_filename(self.path)
-                    self.content = io.FileIO(filename, mode='rb+')
+                    self.content = open(filename, mode='rb+')
             self.inc('open')
     def close(self):
         with self.get_lock():
@@ -209,11 +209,13 @@ class FSData():
                     filename = self.cache.get_cache_etags_filename(self.path)
                     with self.cache.disk_lock:
                         create_dirs_for_file(filename)
-                        with open(filename, 'w') as etag_file:
+                        with open(filename, mode='w') as etag_file:
                             etag_file.write(new_etag)
     def get_current_size(self):
         if self.content:
-            return self.content.seek(0,2)
+            with self.get_lock():
+                self.content.seek(0,2)
+                return self.content.tell()
         else:
             return 0 # There's no content...
     def update_size(self, final=False):
@@ -310,7 +312,7 @@ class FSData():
                     with self.cache.disk_lock:
                         remove_empty_dirs_for_file(etag_filename)
                 if self.content:
-                    self.content = io.FileIO(new_filename, mode='rb+')
+                    self.content = open(new_filename, mode='rb+')
             self.path = new_path
 
 class FSCache():
@@ -1949,7 +1951,7 @@ class YAS3FS(LoggingMixIn, Operations):
         data = self.cache.get(path, 'data')
 	with data.get_lock():
             if not data.content:
-                logger.debug("write awake '%s' '%i' '%i' '%s' no content" % (path, len(new_data), offset, fh))            
+                logger.info("write awake '%s' '%i' '%i' '%s' no content" % (path, len(new_data), offset, fh))            
                 return 0
             logger.debug("write '%s' '%i' '%i' '%s' '%s' content" % (path, len(new_data), offset, fh, data.content))
             data.content.seek(offset)
