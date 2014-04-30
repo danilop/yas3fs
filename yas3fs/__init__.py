@@ -598,7 +598,7 @@ class YAS3FS(LoggingMixIn, Operations):
             import M2Crypto # Required to check integrity of SNS HTTP notifications
             logger.info("TCP port to listen to SNS HTTP notifications: '%i'" % self.sns_http_port)
         self.s3_num = options.s3_num
-        logger.info("Number of parallel S3 threads: '%i'" % self.s3_num)
+        logger.info("Number of parallel S3 threads (0 to disable writeback): '%i'" % self.s3_num)
         self.download_num = options.download_num
         logger.info("Number of parallel donwloading threads: '%i'" % self.download_num)
         self.prefetch_num = options.prefetch_num
@@ -1597,8 +1597,8 @@ class YAS3FS(LoggingMixIn, Operations):
            except Queue.Empty:
                pass
 
-    def do_on_s3(self, cmds, now=False):
-        if now:
+    def do_on_s3(self, cmds):
+        if self.s3_num == 0:
             do_on_s3_now(cmds)
         else:
             self.s3_queue.put(cmds)
@@ -2334,7 +2334,7 @@ AWS_DEFAULT_REGION environment variable can be used to set the default AWS regio
     parser.add_argument('--cache-check', metavar='N', type=int, default=5,
                         help='interval between cache size checks in seconds (default is %(default)s seconds)')
     parser.add_argument('--s3-num', metavar='N', type=int, default=32,
-                        help='number of parallel S3 calls (default is %(default)s)')
+                        help='number of parallel S3 calls (0 to disable writeback, default is %(default)s)')
     parser.add_argument('--download-num', metavar='N', type=int, default=4,
                         help='number of parallel downloads (default is %(default)s)')
     parser.add_argument('--prefetch-num', metavar='N', type=int, default=2,
