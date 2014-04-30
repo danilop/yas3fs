@@ -45,7 +45,6 @@ from sys import exit
 from boto.s3.key import Key 
 
 from fuse import FUSE, FuseOSError, Operations, LoggingMixIn, fuse_get_context
-
 from _version import __version__
 
 class Interval():
@@ -598,6 +597,8 @@ class YAS3FS(LoggingMixIn, Operations):
         if options.port:
             import M2Crypto # Required to check integrity of SNS HTTP notifications
             logger.info("TCP port to listen to SNS HTTP notifications: '%i'" % self.sns_http_port)
+        self.s3_num = options.s3_num
+        logger.info("Number of parallel S3 threads: '%i'" % self.s3_num)
         self.download_num = options.download_num
         logger.info("Number of parallel donwloading threads: '%i'" % self.download_num)
         self.prefetch_num = options.prefetch_num
@@ -627,6 +628,7 @@ class YAS3FS(LoggingMixIn, Operations):
         logger.info("Cache path (on disk): '%s'" % cache_path)
         self.cache = FSCache(cache_path)
         self.publish_queue = Queue.Queue()
+        self.s3_queue = Queue.Queue()
         self.download_queue = Queue.Queue()
         self.prefetch_queue = Queue.Queue()
 
@@ -714,6 +716,13 @@ class YAS3FS(LoggingMixIn, Operations):
         else:
             display = 'Restarting'
 
+        for i in range(self.s3_num):
+            if thread_is_not_alive(self.s3_threads[i]):
+                logger.debug("%s S3 thread #%i" % (display, i))
+                self.s3_threads[i] = TracebackLoggingThread(target=self.get_to_do_on_s3)
+                self.s3_threads[i].deamon = True
+                self.s3_threads[i].start()
+
         for i in range(self.download_num):
             if thread_is_not_alive(self.download_threads[i]):
                 logger.debug("%s download thread #%i" % (display, i))
@@ -758,6 +767,9 @@ class YAS3FS(LoggingMixIn, Operations):
     def init(self, path):
         logger.debug("init '%s'" % (path))
 
+        self.s3_threads = {}
+        for i in range(self.s3_num):
+            self.s3_threads[i] = None
         self.download_threads = {}
         for i in range(self.download_num):
             self.download_threads[i] = None
@@ -1237,20 +1249,17 @@ class YAS3FS(LoggingMixIn, Operations):
                                 pass # Ignore the binary values - something better TODO ???
                     if (not data) or (data and (not data.has('change'))):
                         logger.debug("set_metadata '%s' '%s' S3" % (path, key))
-                        for retry in range(self.s3_retries):
-                            try:
-                                if new_key:
-                                    logger.debug("set_metadata '%s' '%s' S3 new key" % (path, key))
-                                    key.set_contents_from_string('', headers={'Content-Type': 'application/x-directory'})
-                                else:
-                                    key.copy(key.bucket.name, key.name, key.metadata, preserve_acl=False)
-                                break
-                            except Exception as e:
-                                logger.exception(e)
-                                time.sleep(1.0) # Better wait 1 second before retrying
-                                logger.debug("set_metadata '%s' '%s' S3 metadata '%s'" % (path, key, key.metadata))
-                                logger.info("set_metadata '%s' '%s' S3 retry %i" % (path, key, retry))
-                        self.publish(['md', metadata_name, path])
+                        pub = [ 'md', metadata_name, path ]
+                        if new_key:
+                            logger.debug("set_metadata '%s' '%s' S3 new key" % (path, key))
+                            ### key.set_contents_from_string('', headers={'Content-Type': 'application/x-directory'})
+                            cmds = [ pub, [ key, 'set_contents_from_string', [ '' ], { 'headers': {'Content-Type': 'application/x-directory' } } ] ]
+                            self.do_on_s3(cmds)
+                        else:
+                            ### key.copy(key.bucket.name, key.name, key.metadata, preserve_acl=False)
+                            cmds = [ pub, [ key, 'copy', [ key.bucket.name, key.name, key.metadata ], { 'preserve_acl': False } ] ]
+                            self.do_on_s3(cmds)
+                        ###self.publish(['md', metadata_name, path])
                     
     def getattr(self, path, fh=None):
         logger.debug("getattr -> '%s' '%s'" % (path, fh))
@@ -1344,17 +1353,13 @@ class YAS3FS(LoggingMixIn, Operations):
             if path != '/' or self.write_metadata:
                 k.key = self.join_prefix(full_path)
                 logger.debug("mkdir '%s' '%s' '%s' S3" % (path, mode, k))
-                for retry in range(self.s3_retries):
-                    try:
-                        k.set_contents_from_string('', headers={'Content-Type': 'application/x-directory'})
-                        break
-                    except Exception as e:
-                        logger.exception(e)
-                        time.sleep(1.0) # Better wait 1 second before retrying
-                        logger.info("mkdir '%s' '%s' '%s' S3 retry %i" % (path, mode, k, retry))
+                ###k.set_contents_from_string('', headers={'Content-Type': 'application/x-directory'})
+                pub = [ 'mkdir', path ]
+                cmds = [ pub, [ k, 'set_contents_from_string', [ '' ], { 'headers': {'Content-Type': 'application/x-directory'} } ] ]
+                self.do_on_s3(cmds)
             data.delete('change')
-            if path != '/': ### Do I need this???
-                self.publish(['mkdir', path])
+            ###if path != '/': ### Do I need this???
+            ###    self.publish(['mkdir', path])
 
             return 0
  
@@ -1396,16 +1401,12 @@ class YAS3FS(LoggingMixIn, Operations):
             self.cache.set(path, 'key', k)
             self.add_to_parent_readdir(path)
             logger.debug("symlink '%s' '%s' '%s' S3" % (path, link, k))
-            for retry in range(self.s3_retries):
-                try:
-                    k.set_contents_from_string(link, headers={'Content-Type': 'application/x-symlink'})
-                    break
-                except Exception as e:
-                    logger.exception(e)
-                    time.sleep(1.0) # Better wait 1 second before retrying
-                    logger.info("symlink '%s' '%s' '%s' S3 retry %i" % (path, link, k, retry))
+            ###k.set_contents_from_string(link, headers={'Content-Type': 'application/x-symlink'})
+            pub = [ 'symlink', path ]
+            cmds = [ pub, [ k, 'set_contents_from_string', [ link ], { 'headers': {'Content-Type': 'application/x-symlink'} } ] ]
+            self.do_on_s3(cmds)
             data.delete('change')
-            self.publish(['symlink', path])
+            ###self.publish(['symlink', path])
 
             return 0
 
@@ -1587,6 +1588,55 @@ class YAS3FS(LoggingMixIn, Operations):
                     data.update_etag(key.etag[1:-1])
                     logger.debug("download_data all ended '%s' [thread '%s']" % (path, thread_name))
 
+    def get_to_do_on_s3(self):
+        while self.running:
+           try:
+               cmds = self.s3_queue.get(True, 1) # 1 second time-out
+               self.do_on_s3_now(cmds)
+               self.s3_queue.task_done()
+           except Queue.Empty:
+               pass
+
+    def do_on_s3(self, cmds, now=False):
+        if now:
+            do_on_s3_now(cmds)
+        else:
+            self.s3_queue.put(cmds)
+        pass
+
+    def do_on_s3_now(self, cmds):
+        pub = cmds[0]
+        for c in cmds[1:]:
+            key = c[0]
+            action = c[1]
+            if len(c) > 2:
+                args = c[2]
+                if len(c) > 3:
+                    kargs = c[3]
+                else:
+                    kargs = None
+            else:
+                args = None
+
+            logger.debug("do_on_s3_now action '%s' key '%s' args '%s' kargs '%s'" % (action, key, args, kargs))
+
+            for retry in range(self.s3_retries):
+                try:
+                    if action == 'delete':
+                        key.delete()
+                    elif action == 'copy':
+                        key.copy(*args, **kargs)
+                    elif action == 'set_contents_from_string':
+                        key.set_contents_from_string(*args,**kargs)
+                    else:
+                        logger.error("do_on_s3_now Unknown action '%s'" % action)
+                except Exception as e:
+                    logger.exception(e)
+                    time.sleep(1.0) # Better wait 1 second before retrying 
+                    logger.debug("do_on_s3_now action '%s' key '%s' args '%s' kargs '%s' retry %i" % (action, key, args, kargs, retry))
+
+            self.publish(pub)
+
     def readlink(self, path):
         logger.debug("readlink '%s'" % (path))
         with self.cache.get_lock(path):
@@ -1639,8 +1689,11 @@ class YAS3FS(LoggingMixIn, Operations):
                     logger.debug("rmdir '%s' cache ENOTEMPTY" % (path))
                     raise FuseOSError(errno.ENOTEMPTY)
             logger.debug("rmdir '%s' '%s' S3" % (path, k))
-            k.delete()
-            self.publish(['rmdir', path])
+            ###k.delete()
+            ###self.publish(['rmdir', path])
+            pub = [ 'rmdir', path ]
+            cmds = [ pub, [ k, 'delete'] ]
+            self._do_on_s3(cmds)
 
             self.cache.reset(path) # Cache invaliation
             self.remove_from_parent_readdir(path)
@@ -1723,24 +1776,21 @@ class YAS3FS(LoggingMixIn, Operations):
             self.cache.rename(source_path, target_path)
             key = self.s3_bucket.get_key(source)
             if key: # For files in cache but still not flushed to S3
-                rename_on_S3(key, target)
+                
+                self.rename_on_s3(key, target, source_path, target_path)
 
         self.remove_from_parent_readdir(path)
         self.add_to_parent_readdir(new_path)
 
-    def rename_on_S3(key, target):
+    def rename_on_s3(self, key, target, source_path, target_path):
         # Otherwise we loose the Content-Type with S3 Copy
         key.metadata['Content-Type'] = key.content_type
-        for retry in range(self.s3_retries):
-            try:
-                key.copy(key.bucket.name, target, key.metadata, preserve_acl=False)
-                break
-            except Exception as e:
-                logger.exception(e)
-                time.sleep(1.0) # Better wait 1 second before retrying
-                logger.info("renaming '%s' ('%s') -> '%s' ('%s') retry %i" % (source, source_path, target, target_path, retry))
-        key.delete()
-        self.publish(['rename', source_path, target_path])
+        ### key.copy(key.bucket.name, target, key.metadata, preserve_acl=False)
+        pub = [ 'rename', source_path, target_path ]
+        cmds = [ pub, [ key, 'copy', [ key.bucket.name, target, key.metadata ], { 'preserve_acl': False } ], [ key, 'delete' ] ]
+        self.do_on_s3(cmds)
+        ###key.delete()
+        ###self.publish(['rename', source_path, target_path])
 
     def mknod(self, path, mode, dev=None):
         logger.debug("mknod '%s' '%i' '%s'" % (path, mode, dev))
@@ -1788,8 +1838,11 @@ class YAS3FS(LoggingMixIn, Operations):
                 raise FuseOSError(errno.ENOENT)
             if k:
                 logger.debug("unlink '%s' '%s' S3" % (path, k))
-                k.delete()
-                self.publish(['unlink', path])
+                ###k.delete()
+                ###self.publish(['unlink', path])
+                pub = [ 'unlink', path ]
+                cmds = [ pub, [ k, 'delete'] ]
+                self._do_on_s3(cmds)
 
             self.cache.reset(path) # Cache invaliation
             self.remove_from_parent_readdir(path)
@@ -1911,7 +1964,7 @@ class YAS3FS(LoggingMixIn, Operations):
             attr['st_mtime'] = now
             attr['st_atime'] = now
         return length
-
+                         
     def upload_to_s3(self, path, data):
         logger.debug("upload_to_s3 '%s'" % path)
         k = self.get_key(path)
@@ -2279,6 +2332,8 @@ AWS_DEFAULT_REGION environment variable can be used to set the default AWS regio
                         '(default is %(default)s bytes)')
     parser.add_argument('--cache-check', metavar='N', type=int, default=5,
                         help='interval between cache size checks in seconds (default is %(default)s seconds)')
+    parser.add_argument('--s3-num', metavar='N', type=int, default=32,
+                        help='number of parallel S3 calls (default is %(default)s)')
     parser.add_argument('--download-num', metavar='N', type=int, default=4,
                         help='number of parallel downloads (default is %(default)s)')
     parser.add_argument('--prefetch-num', metavar='N', type=int, default=2,
