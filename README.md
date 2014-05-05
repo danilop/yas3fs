@@ -320,4 +320,12 @@ To the previous message all yas3fs instances will answer publishing a message on
     [ "id", "status", hostname, number of entries in cache, cache memory size,
       cache disk size, download queue length, prefetch queue length ]
 
+### Testing
+
+You can use this tool to test a YAS3FS cluster: [yas3fs-cluster-tester](https://github.com/bitsofinfo/yas3fs-cluster-tester)
+
+It is a test harness suite to induce file I/O and validate YAS3FS cluster activity across N peer-nodes.
+
+This may be useful to anyone who wants to validate/test YAS3FS to see how it behaves under load and with N peer's all managing files in the same S3 bucket. This has been used to test YAS3FS against a several node "cluster" with each node generating hundreds of files.
+
 Happy File Sharing!
