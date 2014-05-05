@@ -1752,7 +1752,7 @@ class YAS3FS(LoggingMixIn, Operations):
                 logger.debug("rename '%s' '%s' ENOENT" % (path, new_path))
                 raise FuseOSError(errno.ENOENT)
             new_parent_key = self.get_key(os.path.dirname(new_path))
-            if not new_parent_key:
+            if not new_parent_key and not self.folder_has_contents(new_path):
                 logger.debug("rename '%s' '%s' ENOENT" % (path, new_path))
                 raise FuseOSError(errno.ENOENT)
             to_copy = {}
