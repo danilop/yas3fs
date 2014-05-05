@@ -974,7 +974,8 @@ class YAS3FS(LoggingMixIn, Operations):
         num_entries, mem_size, disk_size = self.cache.get_memory_usage()
         dq = self.download_queue.qsize()
         pq = self.prefetch_queue.qsize()
-        message = [ 'status', hostname, num_entries, mem_size, disk_size, dq, pq ]
+        s3q = self.s3_queue.qsize()
+        message = [ 'status', hostname, num_entries, mem_size, disk_size, dq, pq, s3q ]
         self.publish(message)
 
     def publish_messages(self):
@@ -999,9 +1000,9 @@ class YAS3FS(LoggingMixIn, Operations):
         while self.cache_entries:
 
             num_entries, mem_size, disk_size = self.cache.get_memory_usage()
-            logger.info("entries, mem_size, disk_size, download_queue, prefetch_queue: %i, %i, %i, %i, %i"
+            logger.info("entries, mem_size, disk_size, download_queue, prefetch_queue, s3_queue: %i, %i, %i, %i, %i, %i"
                         % (num_entries, mem_size, disk_size,
-                           self.download_queue.qsize(), self.prefetch_queue.qsize()))
+                           self.download_queue.qsize(), self.prefetch_queue.qsize(), self.s3_queue.qsize()))
 
             if debug:
                 logger.debug("new_locks, unused_locks: %i, %i"
