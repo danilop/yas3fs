@@ -1745,15 +1745,16 @@ class YAS3FS(LoggingMixIn, Operations):
         logger.debug("rename '%s' '%s'" % (path, new_path))
         with self.cache.get_lock(path):
             if self.cache.is_empty(path):
-                logger.debug("rename '%s' '%s' ENOENT" % (path, new_path))
+                logger.debug("rename '%s' '%s' ENOENT no '%s' from cache" % (path, new_path, path))
                 raise FuseOSError(errno.ENOENT)
             key = self.get_key(path)
             if not key and not self.cache.has(path):
-                logger.debug("rename '%s' '%s' ENOENT" % (path, new_path))
+                logger.debug("rename '%s' '%s' ENOENT no '%s'" % (path, new_path, path))
                 raise FuseOSError(errno.ENOENT)
-            new_parent_key = self.get_key(os.path.dirname(new_path))
-            if not new_parent_key and not self.folder_has_contents(new_path):
-                logger.debug("rename '%s' '%s' ENOENT" % (path, new_path))
+            new_parent_path = os.path.dirname(new_path)
+            new_parent_key = self.get_key(new_parent_path)
+            if not new_parent_key and not self.folder_has_contents(new_parent_path):
+                logger.debug("rename '%s' '%s' ENOENT no parent path '%s'" % (path, new_path, new_parent_path))
                 raise FuseOSError(errno.ENOENT)
             to_copy = {}
         if key:
@@ -1780,7 +1781,6 @@ class YAS3FS(LoggingMixIn, Operations):
             self.cache.rename(source_path, target_path)
             key = self.s3_bucket.get_key(source)
             if key: # For files in cache but still not flushed to S3
-                
                 self.rename_on_s3(key, target, source_path, target_path)
 
         self.remove_from_parent_readdir(path)
