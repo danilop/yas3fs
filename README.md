@@ -137,16 +137,16 @@ To unmount the file system on a Mac you can use `umount`.
     yas3fs -h
 
     usage: yas3fs [-h] [--region REGION] [--topic ARN] [--new-queue]
-		  [--queue NAME] [--queue-wait N] [--queue-polling N]
-		  [--hostname HOSTNAME] [--use-ec2-hostname] [--port N]
-		  [--cache-entries N] [--cache-mem-size N] [--cache-disk-size N]
-		  [--cache-path PATH] [--cache-on-disk N] [--cache-check N]
-		  [--s3-num N] [--download-num N] [--prefetch-num N]
-		  [--buffer-size N] [--buffer-prefetch N] [--no-metadata]
-		  [--prefetch] [--mp-size N] [--mp-num N] [--mp-retries N]
-		  [--id ID] [--mkdir] [--uid N] [--gid N] [--umask MASK] [-l FILE]
-		  [-f] [-d] [-V]
-		  S3Path LocalPath
+                  [--queue NAME] [--queue-wait N] [--queue-polling N]
+                  [--hostname HOSTNAME] [--use-ec2-hostname] [--port N]
+                  [--cache-entries N] [--cache-mem-size N] [--cache-disk-size N]
+                  [--cache-path PATH] [--cache-on-disk N] [--cache-check N]
+                  [--s3-num N] [--download-num N] [--prefetch-num N]
+                  [--buffer-size N] [--buffer-prefetch N] [--no-metadata]
+                  [--prefetch] [--mp-size N] [--mp-num N] [--mp-retries N]
+                  [--id ID] [--mkdir] [--uid N] [--gid N] [--umask MASK] [-l FILE]
+                  [-f] [-d] [-V]
+                  S3Path LocalPath
 
     YAS3FS (Yet Another S3-backed File System) is a Filesystem in Userspace (FUSE)
     interface to Amazon S3. It allows to mount an S3 bucket (or a part of it, if
@@ -168,56 +168,56 @@ To unmount the file system on a Mac you can use `umount`.
 
     positional arguments:
       S3Path               the S3 path to mount in s3://BUCKET/PATH format, PATH
-			   can be empty, can contain subfolders and is created on
-			   first mount if not found in the BUCKET
+                           can be empty, can contain subfolders and is created on
+                           first mount if not found in the BUCKET
       LocalPath            the local mount point
 
     optional arguments:
       -h, --help           show this help message and exit
       --region REGION      AWS region to use for SNS and SQS (default is eu-
-			   west-1)
+                           west-1)
       --topic ARN          SNS topic ARN
       --new-queue          create a new SQS queue that is deleted on unmount to
-			   listen to SNS notifications, overrides --queue, queue
-			   name is BUCKET-PATH-ID with alphanumeric characters
-			   only
+                           listen to SNS notifications, overrides --queue, queue
+                           name is BUCKET-PATH-ID with alphanumeric characters
+                           only
       --queue NAME         SQS queue name to listen to SNS notifications, a new
-			   queue is created if it doesn't exist
+                           queue is created if it doesn't exist
       --queue-wait N       SQS queue wait time in seconds (using long polling, 0
-			   to disable, default is 20 seconds)
+                           to disable, default is 20 seconds)
       --queue-polling N    SQS queue polling interval in seconds (default is 0
-			   seconds)
+                           seconds)
       --hostname HOSTNAME  public hostname to listen to SNS HTTP notifications
       --use-ec2-hostname   get public hostname to listen to SNS HTTP notifications
-			   from EC2 instance metadata (overrides --hostname)
+                           from EC2 instance metadata (overrides --hostname)
       --port N             TCP port to listen to SNS HTTP notifications
       --cache-entries N    max number of entries to cache (default is 100000
-			   entries)
+                           entries)
       --cache-mem-size N   max size of the memory cache in MB (default is 128 MB)
       --cache-disk-size N  max size of the disk cache in MB (default is 1024 MB)
       --cache-path PATH    local path to use for disk cache (default is
-			   /tmp/yas3fs/BUCKET/PATH)
+                           /tmp/yas3fs/BUCKET/PATH)
       --cache-on-disk N    use disk (instead of memory) cache for files greater
-			   than the given size in bytes (default is 0 bytes)
+                           than the given size in bytes (default is 0 bytes)
       --cache-check N      interval between cache size checks in seconds (default
-			   is 5 seconds)
+                           is 5 seconds)
       --s3-num N           number of parallel S3 calls (0 to disable writeback,
-			   default is 32)
+                           default is 32)
       --download-num N     number of parallel downloads (default is 4)
       --prefetch-num N     number of parallel prefetching downloads (default is 2)
       --buffer-size N      download buffer size in KB (0 to disable buffering,
-			   default is 10240 KB)
+                           default is 10240 KB)
       --buffer-prefetch N  number of buffers to prefetch (default is 0)
       --no-metadata        don't write user metadata on S3 to persist file system
-			   attr/xattr
+                           attr/xattr
       --prefetch           download file/directory content as soon as it is
-			   discovered (doesn't download file content if download
-			   buffers are used)
+                           discovered (doesn't download file content if download
+                           buffers are used)
       --mp-size N          size of parts to use for multipart upload in MB
-			   (default value is 100 MB, the minimum allowed by S3 is
-			   5 MB)
+                           (default value is 100 MB, the minimum allowed by S3 is
+                           5 MB)
       --mp-num N           max number of parallel multipart uploads per file (0 to
-			   disable multipart upload, default is 4)
+                           disable multipart upload, default is 4)
 
 ### Notification Syntax & Use
 
