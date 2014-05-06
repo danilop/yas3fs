@@ -94,7 +94,7 @@ you can use the <code>--no-metadata</code> option.</p>
 
 <p>To mount an S3 bucket using SNS and listening to an HTTP endpoint (on EC2):</p>
 
-<pre><code>yas3fs s3://bucket/path /path/to/mount --url --topic TOPIC-ARN --ec2-hostname --port N
+<pre><code>yas3fs s3://bucket/path /path/to/mount --topic TOPIC-ARN --ec2-hostname --port N
 </code></pre>
 
 <p>On EC2 the security group must allow inbound traffic from SNS on the selected port.</p>
@@ -123,7 +123,6 @@ Install using <a href="http://www.pip-installer.org/en/latest/">pip</a>.</p>
 
 <pre><code>sudo yum -y install fuse fuse-libs
 sudo easy_install pip
-sudo pip install -U setuptools # need updated version
 sudo pip install yas3fs # assume root installation
 sudo sed -i'' 's/^# *user_allow_other/user_allow_other/' /etc/fuse.conf # uncomment user_allow_other
 yas3fs -h # See the usage
@@ -136,8 +135,8 @@ yas3fs s3://BUCKET/PATH LOCAL-PATH --topic TOPIC-ARN --new-queue
 
 <p><strong>On Ubuntu Linux</strong></p>
 
-<pre><code>sudo apt-get upgrade
-sudo apt-get install fuse python-pip 
+<pre><code>sudo apt-get update
+sudo apt-get -y install fuse python-pip 
 sudo pip install yas3fs # assume root installation
 sudo sed -i'' 's/^# *user_allow_other/user_allow_other/' /etc/fuse.conf # uncomment user_allow_other
 sudo chmod a+r /etc/fuse.conf # make it readable by anybody, it is not the default on Ubuntu
@@ -156,9 +155,9 @@ yas3fs s3://BUCKET/PATH LOCAL-PATH --topic TOPIC-ARN --new-queue
 <pre><code>sudo pip install yas3fs # assume root installation
 mkdir LOCAL-PATH
 # For single host mount
-yas3fs LOCAL-PATH --url s3://BUCKET/PATH
+yas3fs s3://BUCKET/PATH LOCAL-PATH
 # For multiple hosts mount
-yas3fs LOCAL-PATH --url s3://BUCKET/PATH --topic TOPIC-ARN --new-queue
+yas3fs s3://BUCKET/PATH LOCAL-PATH --topic TOPIC-ARN --new-queue
 </code></pre>
 
 <p>To listen to SNS HTTP notifications (I usually suggest to use SQS instead) with a Mac
@@ -190,10 +189,11 @@ usage: yas3fs [-h] [--region REGION] [--topic ARN] [--new-queue]
               [--hostname HOSTNAME] [--use-ec2-hostname] [--port N]
               [--cache-entries N] [--cache-mem-size N] [--cache-disk-size N]
               [--cache-path PATH] [--cache-on-disk N] [--cache-check N]
-              [--download-num N] [--prefetch-num N] [--buffer-size N]
-              [--buffer-prefetch N] [--no-metadata] [--prefetch] [--mp-size N]
-              [--mp-num N] [--mp-retries N] [--id ID] [--mkdir MKDIR]
-              [--uid N] [--gid N] [--umask MASK] [-l FILE] [-f] [-d]
+              [--s3-num N] [--download-num N] [--prefetch-num N]
+              [--buffer-size N] [--buffer-prefetch N] [--no-metadata]
+              [--prefetch] [--mp-size N] [--mp-num N] [--mp-retries N]
+              [--id ID] [--mkdir] [--uid N] [--gid N] [--umask MASK] [-l FILE]
+              [-f] [-d] [-V]
               S3Path LocalPath
 
 YAS3FS (Yet Another S3-backed File System) is a Filesystem in Userspace (FUSE)
@@ -222,8 +222,8 @@ positional arguments:
 
 optional arguments:
   -h, --help           show this help message and exit
-  --region REGION      AWS region to use for SNS and SQS (default is us-
-                       east-1)
+  --region REGION      AWS region to use for SNS and SQS (default is eu-
+                       west-1)
   --topic ARN          SNS topic ARN
   --new-queue          create a new SQS queue that is deleted on unmount to
                        listen to SNS notifications, overrides --queue, queue
@@ -249,6 +249,8 @@ optional arguments:
                        than the given size in bytes (default is 0 bytes)
   --cache-check N      interval between cache size checks in seconds (default
                        is 5 seconds)
+  --s3-num N           number of parallel S3 calls (0 to disable writeback,
+                       default is 32)
   --download-num N     number of parallel downloads (default is 4)
   --prefetch-num N     number of parallel prefetching downloads (default is 2)
   --buffer-size N      download buffer size in KB (0 to disable buffering,
@@ -256,27 +258,14 @@ optional arguments:
   --buffer-prefetch N  number of buffers to prefetch (default is 0)
   --no-metadata        don't write user metadata on S3 to persist file system
                        attr/xattr
-  --prefetch           download file/directory content as soon as the file is
-                       discovered(doesn't download file content if download
+  --prefetch           download file/directory content as soon as it is
+                       discovered (doesn't download file content if download
                        buffers are used)
   --mp-size N          size of parts to use for multipart upload in MB
                        (default value is 100 MB, the minimum allowed by S3 is
                        5 MB)
   --mp-num N           max number of parallel multipart uploads per file (0 to
                        disable multipart upload, default is 4)
-  --mp-retries N       max number of retries in uploading a part (default is
-                       3)
-  --id ID              a unique ID identifying this node in a cluster (default
-                       is a UUID)
-  --mkdir MKDIR        create mountpoint if not found (and create intermediate
-                       directories as required)
-  --uid N              default UID
-  --gid N              default GID
-  --umask MASK         default umask
-  -l FILE, --log FILE  filename for logs
-  -f, --foreground     run in foreground
-  -d, --debug          show debug info
-  -V, --version        show program's version number and exit
 </code></pre>
 
 <h3>
@@ -315,7 +304,7 @@ Those are some sample use cases:</p>
 <code>rename</code> (rename file or directory): <code>[ "node_id", "rename", "old_path", "new_path" ]</code>
 </li>
 <li>
-<code>flush</code> (updated file): <code>[ "node_id", "flush", "path", "new_md5" ]</code> (<code>path</code> and <code>new_md5</code> are optional)</li>
+<code>upload</code> (new or updated file): <code>[ "node_id", "upload", "path", "new_md5" ]</code> (<code>path</code> and <code>new_md5</code> are optional)</li>
 <li>
 <code>md</code> (updated metadata, e.g. attr/xattr): <code>[ "node_id", "md", "path", "metadata_name" ]</code>
 </li>
@@ -346,7 +335,7 @@ you can send the following notification to the SNS topic (assuming there is no n
 <p>In the same way, if you uploaded a new file (or updated an old one) directly on S3 
 you can invalidate the caches of all the nodes in the yas3fs cluster for that <code>path</code> sending this SNS notification:</p>
 
-<pre><code>[ "all", "flush", "path" ]
+<pre><code>[ "all", "upload", "path" ]
 </code></pre>
 
 <p>The <code>path</code> is the relative path of the file system (<code>/</code> corresponding to the mount point)
@@ -407,12 +396,19 @@ you can publish (the size is in MB as in the corresponding command line option):
 <p>To the previous message all yas3fs instances will answer publishing a message on the topic with this content:</p>
 
 <pre><code>[ "id", "status", hostname, number of entries in cache, cache memory size,
-  cache disk size, download queue length, prefetch queue length ]
+  cache disk size, download queue length, prefetch queue length, S3 queue length ]
 </code></pre>
 
-<p>Happy File Sharing!</p>
+<h3>
+<a name="testing" class="anchor" href="#testing"><span class="octicon octicon-link"></span></a>Testing</h3>
 
-<p><a href="https://bitdeli.com/free" title="Bitdeli Badge"><img src="https://d2weczhvl823v0.cloudfront.net/danilop/yas3fs/trend.png" alt="Bitdeli Badge"></a></p>
+<p>You can use this tool to test a YAS3FS cluster: <a href="https://github.com/bitsofinfo/yas3fs-cluster-tester">yas3fs-cluster-tester</a></p>
+
+<p>It is a test harness suite to induce file I/O and validate YAS3FS cluster activity across N peer-nodes.</p>
+
+<p>This may be useful to anyone who wants to validate/test YAS3FS to see how it behaves under load and with N peer's all managing files in the same S3 bucket. This has been used to test YAS3FS against a several node "cluster" with each node generating hundreds of files.</p>
+
+<p>Happy File Sharing!</p>
       </section>
     </div>
 
