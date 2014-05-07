@@ -1935,21 +1935,21 @@ class YAS3FS(LoggingMixIn, Operations):
             logger.debug("write '%s' '%i' '%i' '%s' ENOENT" % (path, len(new_data), offset, fh))
             raise FuseOSError(errno.ENOENT)
         if isinstance(new_data, unicode): # Fix for unicode
+            logger.debug("write '%s' '%i' '%i' '%s' unicode fix" % (path, len(new_data), offset, fh))
             new_data = str(new_data)
 	length = len(new_data)
-        
-        data_range = self.cache.get(path, 'data').get('range')
+
+        data = self.cache.get(path, 'data')
+        data_range = data.get('range')
+
         if data_range:
             self.enqueue_download_data(path)
-            while True:
+            while data_range:
                 logger.debug("write wait '%s' '%i' '%i' '%s'" % (path, len(new_data), offset, fh))            
                 data_range.wait()
                 logger.debug("write awake '%s' '%i' '%i' '%s'" % (path, len(new_data), offset, fh))            
-                data_range = self.cache.get(path, 'data').get('range')
-                if not data_range:
-                    break
+                data_range = data.get('range')
                 
-        data = self.cache.get(path, 'data')
 	with data.get_lock():
             if not data.content:
                 logger.info("write awake '%s' '%i' '%i' '%s' no content" % (path, len(new_data), offset, fh))            
@@ -2412,7 +2412,8 @@ AWS_DEFAULT_REGION environment variable can be used to set the default AWS regio
         'atime':False,
         'max_read':131072,
         'max_write':131072,
-        'max_readahead':131072
+        'max_readahead':131072,
+        'direct_io':True
         }
 
     if options.uid:
