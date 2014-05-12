@@ -144,8 +144,8 @@ To unmount the file system on a Mac you can use `umount`.
                   [--s3-num N] [--download-num N] [--prefetch-num N]
                   [--buffer-size N] [--buffer-prefetch N] [--no-metadata]
                   [--prefetch] [--mp-size N] [--mp-num N] [--mp-retries N]
-                  [--id ID] [--mkdir] [--uid N] [--gid N] [--umask MASK] [-l FILE]
-                  [-f] [-d] [-V]
+                  [--id ID] [--mkdir] [--uid N] [--gid N] [--umask MASK]
+                  [--expiration N] [-l FILE] [-f] [-d] [-V]
                   S3Path LocalPath
 
     YAS3FS (Yet Another S3-backed File System) is a Filesystem in Userspace (FUSE)
@@ -161,7 +161,8 @@ To unmount the file system on a Mac you can use `umount`.
     update other nodes in the cluster that something has changed on S3 and they
     need to invalidate their cache. Notifications can be delivered to HTTP or SQS
     endpoints. If the cache grows to its maximum size, the less recently accessed
-    files are removed. AWS credentials can be passed using AWS_ACCESS_KEY_ID and
+    files are removed. Signed URLs are provided through Extended file attributes
+    (xattr). AWS credentials can be passed using AWS_ACCESS_KEY_ID and
     AWS_SECRET_ACCESS_KEY environment variables. In an EC2 instance a IAM role can
     be used to give access to S3/SNS/SQS resources. AWS_DEFAULT_REGION environment
     variable can be used to set the default AWS region.
@@ -218,7 +219,48 @@ To unmount the file system on a Mac you can use `umount`.
                            5 MB)
       --mp-num N           max number of parallel multipart uploads per file (0 to
                            disable multipart upload, default is 4)
+      --mp-retries N       max number of retries in uploading a part (default is
+                           3)
+      --id ID              a unique ID identifying this node in a cluster (default
+                           is a UUID)
+      --mkdir              create mountpoint if not found (and create intermediate
+                           directories as required)
+      --uid N              default UID
+      --gid N              default GID
+      --umask MASK         default umask
+      --expiration N       default expiration for signed URL via xattrs (in
+                           seconds, default is 30 days)
+      -l FILE, --log FILE  filename for logs
+      -f, --foreground     run in foreground
+      -d, --debug          show debug info
+      -V, --version        show program's version number and exit
 
+### Signed URLs
+
+You can dinamically generate singed URLs for any file on yas3fs using Extended File attributes.
+
+The default expiration is used (30 days or the value, in seconds, of the '--expiration' option).
+
+You can specify per file expiration with the 'yas3fs.expiration' attribute (in seconds).
+
+On a Mac you can use the 'xattr' command to list 'yas3fs.* attributes:
+
+    $ xattr -l file
+    yas3fs.bucket: S3 bucket
+    yas3fs.key: S3 key
+    yas3fs.URL: http://bucket.s3.amazonaws.com/key
+    yas3fs.signedURL: https://bucket.s3.amazonaws.com/... (for the default expiration)
+
+    $ xattr -w yas3fs.expiration 3600 file # Sets signed URL expiration for the file to 1h
+    $ xattr -l file
+    yas3fs.bucket: S3 bucket
+    yas3fs.key: S3 key
+    yas3fs.URL: http://bucket.s3.amazonaws.com/key
+    yas3fs.signedURL: https://bucket.s3.amazonaws.com/... (for the 1h expiration)
+    yas3fs.expiration: 3600
+
+    $ xattr -d yas3fs.expiration file # File specific expiration removed, the default is used again
+ 
 ### Notification Syntax & Use
 
 You can use the SNS topic for other purposes than keeping the cache of the nodes in sync.

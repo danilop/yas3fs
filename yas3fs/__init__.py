@@ -549,6 +549,7 @@ class YAS3FS(LoggingMixIn, Operations):
         self.running = True
         self.check_status_interval = 5.0 # Seconds, no need to configure that
         self.s3_retries = 3 # Maximum number of S3 retries (outside of boto)
+        self.yas3fs_xattrs = [ 'yas3fs.bucket', 'yas3fs.key', 'yas3fs.URL', 'yas3fs.signedURL' ]
 
         # Initialization
         global debug
@@ -619,6 +620,8 @@ class YAS3FS(LoggingMixIn, Operations):
         logger.info("Multipart maximum number of parallel threads: '%s'" % str(self.multipart_num))
         self.multipart_retries = options.mp_retries
         logger.info("Multipart maximum number of retries per part: '%s'" % str(self.multipart_retries))
+        self.default_expiration = options.expiration
+        logger.info("Default expiration for signed URLs via xattrs: '%s'" % str(self.default_expiration))
 
         # Internal Initialization
         if options.cache_path:
@@ -2133,6 +2136,26 @@ class YAS3FS(LoggingMixIn, Operations):
         if self.cache.is_empty(path):
             logger.debug("getxattr '%s' '%s' '%i' ENOENT" % (path, name, position))
             raise FuseOSError(errno.ENOENT)
+        if name == 'yas3fs.bucket':
+            return self.s3_bucket_name
+        elif name == 'yas3fs.key':
+            key = self.get_key(path)
+            if key:
+                return key.key
+        elif name == 'yas3fs.URL':
+            key= self.get_key(path)
+            if key:
+                return key.generate_url(expires_in=0, query_auth=False)
+                return ''.join(['http://', self.s3_bucket_name, '/', key.key]) # Something bettere here ???
+        elif name == 'yas3fs.signedURL':
+            key= self.get_key(path)
+            if key:
+                xattr = self.get_metadata(path, 'xattr')
+                try:
+                    seconds = int(xattr['yas3fs.expiration'])
+                except KeyError:
+                    seconds = self.default_expiration
+                return key.generate_url(expires_in=seconds, headers=None)
         xattr = self.get_metadata(path, 'xattr')
         try:
             return xattr[name]
@@ -2145,20 +2168,22 @@ class YAS3FS(LoggingMixIn, Operations):
             logger.debug("listxattr '%s' ENOENT" % (path))
             raise FuseOSError(errno.ENOENT)
         xattr = self.get_metadata(path, 'xattr')
-        return xattr.keys()
+        return self.yas3fs_xattrs + xattr.keys()
 
     def removexattr(self, path, name):
-        logger.debug("removexattr '%s'" % (path, name))
+        logger.debug("removexattr '%s''%s'" % (path, name))
         with self.cache.get_lock(path):
             if self.cache.is_empty(path):
-                logger.debug("removexattr '%s' ENOENT" % (path, name))
+                logger.debug("removexattr '%s' '%s' ENOENT" % (path, name))
                 raise FuseOSError(errno.ENOENT)
+            if name in self.yas3fs_xattrs:
+                return 0 # Do nothing
             xattr = self.get_metadata(path, 'xattr')
             try:
                 del xattr[name]
                 self.set_metadata(path, 'xattr')
             except KeyError:
-                logger.debug("removexattr '%s' should ENOATTR" % (path, name))
+                logger.debug("removexattr '%s' '%s' should ENOATTR" % (path, name))
                 return '' # Should return ENOATTR
             return 0
 
@@ -2168,10 +2193,12 @@ class YAS3FS(LoggingMixIn, Operations):
             if self.cache.is_empty(path):
                 logger.debug("setxattr '%s' '%s' ENOENT" % (path, name))
                 raise FuseOSError(errno.ENOENT)
+            if name in [ 'yas3fs.bucket', 'yas3fs.key', 'yas3fs.signedURL30d' ]:
+                return 0 # Do nothing    
             xattr = self.get_metadata(path, 'xattr')
             if xattr < 0:
                 return xattr
-            if xattr[name] != value:
+            if name not in xattr or xattr[name] != value:
                 xattr[name] = value
                 self.set_metadata(path, 'xattr')
             return 0
@@ -2281,7 +2308,6 @@ def main():
 
     description = """
 YAS3FS (Yet Another S3-backed File System) is a Filesystem in Userspace (FUSE) interface to Amazon S3.
-
 It allows to mount an S3 bucket (or a part of it, if you specify a path) as a local folder.
 It works on Linux and Mac OS X.
 For maximum speed all data read from S3 is cached locally on the node, in memory or on disk, depending of the file size.
@@ -2292,6 +2318,7 @@ It can be used on more than one node to create a "shared" file system (i.e. a ya
 SNS notifications are used to update other nodes in the cluster that something has changed on S3 and they need to invalidate their cache.
 Notifications can be delivered to HTTP or SQS endpoints.
 If the cache grows to its maximum size, the less recently accessed files are removed.
+Signed URLs are provided through Extended file attributes (xattr).
 AWS credentials can be passed using AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY environment variables.
 In an EC2 instance a IAM role can be used to give access to S3/SNS/SQS resources.
 AWS_DEFAULT_REGION environment variable can be used to set the default AWS region."""
@@ -2369,6 +2396,8 @@ AWS_DEFAULT_REGION environment variable can be used to set the default AWS regio
                         help='default GID')
     parser.add_argument('--umask', metavar='MASK',
                         help='default umask')
+    parser.add_argument('--expiration', metavar='N', type=int, default=30*24*60*60,
+                        help='default expiration for signed URL via xattrs (in seconds, default is 30 days)')
     parser.add_argument('-l', '--log', metavar='FILE',
                         help='filename for logs')
     parser.add_argument('-f', '--foreground', action='store_true',
@@ -2422,12 +2451,11 @@ AWS_DEFAULT_REGION environment variable can be used to set the default AWS regio
         mount_options['gid'] = options.gid
     if options.umask:
         mount_options['umask'] = options.umask
-
     if sys.platform == "darwin":
         mount_options['volname'] = os.path.basename(options.mountpoint)
         mount_options['noappledouble'] = True
         mount_options['daemon_timeout'] = 3600
-        mount_options['auto_xattr'] = True
+        # mount_options['auto_xattr'] = True # To use xattr
         # mount_options['local'] = True # local option is quite unstable
     else:
         mount_options['big_writes'] = True # Not working on OSX
