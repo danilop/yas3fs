@@ -251,6 +251,7 @@ On a Mac you can use the 'xattr' command to list 'yas3fs.* attributes:
     yas3fs.key: S3 key
     yas3fs.URL: http://bucket.s3.amazonaws.com/key
     yas3fs.signedURL: https://bucket.s3.amazonaws.com/... (for the default expiration)
+    yas3fs.expiration: 2592000 (default)
 
     $ xattr -w yas3fs.expiration 3600 file # Sets signed URL expiration for the file to 1h
     $ xattr -l file
@@ -262,6 +263,18 @@ On a Mac you can use the 'xattr' command to list 'yas3fs.* attributes:
 
     $ xattr -d yas3fs.expiration file # File specific expiration removed, the default is used again
  
+Similarly on Linux you can use the 'getfattr' and 'setfattr' commands:
+
+    $ getfattr -d -m yas3fs file
+    # file: latest.zip
+    yas3fs.URL="http://bucket.s3.amazonaws.com/key"
+    yas3fs.bucket="danilop-fs"
+    yas3fs.expiration="2592000 (default)"
+    yas3fs.key="test/latest.zip"
+    yas3fs.signedURL="https://bucket.s3.amazonaws.com/..."
+
+    
+
 ### Notification Syntax & Use
 
 You can use the SNS topic for other purposes than keeping the cache of the nodes in sync.

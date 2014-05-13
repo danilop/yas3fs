@@ -2182,7 +2182,7 @@ class YAS3FS(LoggingMixIn, Operations):
             logger.debug("listxattr '%s' ENOENT" % (path))
             raise FuseOSError(errno.ENOENT)
         xattr = self.get_metadata(path, 'xattr')
-        return self.yas3fs_xattrs + xattr.keys()
+        return set(self.yas3fs_xattrs + xattr.keys())
 
     def removexattr(self, path, name):
         logger.debug("removexattr '%s''%s'" % (path, name))
