@@ -250,18 +250,40 @@ On a Mac you can use the 'xattr' command to list 'yas3fs.* attributes:
     yas3fs.bucket: S3 bucket
     yas3fs.key: S3 key
     yas3fs.URL: http://bucket.s3.amazonaws.com/key
-    yas3fs.signedURL: https://bucket.s3.amazonaws.com/... (for the default expiration)
+    yas3fs.signedURL: https://bucket.s3.amazonaws.com/... (for default expiration)
+    yas3fs.expiration: 2592000 (default)
 
     $ xattr -w yas3fs.expiration 3600 file # Sets signed URL expiration for the file to 1h
     $ xattr -l file
     yas3fs.bucket: S3 bucket
     yas3fs.key: S3 key
     yas3fs.URL: http://bucket.s3.amazonaws.com/key
-    yas3fs.signedURL: https://bucket.s3.amazonaws.com/... (for the 1h expiration)
+    yas3fs.signedURL: https://bucket.s3.amazonaws.com/... (for 1h expiration)
     yas3fs.expiration: 3600
 
     $ xattr -d yas3fs.expiration file # File specific expiration removed, the default is used again
  
+Similarly on Linux you can use the 'getfattr' and 'setfattr' commands:
+
+    $ getfattr -d -m yas3fs file
+    # file: file
+    yas3fs.URL="http://bucket.s3.amazonaws.com/key"
+    yas3fs.bucket="S3 bucket"
+    yas3fs.expiration="2592000 (default)"
+    yas3fs.key="S3 key"
+    yas3fs.signedURL="https://bucket.s3.amazonaws.com/..." (for default expiration)
+
+    $ setfattr -n yas3fs.expiration -v 3600
+    $ getfattr -d -m yas3fs file
+    # file: file
+    yas3fs.URL="http://bucket.s3.amazonaws.com/key"
+    yas3fs.bucket="S3 bucket"
+    yas3fs.expiration="3600"
+    yas3fs.key="S3 key"
+    yas3fs.signedURL="https://bucket.s3.amazonaws.com/..." (for 1h expiration)
+
+    $ setfattr -x yas3fs.expiration latest.zip # File specific expiration removed, the default is used again
+
 ### Notification Syntax & Use
 
 You can use the SNS topic for other purposes than keeping the cache of the nodes in sync.
