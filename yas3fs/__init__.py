@@ -1,3 +1,4 @@
+
 #!/usr/bin/env python
 
 """
@@ -549,7 +550,8 @@ class YAS3FS(LoggingMixIn, Operations):
         self.running = True
         self.check_status_interval = 5.0 # Seconds, no need to configure that
         self.s3_retries = 3 # Maximum number of S3 retries (outside of boto)
-        self.yas3fs_xattrs = [ 'yas3fs.bucket', 'yas3fs.key', 'yas3fs.URL', 'yas3fs.signedURL' ]
+        self.yas3fs_xattrs = [ 'yas3fs.bucket', 'yas3fs.key', 'yas3fs.URL', 'yas3fs.signedURL',
+                               'yas3fs.expiration' ]
 
         # Initialization
         global debug
@@ -2143,24 +2145,32 @@ class YAS3FS(LoggingMixIn, Operations):
             if key:
                 return key.key
         elif name == 'yas3fs.URL':
-            key= self.get_key(path)
+            key = self.get_key(path)
             if key:
-                return key.generate_url(expires_in=0, query_auth=False)
-                return ''.join(['http://', self.s3_bucket_name, '/', key.key]) # Something bettere here ???
-        elif name == 'yas3fs.signedURL':
-            key= self.get_key(path)
+                tmp_key = copy.copy(key)
+                tmp_key.metadata = {} # To remove unnecessary metadata headers
+                return tmp_key.generate_url(expires_in=0, headers=None, query_auth=False)
+        xattr = self.get_metadata(path, 'xattr')
+        if name == 'yas3fs.signedURL':
+            key = self.get_key(path)
             if key:
-                xattr = self.get_metadata(path, 'xattr')
                 try:
                     seconds = int(xattr['yas3fs.expiration'])
                 except KeyError:
                     seconds = self.default_expiration
-                return key.generate_url(expires_in=seconds, headers=None)
-        xattr = self.get_metadata(path, 'xattr')
+                tmp_key = copy.copy(key)
+                tmp_key.metadata = {} # To remove unnecessary metadata headers
+                return tmp_key.generate_url(expires_in=seconds, headers=None)
+        elif name == 'yas3fs.expiration':
+            key = self.get_key(path)
+            if key:
+                if name not in xattr:
+                    return str(self.default_expiration) + ' (default)'
         try:
             return xattr[name]
         except KeyError:
-            return '' # Should return ENOATTR
+            raise FuseOSError(errno.ENOENT) # Should return ENOATTR
+            ### return '' # Should return ENOATTR
 
     def listxattr(self, path):
         logger.debug("listxattr '%s'" % (path))
@@ -2176,15 +2186,15 @@ class YAS3FS(LoggingMixIn, Operations):
             if self.cache.is_empty(path):
                 logger.debug("removexattr '%s' '%s' ENOENT" % (path, name))
                 raise FuseOSError(errno.ENOENT)
-            if name in self.yas3fs_xattrs:
-                return 0 # Do nothing
             xattr = self.get_metadata(path, 'xattr')
             try:
                 del xattr[name]
                 self.set_metadata(path, 'xattr')
             except KeyError:
-                logger.debug("removexattr '%s' '%s' should ENOATTR" % (path, name))
-                return '' # Should return ENOATTR
+                if name not in self.yas3fs_xattrs:
+                    logger.debug("removexattr '%s' '%s' should ENOATTR" % (path, name))
+                    raise FuseOSError(errno.ENOENT) # Should return ENOATTR 
+                ###return '' # Should return ENOATTR
             return 0
 
     def setxattr(self, path, name, value, options, position=0):
