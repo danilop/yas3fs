@@ -625,6 +625,8 @@ class YAS3FS(LoggingMixIn, Operations):
         self.default_expiration = options.expiration
         logger.info("Default expiration for signed URLs via xattrs: '%s'" % str(self.default_expiration))
 
+        self.darwin = options.darwin # To tailor ENOATTR for OS X
+
         # Internal Initialization
         if options.cache_path:
             cache_path = options.cache_path
@@ -2169,8 +2171,10 @@ class YAS3FS(LoggingMixIn, Operations):
         try:
             return xattr[name]
         except KeyError:
-            raise FuseOSError(errno.ENOENT) # Should return ENOATTR
-            ### return '' # Should return ENOATTR
+            if self.darwin:
+                raise FuseOSError(errno.ENOENT) # Should return ENOATTR
+            else:
+                return '' # Should return ENOATTR
 
     def listxattr(self, path):
         logger.debug("listxattr '%s'" % (path))
@@ -2193,8 +2197,10 @@ class YAS3FS(LoggingMixIn, Operations):
             except KeyError:
                 if name not in self.yas3fs_xattrs:
                     logger.debug("removexattr '%s' '%s' should ENOATTR" % (path, name))
-                    raise FuseOSError(errno.ENOENT) # Should return ENOATTR 
-                ###return '' # Should return ENOATTR
+                    if self.darwin:
+                        raise FuseOSError(errno.ENOENT) # Should return ENOATTR
+                    else:
+                        return '' # Should return ENOATTR
             return 0
 
     def setxattr(self, path, name, value, options, position=0):
@@ -2461,7 +2467,8 @@ AWS_DEFAULT_REGION environment variable can be used to set the default AWS regio
         mount_options['gid'] = options.gid
     if options.umask:
         mount_options['umask'] = options.umask
-    if sys.platform == "darwin":
+    options.darwin = (sys.platform == "darwin")
+    if options.darwin:
         mount_options['volname'] = os.path.basename(options.mountpoint)
         mount_options['noappledouble'] = True
         mount_options['daemon_timeout'] = 3600
