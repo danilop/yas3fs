@@ -1609,7 +1609,7 @@ class YAS3FS(LoggingMixIn, Operations):
 
     def do_on_s3(self, cmds):
         if self.s3_num == 0:
-            do_on_s3_now(cmds)
+            self.do_on_s3_now(cmds)
         else:
             self.s3_queue.put(cmds)
         pass
@@ -2379,7 +2379,7 @@ AWS_DEFAULT_REGION environment variable can be used to set the default AWS regio
                         '(default is %(default)s bytes)')
     parser.add_argument('--cache-check', metavar='N', type=int, default=5,
                         help='interval between cache size checks in seconds (default is %(default)s seconds)')
-    parser.add_argument('--s3-num', metavar='N', type=int, default=32,
+    parser.add_argument('--s3-num', metavar='N', type=int, default=0,
                         help='number of parallel S3 calls (0 to disable writeback, default is %(default)s)')
     parser.add_argument('--download-num', metavar='N', type=int, default=4,
                         help='number of parallel downloads (default is %(default)s)')
