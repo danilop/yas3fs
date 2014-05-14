@@ -1,4 +1,3 @@
-
 #!/usr/bin/env python
 
 """
@@ -637,7 +636,9 @@ class YAS3FS(LoggingMixIn, Operations):
         logger.info("Cache path (on disk): '%s'" % cache_path)
         self.cache = FSCache(cache_path)
         self.publish_queue = Queue.Queue()
-        self.s3_queue = Queue.Queue()
+        self.s3_queue = {} # Of Queue.Queue()
+        for i in range(self.s3_num):
+            self.s3_queue[i] = Queue.Queue()
         self.download_queue = Queue.Queue()
         self.prefetch_queue = Queue.Queue()
 
@@ -728,7 +729,7 @@ class YAS3FS(LoggingMixIn, Operations):
         for i in range(self.s3_num):
             if thread_is_not_alive(self.s3_threads[i]):
                 logger.debug("%s S3 thread #%i" % (display, i))
-                self.s3_threads[i] = TracebackLoggingThread(target=self.get_to_do_on_s3)
+                self.s3_threads[i] = TracebackLoggingThread(target=self.get_to_do_on_s3, args=(i,))
                 self.s3_threads[i].deamon = False
                 self.s3_threads[i].start()
 
@@ -981,7 +982,9 @@ class YAS3FS(LoggingMixIn, Operations):
         num_entries, mem_size, disk_size = self.cache.get_memory_usage()
         dq = self.download_queue.qsize()
         pq = self.prefetch_queue.qsize()
-        s3q = self.s3_queue.qsize()
+        s3q = 0
+        for i in range(0, self.s3_num):
+            s3q += self.s3_queue[i].qsize()
         message = [ 'status', hostname, num_entries, mem_size, disk_size, dq, pq, s3q ]
         self.publish(message)
 
@@ -1007,9 +1010,12 @@ class YAS3FS(LoggingMixIn, Operations):
         while self.cache_entries:
 
             num_entries, mem_size, disk_size = self.cache.get_memory_usage()
+            s3q = 0 ### Remove duplicate code
+            for i in range(0, self.s3_num):
+                s3q += self.s3_queue[i].qsize()
             logger.info("entries, mem_size, disk_size, download_queue, prefetch_queue, s3_queue: %i, %i, %i, %i, %i, %i"
                         % (num_entries, mem_size, disk_size,
-                           self.download_queue.qsize(), self.prefetch_queue.qsize(), self.s3_queue.qsize()))
+                           self.download_queue.qsize(), self.prefetch_queue.qsize(), s3q))
 
             if debug:
                 logger.debug("new_locks, unused_locks: %i, %i"
@@ -1263,12 +1269,12 @@ class YAS3FS(LoggingMixIn, Operations):
                         if new_key:
                             logger.debug("set_metadata '%s' '%s' S3 new key" % (path, key))
                             ### key.set_contents_from_string('', headers={'Content-Type': 'application/x-directory'})
-                            cmds = [ pub, [ key, 'set_contents_from_string', [ '' ], { 'headers': {'Content-Type': 'application/x-directory' } } ] ]
-                            self.do_on_s3(cmds)
+                            cmds = [ [ 'set_contents_from_string', [ '' ], { 'headers': {'Content-Type': 'application/x-directory' } } ] ]
+                            self.do_on_s3(key, pub, cmds)
                         else:
                             ### key.copy(key.bucket.name, key.name, key.metadata, preserve_acl=False)
-                            cmds = [ pub, [ key, 'copy', [ key.bucket.name, key.name, key.metadata ], { 'preserve_acl': False } ] ]
-                            self.do_on_s3(cmds)
+                            cmds = [ [ 'copy', [ key.bucket.name, key.name, key.metadata ], { 'preserve_acl': False } ] ]
+                            self.do_on_s3(key, pub, cmds)
                         ###self.publish(['md', metadata_name, path])
                     
     def getattr(self, path, fh=None):
@@ -1365,8 +1371,8 @@ class YAS3FS(LoggingMixIn, Operations):
                 logger.debug("mkdir '%s' '%s' '%s' S3" % (path, mode, k))
                 ###k.set_contents_from_string('', headers={'Content-Type': 'application/x-directory'})
                 pub = [ 'mkdir', path ]
-                cmds = [ pub, [ k, 'set_contents_from_string', [ '' ], { 'headers': {'Content-Type': 'application/x-directory'} } ] ]
-                self.do_on_s3(cmds)
+                cmds = [ [ 'set_contents_from_string', [ '' ], { 'headers': {'Content-Type': 'application/x-directory'} } ] ]
+                self.do_on_s3(k, pub, cmds)
             data.delete('change')
             ###if path != '/': ### Do I need this???
             ###    self.publish(['mkdir', path])
@@ -1413,8 +1419,8 @@ class YAS3FS(LoggingMixIn, Operations):
             logger.debug("symlink '%s' '%s' '%s' S3" % (path, link, k))
             ###k.set_contents_from_string(link, headers={'Content-Type': 'application/x-symlink'})
             pub = [ 'symlink', path ]
-            cmds = [ pub, [ k, 'set_contents_from_string', [ link ], { 'headers': {'Content-Type': 'application/x-symlink'} } ] ]
-            self.do_on_s3(cmds)
+            cmds = [ [ 'set_contents_from_string', [ link ], { 'headers': {'Content-Type': 'application/x-symlink'} } ] ]
+            self.do_on_s3(k, pub, cmds)
             data.delete('change')
             ###self.publish(['symlink', path])
 
@@ -1598,31 +1604,30 @@ class YAS3FS(LoggingMixIn, Operations):
                     data.update_etag(key.etag[1:-1])
                     logger.debug("download_data all ended '%s' [thread '%s']" % (path, thread_name))
 
-    def get_to_do_on_s3(self):
+    def get_to_do_on_s3(self, i):
         while self.running:
            try:
-               cmds = self.s3_queue.get(True, 1) # 1 second time-out
-               self.do_on_s3_now(cmds)
-               self.s3_queue.task_done()
+               (key, pub, cmds) = self.s3_queue[i].get(True, 1) # 1 second time-out
+               self.do_on_s3_now(key, pub, cmds)
+               self.s3_queue[i].task_done()
            except Queue.Empty:
                pass
 
-    def do_on_s3(self, cmds):
+    def do_on_s3(self, key, pub, cmds):
         if self.s3_num == 0:
-            self.do_on_s3_now(cmds)
+            self.do_on_s3_now(key, pub, cmds)
         else:
-            self.s3_queue.put(cmds)
+            i = hash(key) % self.s3_num # To distribute files consistently across threads
+            self.s3_queue[i].put((key, pub, cmds))
         pass
 
-    def do_on_s3_now(self, cmds):
-        pub = cmds[0]
-        for c in cmds[1:]:
-            key = c[0]
-            action = c[1]
-            if len(c) > 2:
-                args = c[2]
-                if len(c) > 3:
-                    kargs = c[3]
+    def do_on_s3_now(self, key, pub, cmds):
+        for c in cmds:
+            action = c[0]
+            if len(c) > 1:
+                args = c[1]
+                if len(c) > 2:
+                    kargs = c[2]
                 else:
                     kargs = None
             else:
@@ -1703,8 +1708,8 @@ class YAS3FS(LoggingMixIn, Operations):
             ###k.delete()
             ###self.publish(['rmdir', path])
             pub = [ 'rmdir', path ]
-            cmds = [ pub, [ k, 'delete'] ]
-            self.do_on_s3(cmds)
+            cmds = [ [ 'delete' ] ]
+            self.do_on_s3(k, pub, cmds)
 
             self.cache.reset(path) # Cache invaliation
             self.remove_from_parent_readdir(path)
@@ -1764,18 +1769,14 @@ class YAS3FS(LoggingMixIn, Operations):
                 logger.debug("rename '%s' '%s' ENOENT no parent path '%s'" % (path, new_path, new_parent_path))
                 raise FuseOSError(errno.ENOENT)
             to_copy = {}
-        if key:
-            if key.name[-1] == '/':
-                key_list = self.s3_bucket.list(key.name) # Don't need to set a delimeter here
-                for k in key_list:
-                    source = k.name
-                    target = self.join_prefix(new_path + source[len(key.name) - 1:])
-                    to_copy[source] = target
-            else:
-                to_copy[key.name] = self.join_prefix(new_path)
-        else:
-            ### Should I manage a "full" search in cache for files in path ???
-            # For files in cache but still not flushed to S3, doesn't work for dirs!!!
+        if (key and key.name[-1] == '/') or (not key and self.folder_has_contents(path, 2)):
+            full_key = self.join_prefix(path + '/')
+            key_list = self.s3_bucket.list(full_key) # Don't need to set a delimeter here
+            for k in key_list:
+                source = k.name
+                target = self.join_prefix(new_path + source[len(full_key) - 1:])
+                to_copy[source] = target
+        if not key: # Otherwise we miss the folder if there is no curresponding object on S3
             to_copy[self.join_prefix(path)] = self.join_prefix(new_path)
         for source, target in to_copy.iteritems():
             source_path = source[len(self.s3_prefix):].rstrip('/')
@@ -1798,8 +1799,8 @@ class YAS3FS(LoggingMixIn, Operations):
         key.metadata['Content-Type'] = key.content_type
         ### key.copy(key.bucket.name, target, key.metadata, preserve_acl=False)
         pub = [ 'rename', source_path, target_path ]
-        cmds = [ pub, [ key, 'copy', [ key.bucket.name, target, key.metadata ], { 'preserve_acl': False } ], [ key, 'delete' ] ]
-        self.do_on_s3(cmds)
+        cmds = [ [ 'copy', [ key.bucket.name, target, key.metadata ], { 'preserve_acl': False } ], [ 'delete' ] ]
+        self.do_on_s3(key, pub, cmds)
         ###key.delete()
         ###self.publish(['rename', source_path, target_path])
 
@@ -1852,8 +1853,8 @@ class YAS3FS(LoggingMixIn, Operations):
                 ###k.delete()
                 ###self.publish(['unlink', path])
                 pub = [ 'unlink', path ]
-                cmds = [ pub, [ k, 'delete'] ]
-                self.do_on_s3(cmds)
+                cmds = [ [ 'delete'] ]
+                self.do_on_s3(k, pub, cmds)
 
             self.cache.reset(path) # Cache invaliation
             self.remove_from_parent_readdir(path)
@@ -2379,7 +2380,7 @@ AWS_DEFAULT_REGION environment variable can be used to set the default AWS regio
                         '(default is %(default)s bytes)')
     parser.add_argument('--cache-check', metavar='N', type=int, default=5,
                         help='interval between cache size checks in seconds (default is %(default)s seconds)')
-    parser.add_argument('--s3-num', metavar='N', type=int, default=0,
+    parser.add_argument('--s3-num', metavar='N', type=int, default=32,
                         help='number of parallel S3 calls (0 to disable writeback, default is %(default)s)')
     parser.add_argument('--download-num', metavar='N', type=int, default=4,
                         help='number of parallel downloads (default is %(default)s)')
