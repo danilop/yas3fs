@@ -1698,7 +1698,7 @@ class YAS3FS(LoggingMixIn, Operations):
                 logger.debug("rmdir '%s' cache ENOENT" % (path))
                 raise FuseOSError(errno.ENOENT)
             k = self.get_key(path)
-            if not k:
+            if not k and not self.folder_has_contents(path):
                 logger.debug("rmdir '%s' key ENOENT" % (path))
                 raise FuseOSError(errno.ENOENT)
             dirs = self.cache.get(path, 'readdir')
