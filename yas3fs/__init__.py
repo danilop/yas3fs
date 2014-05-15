@@ -165,6 +165,7 @@ class FSData():
             previous_file = False
             filename = self.cache.get_cache_filename(self.path)
             if os.path.isfile(filename):
+                logger.debug("found previous cache file '%s'" % filename)
                 # There's a file already there
                 self.content = open(filename, mode='rb+')
                 self.update_size()
@@ -173,6 +174,7 @@ class FSData():
                 # Now search for an etag file
                 etag_filename = self.cache.get_cache_etags_filename(self.path)
                 if os.path.isfile(etag_filename):
+                    logger.debug("found previous cache etag file '%s'" % etag_filename)
                     with open(etag_filename, mode='r') as etag_file:
                         self.etag = etag_file.read()
                     previous_file = True
@@ -270,13 +272,15 @@ class FSData():
             if prop == None:
                 if self.store == 'disk':
                     filename = self.cache.get_cache_filename(self.path)
-                    etag_filename = self.cache.get_cache_etags_filename(self.path)
                     with self.cache.disk_lock:
                         if os.path.isfile(filename):
+                            logger.debug("unlink cache file '%s'" % filename)
                             os.unlink(filename)
                             remove_empty_dirs_for_file(filename)
+                    etag_filename = self.cache.get_cache_etags_filename(self.path)
                     with self.cache.disk_lock:
                         if os.path.isfile(etag_filename):
+                            logger.debug("unlink cache etag file '%s'" % etag_filename)
                             os.unlink(etag_filename)
                             remove_empty_dirs_for_file(etag_filename)
                 self.content = None # If not
@@ -1433,6 +1437,7 @@ class YAS3FS(LoggingMixIn, Operations):
             if not data or data.has('new'):
                 k = self.get_key(path)
                 if not k:
+                    logger.debug("check_data '%s' no key" % (path))
                     return False
                 if not data:
                     if k.size < self.cache_on_disk:
@@ -1445,7 +1450,8 @@ class YAS3FS(LoggingMixIn, Operations):
                 if not new_etag or new_etag == etag:
                     data.delete('new')
                 else: # I'm not sure I got the latest version
-                    self.cache.delete(path, 'key')
+                    logger.debug("check_data '%s' etag is different" % (path))
+                    self.cache.delete(path, 'key') # Next time get the key from S3
                     data.set('new', None) # Next time don't check the Etag
                 if data.etag == etag:
                     logger.debug("check_data '%s' etag is the same, data is usable" % (path))
@@ -1853,7 +1859,7 @@ class YAS3FS(LoggingMixIn, Operations):
                 ###k.delete()
                 ###self.publish(['unlink', path])
                 pub = [ 'unlink', path ]
-                cmds = [ [ 'delete'] ]
+                cmds = [ [ 'delete' ] ]
                 self.do_on_s3(k, pub, cmds)
 
             self.cache.reset(path) # Cache invaliation
@@ -2120,11 +2126,11 @@ class YAS3FS(LoggingMixIn, Operations):
                 self.set_metadata(path, 'attr')
             return 0
 
-    def utime(self, path, times=None):
-        logger.debug("utime '%s' '%s'" % (path, times))
+    def utimens(self, path, times=None):
+        logger.debug("utimens '%s' '%s'" % (path, times))
         with self.cache.get_lock(path):
             if self.cache.is_empty(path):
-                logger.debug("utime '%s' '%s' ENOENT" % (path, times))
+                logger.debug("utimens '%s' '%s' ENOENT" % (path, times))
                 raise FuseOSError(errno.ENOENT)
             now = get_current_time()
             atime, mtime = times if times else (now, now)

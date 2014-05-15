@@ -1,0 +1,25 @@
+2014-05-15 14:20:08,221 DEBUG options = Namespace(buffer_prefetch=0, buffer_size=10240, cache_check=5, cache_disk_size=1024, cache_entries=100000, cache_mem_size=128, cache_on_disk=0, cache_path='', debug=True, download_num=4, expiration=2592000, foreground=True, gid=None, hostname=None, id=None, log=None, mkdir=False, mountpoint='./test/', mp_num=4, mp_retries=3, mp_size=100, new_queue=False, no_metadata=False, port=None, prefetch=False, prefetch_num=2, queue=None, queue_polling=0, queue_wait=20, region='eu-west-1', s3_num=32, s3path='s3://danilop-fs/test', topic=None, uid=None, umask=None, use_ec2_hostname=False)
+2014-05-15 14:20:08,221 INFO Version: 2.2.8
+2014-05-15 14:20:08,221 INFO S3 bucket: 'danilop-fs'
+2014-05-15 14:20:08,221 INFO S3 prefix (can be empty): 'test'
+2014-05-15 14:20:08,221 INFO Cache entries: '100000'
+2014-05-15 14:20:08,221 INFO Cache memory size (in bytes): '134217728'
+2014-05-15 14:20:08,221 INFO Cache disk size (in bytes): '1073741824'
+2014-05-15 14:20:08,221 INFO Cache on disk if file size greater than (in bytes): '0'
+2014-05-15 14:20:08,221 INFO Cache check interval (in seconds): '5'
+2014-05-15 14:20:08,222 INFO Number of parallel S3 threads (0 to disable writeback): '32'
+2014-05-15 14:20:08,222 INFO Number of parallel donwloading threads: '4'
+2014-05-15 14:20:08,222 INFO Number of parallel prefetching threads: '2'
+2014-05-15 14:20:08,222 INFO Download buffer size (in KB, 0 to disable buffering): '10485760'
+2014-05-15 14:20:08,222 INFO Number of buffers to prefetch: '0'
+2014-05-15 14:20:08,222 INFO Write metadata (file system attr/xattr) on S3: 'True'
+2014-05-15 14:20:08,222 INFO Download prefetch: 'False'
+2014-05-15 14:20:08,222 INFO Multipart size: '104857600'
+2014-05-15 14:20:08,222 INFO Multipart maximum number of parallel threads: '4'
+2014-05-15 14:20:08,222 INFO Multipart maximum number of retries per part: '3'
+2014-05-15 14:20:08,222 INFO Default expiration for signed URLs via xattrs: '2592000'
+2014-05-15 14:20:08,222 INFO Cache path (on disk): '/tmp/yas3fs/danilop-fs/test'
+2014-05-15 14:20:08,951 INFO Unique node ID: '6b616253-43ba-4a65-8ab2-f65ab63de416'
+fuse: bad mount point `./test/': No such file or directory
+2014-05-15 14:20:08,953 ERROR Uncaught Exception
+None
