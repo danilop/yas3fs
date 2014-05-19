@@ -390,6 +390,7 @@ class FSCache():
                 self.lru.append(new_path)
                 self.lru.delete(path)
                 del self.entries[path]
+                self.reset(path) # I need 'deleted'
     def get(self, path, prop=None):
         self.lru.move_to_the_tail(path) # Move to the tail of the LRU cache
         try:
@@ -413,6 +414,7 @@ class FSCache():
         with self.get_lock(path):
             self.delete(path)
             self.add(path)
+            self.set(path, 'deleted', True)
     def has(self, path, prop=None):
         self.lru.move_to_the_tail(path) # Move to the tail of the LRU cache
         if prop == None:
@@ -423,15 +425,23 @@ class FSCache():
             except KeyError:
                 return False
     def is_empty(self, path): # To improve readability
-        try:
-            return len(self.get(path)) <= 1 # Empty or just with 'lock'
-        except TypeError: # if get returns None
-            return False
+        if self.has(path) and not self.has(path, 'attr'):
+            return True
+        else:
+            return False 
+        ###try:
+        ###    return len(self.get(path)) <= 1 # Empty or just with 'lock'
+        ###except TypeError: # if get returns None
+        ###    return False
     def is_not_empty(self, path): # To improve readability
-        try:
-            return len(self.get(path)) > 1 # More than just 'lock'
-        except TypeError: # if get returns None
-            return False
+        if self.has(path) and self.has(path, 'attr'):
+            return True
+        else:
+            return False 
+        ###try:
+        ###    return len(self.get(path)) > 1 # More than just 'lock'
+        ###except TypeError: # if get returns None
+        ###    return False
  
 class SNS_HTTPServer(BaseHTTPServer.HTTPServer):
     """ HTTP Server to receive SNS notifications via HTTP """
@@ -1141,6 +1151,9 @@ class YAS3FS(LoggingMixIn, Operations):
 
     def get_key(self, path, cache=True):
         if cache:
+            if self.cache.has(path, 'deleted'):
+                logger.debug("get_key from cache deleted '%s'" % (path))
+                return None
             key = self.cache.get(path, 'key')
             if key:
                 logger.debug("get_key from cache '%s'" % (path))
@@ -1198,7 +1211,7 @@ class YAS3FS(LoggingMixIn, Operations):
                 if s:
                     try:
                         metadata_values = json.loads(s)
-                    except ValueError: # For legacy atrribute encoding
+                    except ValueError: # For legacy attribute encoding
                         for kv in s.split(';'):
                             k, v = kv.split('=')
                             if v.isdigit():
