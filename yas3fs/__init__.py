@@ -389,8 +389,8 @@ class FSCache():
                 self.entries[new_path] = self.entries[path]
                 self.lru.append(new_path)
                 self.lru.delete(path)
-                del self.entries[path]
-                self.reset(path) # I need 'deleted'
+                del self.entries[path] # So that the next reset doesn't delete the entry props
+                self.reset(path) # I need 'deleted' ### Something better ???
     def get(self, path, prop=None):
         self.lru.move_to_the_tail(path) # Move to the tail of the LRU cache
         try:
@@ -1158,13 +1158,13 @@ class YAS3FS(LoggingMixIn, Operations):
             if key:
                 logger.debug("get_key from cache '%s'" % (path))
                 return key
-        look_on_S3 = True
-        if path != '/':
-            (parent_path, file) = os.path.split(path)
-            dirs = self.cache.get(parent_path, 'readdir')
-            if dirs and file not in dirs:
-                look_on_S3 = False # We know it's not there
-        if look_on_S3:
+            look_on_S3 = True
+            if path != '/':
+                (parent_path, file) = os.path.split(path)
+                dirs = self.cache.get(parent_path, 'readdir')
+                if dirs and file not in dirs:
+                    look_on_S3 = False # We know it's not there
+        if not cache or look_on_S3:
             logger.debug("get_key from S3 #1 '%s'" % (path))
             key = self.s3_bucket.get_key(self.join_prefix(path))
             if not key and path != '/':
