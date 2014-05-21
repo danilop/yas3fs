@@ -637,6 +637,13 @@ class YAS3FS(LoggingMixIn, Operations):
         logger.info("Multipart maximum number of retries per part: '%s'" % str(self.multipart_retries))
         self.default_expiration = options.expiration
         logger.info("Default expiration for signed URLs via xattrs: '%s'" % str(self.default_expiration))
+        self.request_payer = options.request_payer
+        logger.info("S3 Request Payer: '%s'" % str(self.request_payer))
+        
+        if self.request_payer:
+            self.default_headers = { 'x-amz-request-payer' : 'requester' }
+        else:
+            self.default_headers = {}
 
         self.darwin = options.darwin # To tailor ENOATTR for OS X
 
@@ -1146,7 +1153,7 @@ class YAS3FS(LoggingMixIn, Operations):
     def folder_has_contents(self, path, num=1):
         logger.debug("folder_has_contents '%s' %i" % (path, num))
         full_path = self.join_prefix(path + '/')
-        key_list = self.s3_bucket.list(full_path) # Don't need to set a delimeter here
+        key_list = self.s3_bucket.list(full_path, headers = self.default_headers) # Don't need to set a delimeter here
         return has_elements(key_list, num)
 
     def get_key(self, path, cache=True):
@@ -1166,11 +1173,11 @@ class YAS3FS(LoggingMixIn, Operations):
                     look_on_S3 = False # We know it's not there
         if not cache or look_on_S3:
             logger.debug("get_key from S3 #1 '%s'" % (path))
-            key = self.s3_bucket.get_key(self.join_prefix(path))
+            key = self.s3_bucket.get_key(self.join_prefix(path), headers=self.default_headers)
             if not key and path != '/':
                 full_path = path + '/'
                 logger.debug("get_key from S3 #2 '%s' '%s'" % (path, full_path))
-                key = self.s3_bucket.get_key(self.join_prefix(full_path))
+                key = self.s3_bucket.get_key(self.join_prefix(full_path), headers=self.default_headers)
             if key:
                 logger.debug("get_key to cache '%s'" % (path))
                 self.cache.set(path, 'key', key)
@@ -1286,11 +1293,14 @@ class YAS3FS(LoggingMixIn, Operations):
                         if new_key:
                             logger.debug("set_metadata '%s' '%s' S3 new key" % (path, key))
                             ### key.set_contents_from_string('', headers={'Content-Type': 'application/x-directory'})
-                            cmds = [ [ 'set_contents_from_string', [ '' ], { 'headers': {'Content-Type': 'application/x-directory' } } ] ]
+                            headers = { 'Content-Type': 'application/x-directory' }
+                            headers.update(self.default_headers)
+                            cmds = [ [ 'set_contents_from_string', [ '' ], { 'headers': headers } ] ]
                             self.do_on_s3(key, pub, cmds)
                         else:
                             ### key.copy(key.bucket.name, key.name, key.metadata, preserve_acl=False)
-                            cmds = [ [ 'copy', [ key.bucket.name, key.name, key.metadata ], { 'preserve_acl': False } ] ]
+                            cmds = [ [ 'copy', [ key.bucket.name, key.name, key.metadata ],
+                                       { 'headers': self.default_headers, 'preserve_acl': False } ] ]
                             self.do_on_s3(key, pub, cmds)
                         ###self.publish(['md', metadata_name, path])
                     
@@ -1331,7 +1341,7 @@ class YAS3FS(LoggingMixIn, Operations):
                 elif full_path != '' and full_path[-1] != '/':
                     full_path += '/'
                 logger.debug("readdir '%s' '%s' S3 list '%s'" % (path, fh, full_path))
-                key_list = self.s3_bucket.list(full_path, '/')
+                key_list = self.s3_bucket.list(full_path, '/', headers = self.default_headers)
                 dirs = ['.', '..']
                 for k in key_list:
                     logger.debug("readdir '%s' '%s' S3 list key '%s'" % (path, fh, k))
@@ -1388,7 +1398,9 @@ class YAS3FS(LoggingMixIn, Operations):
                 logger.debug("mkdir '%s' '%s' '%s' S3" % (path, mode, k))
                 ###k.set_contents_from_string('', headers={'Content-Type': 'application/x-directory'})
                 pub = [ 'mkdir', path ]
-                cmds = [ [ 'set_contents_from_string', [ '' ], { 'headers': {'Content-Type': 'application/x-directory'} } ] ]
+                headers = { 'Content-Type': 'application/x-directory'}
+                headers.update(self.default_headers)
+                cmds = [ [ 'set_contents_from_string', [ '' ], { 'headers': headers } ] ]
                 self.do_on_s3(k, pub, cmds)
             data.delete('change')
             ###if path != '/': ### Do I need this???
@@ -1436,7 +1448,9 @@ class YAS3FS(LoggingMixIn, Operations):
             logger.debug("symlink '%s' '%s' '%s' S3" % (path, link, k))
             ###k.set_contents_from_string(link, headers={'Content-Type': 'application/x-symlink'})
             pub = [ 'symlink', path ]
-            cmds = [ [ 'set_contents_from_string', [ link ], { 'headers': {'Content-Type': 'application/x-symlink'} } ] ]
+            headers = { 'Content-Type': 'application/x-symlink' }
+            headers.update(self.default_headers)
+            cmds = [ [ 'set_contents_from_string', [ link ], { 'headers': headers } ] ]
             self.do_on_s3(k, pub, cmds)
             data.delete('change')
             ###self.publish(['symlink', path])
@@ -1478,7 +1492,7 @@ class YAS3FS(LoggingMixIn, Operations):
                         data.set('range', FSRange())
                     logger.debug("check_data '%s' created empty data object" % (path))
                 else: # Download at once
-                    k.get_contents_to_file(data.content)
+                    k.get_contents_to_file(data.content, headers = self.default_headers)
                     data.update_size()
                     data.update_etag(k.etag[1:-1])
                     logger.debug("check_data '%s' data downloaded at once" % (path))
@@ -1554,9 +1568,11 @@ class YAS3FS(LoggingMixIn, Operations):
             data_range.ongoing_intervals[thread_name] = new_interval
 
         if new_interval[0] == 0 and new_interval[1] == key.size -1:
-            range_headers = None
+            range_headers = {}
         else:
             range_headers = { 'Range' : 'bytes=' + str(new_interval[0]) + '-' + str(new_interval[1]) }
+
+        range_headers.update(self.default_headers) ### Should I check self.request_payer first?
 
         retry = True
         while retry:
@@ -1727,7 +1743,7 @@ class YAS3FS(LoggingMixIn, Operations):
             ###k.delete()
             ###self.publish(['rmdir', path])
             pub = [ 'rmdir', path ]
-            cmds = [ [ 'delete' ] ]
+            cmds = [ [ 'delete', [] , { 'headers': self.default_headers } ] ]
             self.do_on_s3(k, pub, cmds)
 
             self.cache.reset(path) # Cache invaliation
@@ -1790,7 +1806,7 @@ class YAS3FS(LoggingMixIn, Operations):
             to_copy = {}
         if (key and key.name[-1] == '/') or (not key and self.folder_has_contents(path, 2)):
             full_key = self.join_prefix(path + '/')
-            key_list = self.s3_bucket.list(full_key) # Don't need to set a delimeter here
+            key_list = self.s3_bucket.list(full_key, headers = self.default_headers) # Don't need to set a delimeter here
             for k in key_list:
                 source = k.name
                 target = self.join_prefix(new_path + source[len(full_key) - 1:])
@@ -1806,7 +1822,7 @@ class YAS3FS(LoggingMixIn, Operations):
                 target_path = '/' + target_path
             logger.debug("renaming '%s' ('%s') -> '%s' ('%s')" % (source, source_path, target, target_path))
             self.cache.rename(source_path, target_path)
-            key = self.s3_bucket.get_key(source)
+            key = self.s3_bucket.get_key(source, headers=self.default_headers)
             if key: # For files in cache but still not flushed to S3
                 self.rename_on_s3(key, target, source_path, target_path)
 
@@ -1818,7 +1834,9 @@ class YAS3FS(LoggingMixIn, Operations):
         key.metadata['Content-Type'] = key.content_type
         ### key.copy(key.bucket.name, target, key.metadata, preserve_acl=False)
         pub = [ 'rename', source_path, target_path ]
-        cmds = [ [ 'copy', [ key.bucket.name, target, key.metadata ], { 'preserve_acl': False } ], [ 'delete' ] ]
+        cmds = [ [ 'copy', [ key.bucket.name, target, key.metadata ],
+                   { 'headers': self.default_headers, 'preserve_acl': False } ],
+                 [ 'delete', [], { 'headers': self.default_headers } ] ]
         self.do_on_s3(key, pub, cmds)
         ###key.delete()
         ###self.publish(['rename', source_path, target_path])
@@ -1872,7 +1890,7 @@ class YAS3FS(LoggingMixIn, Operations):
                 ###k.delete()
                 ###self.publish(['unlink', path])
                 pub = [ 'unlink', path ]
-                cmds = [ [ 'delete' ] ]
+                cmds = [ [ 'delete', [], { 'headers': self.default_headers } ] ]
                 self.do_on_s3(k, pub, cmds)
 
             self.cache.reset(path) # Cache invaliation
@@ -2030,7 +2048,9 @@ class YAS3FS(LoggingMixIn, Operations):
             for retry in range(self.s3_retries):
                 data.content.seek(0)
                 try:
-                    k.set_contents_from_file(data.content, headers={'Content-Type': mimetype})
+                    headers = { 'Content-Type': mimetype }
+                    headers.update(self.default_headers)
+                    k.set_contents_from_file(data.content, headers=headers)
                     break
                 except Exception as e:
                     logger.exception(e)
@@ -2171,7 +2191,7 @@ class YAS3FS(LoggingMixIn, Operations):
             if key:
                 tmp_key = copy.copy(key)
                 tmp_key.metadata = {} # To remove unnecessary metadata headers
-                return tmp_key.generate_url(expires_in=0, headers=None, query_auth=False)
+                return tmp_key.generate_url(expires_in=0, headers=self.default_headers, query_auth=False)
         xattr = self.get_metadata(path, 'xattr')
         if name == 'yas3fs.signedURL':
             key = self.get_key(path)
@@ -2182,7 +2202,7 @@ class YAS3FS(LoggingMixIn, Operations):
                     seconds = self.default_expiration
                 tmp_key = copy.copy(key)
                 tmp_key.metadata = {} # To remove unnecessary metadata headers
-                return tmp_key.generate_url(expires_in=seconds, headers=None)
+                return tmp_key.generate_url(expires_in=seconds, headers=self.default_headers)
         elif name == 'yas3fs.expiration':
             key = self.get_key(path)
             if key:
@@ -2432,8 +2452,12 @@ AWS_DEFAULT_REGION environment variable can be used to set the default AWS regio
                         help='default GID')
     parser.add_argument('--umask', metavar='MASK',
                         help='default umask')
+    parser.add_argument('--read-only', action='store_true',
+                        help='mount read only')
     parser.add_argument('--expiration', metavar='N', type=int, default=30*24*60*60,
                         help='default expiration for signed URL via xattrs (in seconds, default is 30 days)')
+    parser.add_argument('--request-payer', action='store_true',
+                        help='requester pays for S3 interactions, the bucket must be configured manually (default is none)')
     parser.add_argument('-l', '--log', metavar='FILE',
                         help='filename for logs')
     parser.add_argument('-f', '--foreground', action='store_true',
@@ -2487,6 +2511,9 @@ AWS_DEFAULT_REGION environment variable can be used to set the default AWS regio
         mount_options['gid'] = options.gid
     if options.umask:
         mount_options['umask'] = options.umask
+    if options.read_only:
+        mount_options['ro'] = True
+
     options.darwin = (sys.platform == "darwin")
     if options.darwin:
         mount_options['volname'] = os.path.basename(options.mountpoint)
