@@ -2457,7 +2457,7 @@ AWS_DEFAULT_REGION environment variable can be used to set the default AWS regio
     parser.add_argument('--expiration', metavar='N', type=int, default=30*24*60*60,
                         help='default expiration for signed URL via xattrs (in seconds, default is 30 days)')
     parser.add_argument('--requester-pays', action='store_true',
-                        help='requester pays for S3 interactions, the bucket must have Requester Pays enabled')
+                        help='requester pays for S3 interactions, the bucket must be configured manually')
     parser.add_argument('-l', '--log', metavar='FILE',
                         help='filename for logs')
     parser.add_argument('-f', '--foreground', action='store_true',
