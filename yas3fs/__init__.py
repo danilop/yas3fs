@@ -423,8 +423,7 @@ class FSCache():
                 try:
                     self.entries[path][prop] += 1
                 except KeyError:
-                    try:
-                        self.entries[path][prop] = 1
+                    self.entries[path][prop] = 1
     def dec(self, path, prop):
         self.lru.move_to_the_tail(path) # Move to the tail of the LRU cache
         with self.get_lock(path):
