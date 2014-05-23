@@ -1729,6 +1729,7 @@ class YAS3FS(LoggingMixIn, Operations):
                             data.delete('change')
                         pub.append(etag)
                     elif action == 'multipart_upload':
+                        data = args[1] # Second argument must be data
                         complete = self.multipart_upload(*args,**kargs)
                         etag = complete.etag[1:-1]
                         self.cache.delete(data.path, 'key')
