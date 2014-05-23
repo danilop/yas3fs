@@ -1307,7 +1307,7 @@ class YAS3FS(LoggingMixIn, Operations):
                         else:
                             ### key.copy(key.bucket.name, key.name, key.metadata, preserve_acl=False)
                             cmds = [ [ 'copy', [ key.bucket.name, key.name, key.metadata ],
-                                       { 'headers': self.default_headers, 'preserve_acl': False } ] ]
+                                       { 'preserve_acl': False } ] ]
                             self.do_on_s3(key, pub, cmds)
                         ###self.publish(['md', metadata_name, path])
                     
@@ -1858,7 +1858,7 @@ class YAS3FS(LoggingMixIn, Operations):
         ### key.copy(key.bucket.name, target, key.metadata, preserve_acl=False)
         pub = [ 'rename', source_path, target_path ]
         cmds = [ [ 'copy', [ key.bucket.name, target, key.metadata ],
-                   { 'headers': self.default_headers, 'preserve_acl': False } ],
+                   { 'preserve_acl': False } ],
                  [ 'delete', [], { 'headers': self.default_headers } ] ]
         self.do_on_s3(key, pub, cmds)
         ###key.delete()
