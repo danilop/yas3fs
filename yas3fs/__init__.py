@@ -1744,7 +1744,7 @@ class YAS3FS(LoggingMixIn, Operations):
                     time.sleep(1.0) # Better wait 1 second before retrying 
                     logger.debug("do_on_s3_now action '%s' key '%s' args '%s' kargs '%s' retry %i" % (action, key, args, kargs, retry))
 
-            logger.debug("do_on_s3_now action '%s' key '%s' args '%s' kargs '%s' done" % (action, key, args, kargs, retry))
+            logger.debug("do_on_s3_now action '%s' key '%s' args '%s' kargs '%s' done" % (action, key, args, kargs))
 
             self.publish(pub)
 
