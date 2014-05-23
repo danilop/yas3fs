@@ -230,6 +230,13 @@ class FSData():
             self.size = current_size
         with self.cache.data_size_lock:
             self.cache.size[self.store] += delta
+    def get_content(self):
+        with self.get_lock():
+            if self.store == 'disk':
+                filename = self.cache.get_cache_filename(self.path)
+                return open(filename, mode='rb+')
+            else:
+                return self.content
     def get_content_as_string(self):
         if self.store == 'mem':
             with self.get_lock():
@@ -1679,6 +1686,22 @@ class YAS3FS(LoggingMixIn, Operations):
                         key.copy(*args, **kargs)
                     elif action == 'set_contents_from_string':
                         key.set_contents_from_string(*args,**kargs)
+                    elif action == 'set_contents_from_file':
+                        data = args[0] # First argument must be data
+                        key.set_contents_from_file(data.get_content(),**kargs)
+                        etag = key.etag[1:-1]
+                        with data.get_lock():
+                            data.update_etag(etag)
+                            data.delete('change')
+                        pub.append(etag)
+                    elif action == 'multipart_upload':
+                        complete = self.multipart_upload(*args,**kargs)
+                        etag = complete.etag[1:-1]
+                        self.cache.delete(data.path, 'key')
+                        with data.get_lock():
+                            data.update_etag(etag)
+                            data.delete('change')
+                        pub.append(etag)
                     else:
                         logger.error("do_on_s3_now Unknown action '%s'" % action)
                 except Exception as e:
@@ -2034,35 +2057,21 @@ class YAS3FS(LoggingMixIn, Operations):
             old_size = k.size
 
         written = False
+        pub = [ 'upload', path ] # Add Etag before publish
+        headers = { 'Content-Type': mimetype }
+        headers.update(self.default_headers)
         if self.multipart_num > 0:
             full_size = attr['st_size']
             if full_size > self.multipart_size:
                 logger.debug("upload_to_s3 '%s' '%s' '%s' S3 multipart" % (path, k, mimetype))
-                complete = self.multipart_upload(k.name, data, full_size,
-                                              headers={'Content-Type': mimetype}, metadata=k.metadata)
-                etag = complete.etag[1:-1]
-                new_k = self.get_key(path, cache=False) # To refresh the S3 key cache
+                cmds = [ [ 'multipart_upload', [ k.name, data, full_size ], { headers: headers, metadata:k.metadata } ] ]
                 written = True
         if not written:
             logger.debug("upload_to_s3 '%s' '%s' '%s' S3" % (path, k, mimetype))
-            for retry in range(self.s3_retries):
-                data.content.seek(0)
-                try:
-                    headers = { 'Content-Type': mimetype }
-                    headers.update(self.default_headers)
-                    k.set_contents_from_file(data.content, headers=headers)
-                    break
-                except Exception as e:
-                    logger.exception(e)
-                    time.sleep(1.0) # Better wait 1 second before retrying
-                    logger.debug("upload_to_s3 '%s' '%s' '%s' S3 metadata '%s'"
-                                 % (path, k, mimetype, k.metadata))
-                    logger.info("upload_to_s3 '%s' '%s' '%s' S3 retry %i" % (path, k, mimetype, retry))
-            etag = k.etag[1:-1]
-
-        data.update_etag(etag)
-        data.delete('change')
-        self.publish(['upload', path, etag])
+            ###k.set_contents_from_file(data.content, headers=headers)
+            cmds = [ [ 'set_contents_from_file', [ data ], { 'headers': headers } ] ]
+        self.do_on_s3(k, pub, cmds)
+        ###self.publish(['upload', path, etag])
         logger.debug("upload_to_s3 '%s' done" % path)
 
     def multipart_upload(self, key_path, data, full_size, headers, metadata):
@@ -2193,6 +2202,9 @@ class YAS3FS(LoggingMixIn, Operations):
                 tmp_key.metadata = {} # To remove unnecessary metadata headers
                 return tmp_key.generate_url(expires_in=0, headers=self.default_headers, query_auth=False)
         xattr = self.get_metadata(path, 'xattr')
+        if xattr == None:
+            logger.debug("getxattr <- '%s' '%s' '%i' ENOENT" % (path, name, position))
+            raise FuseOSError(errno.ENOENT)
         if name == 'yas3fs.signedURL':
             key = self.get_key(path)
             if key:
@@ -2222,6 +2234,9 @@ class YAS3FS(LoggingMixIn, Operations):
             logger.debug("listxattr '%s' ENOENT" % (path))
             raise FuseOSError(errno.ENOENT)
         xattr = self.get_metadata(path, 'xattr')
+        if xattr == None:
+            logger.debug("listxattr <- '%s' '%s' '%i' ENOENT" % (path))
+            raise FuseOSError(errno.ENOENT)
         return set(self.yas3fs_xattrs + xattr.keys())
 
     def removexattr(self, path, name):
