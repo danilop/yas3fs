@@ -547,12 +547,11 @@ class SNS_HTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
 class PartOfFSData():
     """ To read just a part of an existing FSData, inspired by FileChunkIO """
-    def __init__(self, data, lock, start, length):
-        self.data = data
+    def __init__(self, data, start, length):
+        self.content = data.get_content()
         self.start = start
         self.length = length
         self.pos = 0
-        self.lock = lock
     def seek(self, offset, whence=0):
         logger.debug("seek '%i' '%i'" % (offset, whence))
         if whence == 0:
@@ -564,13 +563,12 @@ class PartOfFSData():
     def tell(self):
         return self.pos
     def read(self, n=-1):
-        logger.debug("read '%i' '%s' '%s' at '%i' starting from '%i' for '%i'"
-                     % (n, self.data, self.data.content, self.pos, self.start, self.length))
+        logger.debug("read '%i' '%s' at '%i' starting from '%i' for '%i'"
+                     % (n, self.content, self.pos, self.start, self.length))
         if n >= 0:
             n = min([n, self.length - self.pos])
-            with self.lock:
-                self.data.content.seek(self.start + self.pos)
-                s = self.data.content.read(n)
+            self.content.seek(self.start + self.pos)
+            s = self.content.read(n)
             self.pos += len(s)
             return s
         else:
@@ -2122,7 +2120,6 @@ class YAS3FS(LoggingMixIn, Operations):
         part_queue = Queue.Queue()
         multipart_size = max(self.multipart_size, full_size / 100) # No more than 100 parts...
         logger.debug("multipart_upload '%s' multipart_size '%s'" % (key_path, multipart_size))
-        upload_lock = threading.Lock()
         while part_pos < full_size:
             bytes_left = full_size - part_pos
             if bytes_left > self.multipart_size:
@@ -2130,7 +2127,7 @@ class YAS3FS(LoggingMixIn, Operations):
             else:
                 part_size = bytes_left
             part_num += 1
-            part_queue.put([ part_num, PartOfFSData(data, upload_lock, part_pos, part_size) ])
+            part_queue.put([ part_num, PartOfFSData(data, part_pos, part_size) ])
             part_pos += part_size
             logger.debug("part from %i for %i" % (part_pos, part_size))
         logger.debug("initiate_multipart_upload '%s' '%s'" % (key_path, headers))
