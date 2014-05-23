@@ -1747,6 +1747,7 @@ class YAS3FS(LoggingMixIn, Operations):
                         logger.debug("do_on_s3_now 8")
                     else:
                         logger.error("do_on_s3_now Unknown action '%s'" % action)
+                    break
                 except Exception as e:
                     logger.exception(e)
                     time.sleep(1.0) # Better wait 1 second before retrying 
