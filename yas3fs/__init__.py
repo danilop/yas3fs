@@ -397,7 +397,6 @@ class FSCache():
                 self.lru.append(new_path)
                 self.lru.delete(path)
                 del self.entries[path] # So that the next reset doesn't delete the entry props
-                self.reset(path) # I need 'deleted' ### Something better ???
     def get(self, path, prop=None):
         self.lru.move_to_the_tail(path) # Move to the tail of the LRU cache
         try:
@@ -421,7 +420,6 @@ class FSCache():
         with self.get_lock(path):
             self.delete(path)
             self.add(path)
-            self.set(path, 'deleted', True)
     def has(self, path, prop=None):
         self.lru.move_to_the_tail(path) # Move to the tail of the LRU cache
         if prop == None:
@@ -1681,7 +1679,9 @@ class YAS3FS(LoggingMixIn, Operations):
             for retry in range(self.s3_retries):
                 try:
                     if action == 'delete':
+                        path = pub[1]
                         key.delete()
+                        self.cache.dec(path, 'deleted')
                     elif action == 'copy':
                         key.copy(*args, **kargs)
                     elif action == 'set_contents_from_string':
@@ -1765,12 +1765,14 @@ class YAS3FS(LoggingMixIn, Operations):
             logger.debug("rmdir '%s' '%s' S3" % (path, k))
             ###k.delete()
             ###self.publish(['rmdir', path])
-            pub = [ 'rmdir', path ]
-            cmds = [ [ 'delete', [] , { 'headers': self.default_headers } ] ]
-            self.do_on_s3(k, pub, cmds)
-
             self.cache.reset(path) # Cache invaliation
             self.remove_from_parent_readdir(path)
+            if k:
+                pub = [ 'rmdir', path ]
+                cmds = [ [ 'delete', [] , { 'headers': self.default_headers } ] ]
+                self.cache.inc(path, 'deleted')
+                self.do_on_s3(k, pub, cmds)
+
             return 0
 
     def truncate(self, path, size):
@@ -1847,6 +1849,7 @@ class YAS3FS(LoggingMixIn, Operations):
             self.cache.rename(source_path, target_path)
             key = self.s3_bucket.get_key(source, headers=self.default_headers)
             if key: # For files in cache but still not flushed to S3
+                self.cache.inc(source_path, 'deleted')
                 self.rename_on_s3(key, target, source_path, target_path)
 
         self.remove_from_parent_readdir(path)
@@ -1870,12 +1873,11 @@ class YAS3FS(LoggingMixIn, Operations):
             if self.cache.is_not_empty(file):
                 logger.debug("mknod '%s' '%i' '%s' cache EEXIST" % (path, mode, dev))
                 raise FuseOSError(errno.EEXIST)
-            else:
-                k = self.get_key(path)
-                if k:
-                    logger.debug("mknod '%s' '%i' '%s' key EEXIST" % (path, mode, dev))
-                    raise FuseOSError(errno.EEXIST)
-                self.cache.add(path)
+            k = self.get_key(path)
+            if k:
+                logger.debug("mknod '%s' '%i' '%s' key EEXIST" % (path, mode, dev))
+                raise FuseOSError(errno.EEXIST)
+            self.cache.add(path)
             now = get_current_time()
             uid, gid = get_uid_gid()
             attr = {}
@@ -1908,16 +1910,17 @@ class YAS3FS(LoggingMixIn, Operations):
             if not k and not self.cache.has(path):
                 logger.debug("unlink '%s' ENOENT" % (path))
                 raise FuseOSError(errno.ENOENT)
+            self.cache.reset(path) # Cache invaliation
+            self.remove_from_parent_readdir(path)
             if k:
                 logger.debug("unlink '%s' '%s' S3" % (path, k))
                 ###k.delete()
                 ###self.publish(['unlink', path])
                 pub = [ 'unlink', path ]
                 cmds = [ [ 'delete', [], { 'headers': self.default_headers } ] ]
+                self.cache.inc(path, 'deleted')
                 self.do_on_s3(k, pub, cmds)
 
-            self.cache.reset(path) # Cache invaliation
-            self.remove_from_parent_readdir(path)
 	return 0
 
     def create(self, path, mode, fi=None):
