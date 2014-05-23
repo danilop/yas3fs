@@ -1730,21 +1730,13 @@ class YAS3FS(LoggingMixIn, Operations):
                         pub.append(etag)
                     elif action == 'multipart_upload':
                         data = args[1] # Second argument must be data
-                        logger.debug("do_on_s3_now 1")
                         complete = self.multipart_upload(*args)
-                        logger.debug("do_on_s3_now 2")
                         etag = complete.etag[1:-1]
-                        logger.debug("do_on_s3_now 3")
                         self.cache.delete(data.path, 'key')
-                        logger.debug("do_on_s3_now 4")
                         with data.get_lock():
-                            logger.debug("do_on_s3_now 5")
                             data.update_etag(etag)
-                            logger.debug("do_on_s3_now 6")
                             data.delete('change')
-                        logger.debug("do_on_s3_now 7")
                         pub.append(etag)
-                        logger.debug("do_on_s3_now 8")
                     else:
                         logger.error("do_on_s3_now Unknown action '%s'" % action)
                     break
