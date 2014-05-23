@@ -416,6 +416,26 @@ class FSCache():
         	return True
             else:
         	return False
+    def inc(self, path, prop):
+        self.lru.move_to_the_tail(path) # Move to the tail of the LRU cache
+        with self.get_lock(path):
+            if path in self.entries:
+                try:
+                    self.entries[path][prop] += 1
+                except KeyError:
+                    try:
+                        self.entries[path][prop] = 1
+    def dec(self, path, prop):
+        self.lru.move_to_the_tail(path) # Move to the tail of the LRU cache
+        with self.get_lock(path):
+            if path in self.entries:
+                try:
+                    if self.entries[path][prop] > 1:
+                        self.entries[path][prop] -= 1
+                    else:
+                        del self.entries[path][prop]
+                except KeyError:
+                    pass # Nothing to do
     def reset(self, path):
         with self.get_lock(path):
             self.delete(path)
