@@ -1652,7 +1652,7 @@ class YAS3FS(LoggingMixIn, Operations):
         if self.s3_num == 0:
             self.do_on_s3_now(key, pub, cmds)
         else:
-            i = hash(key) % self.s3_num # To distribute files consistently across threads
+            i = hash(key.name) % self.s3_num # To distribute files consistently across threads
             self.s3_queue[i].put((key, pub, cmds))
         pass
 
