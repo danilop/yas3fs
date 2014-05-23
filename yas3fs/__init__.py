@@ -1730,7 +1730,7 @@ class YAS3FS(LoggingMixIn, Operations):
                         pub.append(etag)
                     elif action == 'multipart_upload':
                         data = args[1] # Second argument must be data
-                        complete = self.multipart_upload(*args,**kargs)
+                        complete = self.multipart_upload(*args)
                         etag = complete.etag[1:-1]
                         self.cache.delete(data.path, 'key')
                         with data.get_lock():
@@ -2104,7 +2104,7 @@ class YAS3FS(LoggingMixIn, Operations):
             full_size = attr['st_size']
             if full_size > self.multipart_size:
                 logger.debug("upload_to_s3 '%s' '%s' '%s' S3 multipart" % (path, k, mimetype))
-                cmds = [ [ 'multipart_upload', [ k.name, data, full_size ], { 'headers': headers, 'metadata':k.metadata } ] ]
+                cmds = [ [ 'multipart_upload', [ k.name, data, full_size, headers, k.metadata ] ] ]
                 written = True
         if not written:
             logger.debug("upload_to_s3 '%s' '%s' '%s' S3" % (path, k, mimetype))
