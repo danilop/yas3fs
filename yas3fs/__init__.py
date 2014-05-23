@@ -1174,11 +1174,25 @@ class YAS3FS(LoggingMixIn, Operations):
         else:
             return self.s3_prefix + path
 
+    def has_elements(self, iter, num=1):
+        logger.debug("has_element '%s' %i" % (iter, num))
+        c = 0
+        for k in iter:
+            logger.debug("has_element '%s' -> '%s'" % (iter, k))
+            path = k.name[len(self.s3_prefix):]
+            if not self.cache.has(path, 'deleted'):
+                c += 1
+            if c >= num:
+                logger.debug("has_element '%s' OK" % (iter))
+                return True
+        logger.debug("has_element '%s' KO" % (iter))
+        return False
+
     def folder_has_contents(self, path, num=1):
         logger.debug("folder_has_contents '%s' %i" % (path, num))
         full_path = self.join_prefix(path + '/')
-        key_list = self.s3_bucket.list(full_path, headers = self.default_headers) # Don't need to set a delimeter here
-        return has_elements(key_list, num)
+        key_list = self.s3_bucket.list(full_path, '/', headers = self.default_headers)
+        return self.has_elements(key_list, num)
 
     def get_key(self, path, cache=True):
         if cache:
@@ -1373,8 +1387,11 @@ class YAS3FS(LoggingMixIn, Operations):
                     if len(d) > 0:
                         if d == '.':
                             continue # I need this for whole S3 buckets mounted without a prefix, I use '.' for '/' metadata
+                        d_path = k.name[len(self.s3_prefix):]
                         if d[-1] == '/':
                             d = d[:-1]
+                        if self.cache.has(d_path, 'deleted'):
+                            continue
                         dirs.append(d)
                 self.cache.set(path, 'readdir', dirs)
 
@@ -1781,12 +1798,12 @@ class YAS3FS(LoggingMixIn, Operations):
                 if len(dirs) > 2:
                     logger.debug("rmdir '%s' cache ENOTEMPTY" % (path))
                     raise FuseOSError(errno.ENOTEMPTY)
-            logger.debug("rmdir '%s' '%s' S3" % (path, k))
             ###k.delete()
             ###self.publish(['rmdir', path])
             self.cache.reset(path) # Cache invaliation
             self.remove_from_parent_readdir(path)
             if k:
+                logger.debug("rmdir '%s' '%s' S3" % (path, k))
                 pub = [ 'rmdir', path ]
                 cmds = [ [ 'delete', [] , { 'headers': self.default_headers } ] ]
                 self.cache.inc(path, 'deleted')
@@ -1861,6 +1878,8 @@ class YAS3FS(LoggingMixIn, Operations):
             source_path = source[len(self.s3_prefix):].rstrip('/')
             if source_path[0] != '/':
                 source_path = '/' + source_path
+            if self.cache.has(source_path, 'deleted'): # Do not remove deleted items
+                continue
             target_path = target[len(self.s3_prefix):].rstrip('/')
             if target_path[0] != '/':
                 target_path = '/' + target_path
@@ -2371,18 +2390,6 @@ def get_current_time():
 def get_uid_gid():
     uid, gid, pid = fuse_get_context()
     return int(uid), int(gid)
-
-def has_elements(iter, num=1):
-    logger.debug("has_element '%s' %i" % (iter, num))
-    c = 0
-    for k in iter:
-        logger.debug("has_element '%s' -> '%s'" % (iter, k))
-        c += 1
-        if c >= num:
-            logger.debug("has_element '%s' OK" % (iter))
-            return True
-    logger.debug("has_element '%s' KO" % (iter))
-    return False
 
 def thread_is_not_alive(t):
     return t == None or not t.is_alive()
