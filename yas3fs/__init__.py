@@ -2534,6 +2534,8 @@ AWS_DEFAULT_REGION environment variable can be used to set the default AWS regio
                         help='a unique ID identifying this node in a cluster (default is a UUID)')
     parser.add_argument('--mkdir', action='store_true',
                         help='create mountpoint if not found (and create intermediate directories as required)')
+    parser.add_argument('--nonempty', action='store_true',
+                        help='allows mounts over a non-empty file or directory')
     parser.add_argument('--uid', metavar='N',
                         help='default UID')
     parser.add_argument('--gid', metavar='N',
@@ -2601,6 +2603,9 @@ AWS_DEFAULT_REGION environment variable can be used to set the default AWS regio
         mount_options['umask'] = options.umask
     if options.read_only:
         mount_options['ro'] = True
+
+    if options.nonempty:
+        mount_options['nonempty'] = True
 
     options.darwin = (sys.platform == "darwin")
     if options.darwin:
