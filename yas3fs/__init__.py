@@ -626,6 +626,9 @@ class YAS3FS(LoggingMixIn, Operations):
         logger.info("Cache on disk if file size greater than (in bytes): '%i'" % self.cache_on_disk)
         self.cache_check_interval = options.cache_check # seconds
         logger.info("Cache check interval (in seconds): '%i'" % self.cache_check_interval)
+        self.recheck_s3 = options.recheck_s3
+        logger.info("Cache ENOENT rechecks S3: %s" % self.recheck_s3)
+
         if options.use_ec2_hostname:
             instance_metadata = boto.utils.get_instance_metadata() # Very slow (to fail) outside of EC2
             self.hostname = instance_metadata['public-hostname']
@@ -1155,7 +1158,11 @@ class YAS3FS(LoggingMixIn, Operations):
         with self.cache.get_lock(parent_path):
             dirs = self.cache.get(parent_path, 'readdir')
             if dirs != None:
-                dirs.remove(dir)
+                try:
+                    dirs.remove(dir)
+                except:
+                    # not in cache, no worries.
+                    pass
 
     def reset_parent_readdir(self, path):
         logger.debug("reset_parent_readdir '%s'" % (path))
@@ -1188,26 +1195,42 @@ class YAS3FS(LoggingMixIn, Operations):
 
     def folder_has_contents(self, path, num=1):
         logger.debug("folder_has_contents '%s' %i" % (path, num))
-        full_path = self.join_prefix(path + '/')
+
+        # as file
+        full_path = self.join_prefix(path)
+        key_list = self.s3_bucket.list(full_path, '/', headers = self.default_headers)
+        if self.has_elements(key_list, num):
+            return True
+
+        # as directory
+        full_path = self.join_prefix(path + "/")
         key_list = self.s3_bucket.list(full_path, '/', headers = self.default_headers)
         return self.has_elements(key_list, num)
+
 
     def get_key(self, path, cache=True):
         if cache:
             if self.cache.has(path, 'deleted'):
                 logger.debug("get_key from cache deleted '%s'" % (path))
-                return None
-            key = self.cache.get(path, 'key')
-            if key:
-                logger.debug("get_key from cache '%s'" % (path))
-                return key
-            look_on_S3 = True
-            if path != '/':
-                (parent_path, file) = os.path.split(path)
-                dirs = self.cache.get(parent_path, 'readdir')
-                if dirs and file not in dirs:
-                    look_on_S3 = False # We know it's not there
-        if not cache or look_on_S3:
+                if not self.recheck_s3:
+                     return None
+            else:
+                key = self.cache.get(path, 'key')
+                if key:
+                    logger.debug("get_key from cache '%s'" % (path))
+                    return key
+        logger.debug("get_key %s", path)
+        look_on_S3 = True
+
+        refresh_readdir_cache_if_found = False
+        if path != '/':
+            (parent_path, file) = os.path.split(path)
+            dirs = self.cache.get(parent_path, 'readdir')
+            if dirs and file not in dirs:
+                refresh_readdir_cache_if_found = True
+                if not self.recheck_s3:
+                    look_on_S3 = False
+        if look_on_S3:
             logger.debug("get_key from S3 #1 '%s'" % (path))
             key = self.s3_bucket.get_key(self.join_prefix(path), headers=self.default_headers)
             if not key and path != '/':
@@ -1216,7 +1239,12 @@ class YAS3FS(LoggingMixIn, Operations):
                 key = self.s3_bucket.get_key(self.join_prefix(full_path), headers=self.default_headers)
             if key:
                 logger.debug("get_key to cache '%s'" % (path))
+                self.cache.delete(path)
+                self.cache.add(path)
                 self.cache.set(path, 'key', key)
+
+                if refresh_readdir_cache_if_found:
+                    self.add_to_parent_readdir(path)
         else:
             logger.debug("get_key not on S3 '%s'" % (path))
         if not key:
@@ -1226,27 +1254,28 @@ class YAS3FS(LoggingMixIn, Operations):
     def get_metadata(self, path, metadata_name, key=None):
         logger.debug("get_metadata -> '%s' '%s' '%s'" % (path, metadata_name, key))
         with self.cache.get_lock(path): # To avoid consistency issues, e.g. with a concurrent purge
+            metadata_values = None 
             if self.cache.has(path, metadata_name):
                 metadata_values = self.cache.get(path, metadata_name)
-            else:
-                if not key:
-                    key = self.get_key(path)
+
+            if metadata_values == None: 
+                metadata_values = {}
                 if not key:
                     if path == '/': # First time mount of a new file system
                         self.mkdir(path, 0755)
-                        logger.debug("get_metadata -> '%s' '%s' '%s' First time mount"
-                                     % (path, metadata_name, key))
+                        logger.debug("get_metadata -> '%s' '%s' First time mount"
+                                     % (path, metadata_name))
                         return self.cache.get(path, metadata_name)
                     else:
                         if not self.folder_has_contents(path):
                             self.cache.add(path) # It is empty to cache further checks
-                            logger.debug("get_metadata '%s' '%s' '%s' no S3 return None"
-                                         % (path, metadata_name, key))
+                            logger.debug("get_metadata '%s' '%s' no S3 return None"
+                                         % (path, metadata_name))
                             return None
-                        else:
-                            logger.debug("get_metadata '%s' '%s' '%s' S3 found"
+                    key = self.get_key(path) # i didn't have a key before
+                    logger.debug("get_metadata '%s' '%s' '%s' S3 found"
                                          % (path, metadata_name, key))
-                metadata_values = {}
+
                 if key:
                     s = key.get_metadata(metadata_name)
                 else:
@@ -1272,7 +1301,10 @@ class YAS3FS(LoggingMixIn, Operations):
                         uid, gid = get_uid_gid()
                         metadata_values['st_uid'] = uid
                         metadata_values['st_gid'] = gid
-                        if key and key.name != '' and key.name[-1] != '/':
+                        if key == None and path != '/':
+                            # no key, default to empty file
+                            metadata_values['st_mode'] = (stat.S_IFREG | 0755)
+                        elif key and key.name != '' and key.name[-1] != '/':
                             metadata_values['st_mode'] = (stat.S_IFREG | 0755)
                         else:
                             metadata_values['st_mode'] = (stat.S_IFDIR | 0755)
@@ -1343,9 +1375,17 @@ class YAS3FS(LoggingMixIn, Operations):
     def getattr(self, path, fh=None):
         logger.debug("getattr -> '%s' '%s'" % (path, fh))
         with self.cache.get_lock(path): # To avoid consistency issues, e.g. with a concurrent purge
+            cache = True
+            recheck_s3 = False
             if self.cache.is_empty(path):
                 logger.debug("getattr <- '%s' '%s' cache ENOENT" % (path, fh))
-                raise FuseOSError(errno.ENOENT)
+                if self.recheck_s3:
+                    cache = False
+                    recheck_s3 = True
+                    logger.debug("getattr rechecking on s3 <- '%s' '%s' cache ENOENT" % (path, fh))
+                else:
+                    raise FuseOSError(errno.ENOENT)
+
             attr = self.get_metadata(path, 'attr')
             if attr == None:
                 logger.debug("getattr <- '%s' '%s' ENOENT" % (path, fh))
@@ -1403,7 +1443,7 @@ class YAS3FS(LoggingMixIn, Operations):
                 logger.debug("mkdir cache '%s' EEXIST" % self.cache.get(path))
                 raise FuseOSError(errno.EEXIST)
             k = self.get_key(path)
-            if k:
+            if k and path != '/':
                 logger.debug("mkdir key '%s' EEXIST" % self.cache.get(path))
                 raise FuseOSError(errno.EEXIST)
             now = get_current_time()
@@ -1960,6 +2000,7 @@ class YAS3FS(LoggingMixIn, Operations):
                 cmds = [ [ 'delete', [], { 'headers': self.default_headers } ] ]
                 self.cache.inc(path, 'deleted')
                 self.do_on_s3(k, pub, cmds)
+                # self.do_on_s3_now(k, pub, cmds)
 
 	return 0
 
@@ -2459,6 +2500,8 @@ AWS_DEFAULT_REGION environment variable can be used to set the default AWS regio
                         help='max size of the disk cache in MB (default is %(default)s MB)')
     parser.add_argument('--cache-path', metavar='PATH', default='',
                         help='local path to use for disk cache (default is /tmp/yas3fs/BUCKET/PATH)')
+    parser.add_argument('--recheck-s3', action='store_true',
+                        help='"Cache ENOENT rechecks S3 for new file/directory')
     parser.add_argument('--cache-on-disk', metavar='N', type=int, default=0,
                         help='use disk (instead of memory) cache for files greater than the given size in bytes ' +
                         '(default is %(default)s bytes)')
@@ -2491,6 +2534,8 @@ AWS_DEFAULT_REGION environment variable can be used to set the default AWS regio
                         help='a unique ID identifying this node in a cluster (default is a UUID)')
     parser.add_argument('--mkdir', action='store_true',
                         help='create mountpoint if not found (and create intermediate directories as required)')
+    parser.add_argument('--nonempty', action='store_true',
+                        help='allows mounts over a non-empty file or directory')
     parser.add_argument('--uid', metavar='N',
                         help='default UID')
     parser.add_argument('--gid', metavar='N',
@@ -2558,6 +2603,9 @@ AWS_DEFAULT_REGION environment variable can be used to set the default AWS regio
         mount_options['umask'] = options.umask
     if options.read_only:
         mount_options['ro'] = True
+
+    if options.nonempty:
+        mount_options['nonempty'] = True
 
     options.darwin = (sys.platform == "darwin")
     if options.darwin:
