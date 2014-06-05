@@ -1577,7 +1577,15 @@ class YAS3FS(LoggingMixIn, Operations):
         thread_name = threading.current_thread().name
         logger.debug("download_data '%s' %i-%i [thread '%s']" % (path, start, end, thread_name))
 
-        key = copy.deepcopy(self.get_key(path))
+        original_key = self.get_key(path)
+        if original_key == None:
+            logger.debug("download_data no key (before) '%s' [thread '%s']"
+                             % (path, thread_name))
+            return
+        logger.debug("type k = '%s'" % type(original_key))
+        logger.debug(" dir k = '%s'" % dir(original_key))
+        logger.debug("     k = '%s'" % original_key)
+        key = copy.copy(original_key)
 
         if start > (key.size - 1):
             logger.debug("download_data EOF '%s' %i-%i [thread '%s']" % (path, start, end, thread_name))
@@ -1630,7 +1638,7 @@ class YAS3FS(LoggingMixIn, Operations):
                 logger.exception(e)
                 logger.info("download_data error '%s' %i-%i [thread '%s'] -> retrying" % (path, start, end, thread_name))
                 time.sleep(1.0) # Better wait 1 second before retrying
-                key = copy.deepcopy(self.get_key(path)) # Do I need this to overcome error "caching" ???
+                key = copy.copy(self.get_key(path)) # Do I need this to overcome error "caching" ???
 
         if debug:
             elapsed = (n2-n1).microseconds/1e6
