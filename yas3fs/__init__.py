@@ -1735,58 +1735,63 @@ class YAS3FS(LoggingMixIn, Operations):
             self.s3_queue[i].put((key, pub, cmds))
         pass
 
+    def do_cmd_on_s3_now(self, key, pub, action, args, kargs, retries = 1):
+        if retries <= 0:
+            logger.error("do_cmd_on_s3_now FAILED'%s' key '%s' args '%s' kargs '%s'" % (self.s3_retries - retries + 1, action, key, args, kargs))
+            return pub
+             
+        logger.debug("do_cmd_on_s3_now try %s action '%s' key '%s' args '%s' kargs '%s'" % (self.s3_retries - retries + 1, action, key, args, kargs))
+
+        try:
+            if action == 'delete':
+                path = pub[1]
+                key.delete()
+                self.cache.dec(path, 'deleted')
+            elif action == 'copy':
+                key.copy(*args, **kargs)
+            elif action == 'set_contents_from_string':
+                key.set_contents_from_string(*args,**kargs)
+            elif action == 'set_contents_from_file':
+                data = args[0] # First argument must be data
+                key.set_contents_from_file(data.get_content(),**kargs)
+                etag = key.etag[1:-1]
+                with data.get_lock():
+                    data.update_etag(etag)
+                    data.delete('change')
+                pub.append(etag)
+            elif action == 'multipart_upload':
+                data = args[1] # Second argument must be data
+                complete = self.multipart_upload(*args)
+                etag = complete.etag[1:-1]
+                self.cache.delete(data.path, 'key')
+                with data.get_lock():
+                    data.update_etag(etag)
+                    data.delete('change')
+                pub.append(etag)
+            else:
+                logger.error("do_on_s3_now Unknown action '%s'" % action)
+                # SHOULD THROW EXCEPTION...
+
+        except Exception as e:
+            logger.exception(e)
+            time.sleep(1.0) # Better wait 1 second before retrying 
+            self.do_cmd_on_s3_now(key, pub, action, args, kargs, retries -1)
+
+        logger.debug("do_on_s3_now action '%s' key '%s' args '%s' kargs '%s' done" % (action, key, args, kargs))
+        return pub
+
     def do_on_s3_now(self, key, pub, cmds):
         for c in cmds:
             action = c[0]
+            args = None
+            kargs = None
+
             if len(c) > 1:
                 args = c[1]
-                if len(c) > 2:
-                    kargs = c[2]
-                else:
-                    kargs = None
-            else:
-                args = None
-                kargs = None
+            if len(c) > 2:
+                kargs = c[2]
 
-            logger.debug("do_on_s3_now action '%s' key '%s' args '%s' kargs '%s'" % (action, key, args, kargs))
-
-            for retry in range(self.s3_retries):
-                try:
-                    if action == 'delete':
-                        path = pub[1]
-                        key.delete()
-                        self.cache.dec(path, 'deleted')
-                    elif action == 'copy':
-                        key.copy(*args, **kargs)
-                    elif action == 'set_contents_from_string':
-                        key.set_contents_from_string(*args,**kargs)
-                    elif action == 'set_contents_from_file':
-                        data = args[0] # First argument must be data
-                        key.set_contents_from_file(data.get_content(),**kargs)
-                        etag = key.etag[1:-1]
-                        with data.get_lock():
-                            data.update_etag(etag)
-                            data.delete('change')
-                        pub.append(etag)
-                    elif action == 'multipart_upload':
-                        data = args[1] # Second argument must be data
-                        complete = self.multipart_upload(*args)
-                        etag = complete.etag[1:-1]
-                        self.cache.delete(data.path, 'key')
-                        with data.get_lock():
-                            data.update_etag(etag)
-                            data.delete('change')
-                        pub.append(etag)
-                    else:
-                        logger.error("do_on_s3_now Unknown action '%s'" % action)
-                    break
-                except Exception as e:
-                    logger.exception(e)
-                    time.sleep(1.0) # Better wait 1 second before retrying 
-                    logger.info("do_on_s3_now action '%s' key '%s' args '%s' kargs '%s' retry %i" % (action, key, args, kargs, retry))
-
-            logger.debug("do_on_s3_now action '%s' key '%s' args '%s' kargs '%s' done" % (action, key, args, kargs))
-
+            pub = self.do_cmd_on_s3_now(key, pub, action, args, kargs, self.s3_retries)
             self.publish(pub)
 
     def readlink(self, path):
@@ -2386,6 +2391,48 @@ class TracebackLoggingThread(threading.Thread):
             logger.exception("Uncaught Exception in Thread")
             raise
 
+class CompressedRotatingFileHandler(logging.handlers.RotatingFileHandler):
+    """ compress old files 
+    from http://roadtodistributed.blogspot.com/2011/04/compressed-rotatingfilehandler-for.html
+    """
+    def __init__(self, filename, mode='a', maxBytes=0, backupCount=0, encoding=None, delay=0):
+        logging.handlers.RotatingFileHandler.__init__(self, filename, mode, maxBytes, backupCount, encoding, delay)
+
+    def doRollover(self):
+        self.stream.close()
+        if self.backupCount > 0:
+            for i in range(self.backupCount - 1, 0, -1):
+                sfn = "%s.%d.gz" % (self.baseFilename, i)
+                dfn = "%s.%d.gz" % (self.baseFilename, i + 1)
+                if os.path.exists(sfn):
+                    #print "%s -> %s" % (sfn, dfn)
+                    if os.path.exists(dfn):
+                        os.remove(dfn)
+                    os.rename(sfn, dfn)
+            dfn = self.baseFilename + ".1.gz"
+            if os.path.exists(dfn):
+                os.remove(dfn)
+            import gzip
+            try:
+                f_in = open(self.baseFilename, 'rb')
+                f_out = gzip.open(dfn, 'wb')
+                f_out.writelines(f_in)
+            except:
+                if not os.path.exists(dfn):
+                    if os.path.exists(self.baseFilename):
+                        os.rename(self.baseFilename, dfn)
+            finally:
+                if "f_out" in dir() and f_out is not None:
+                    f_out.close()
+                if "f_in" in dir() and f_in is not None:
+                    f_in.close()
+            if os.path.exists(self.baseFilename):
+                os.remove(self.baseFilename)
+            #os.rename(self.baseFilename, dfn)
+            #print "%s -> %s" % (self.baseFilename, dfn)
+        self.mode = 'w'
+        self.stream = self._open()
+
 ### Utility functions
 
 def error_and_exit(error, exitCode=1):
@@ -2501,7 +2548,7 @@ AWS_DEFAULT_REGION environment variable can be used to set the default AWS regio
     parser.add_argument('--cache-path', metavar='PATH', default='',
                         help='local path to use for disk cache (default is /tmp/yas3fs/BUCKET/PATH)')
     parser.add_argument('--recheck-s3', action='store_true',
-                        help='"Cache ENOENT rechecks S3 for new file/directory')
+                        help='Cached ENOENT (error no entry) rechecks S3 for new file/directory')
     parser.add_argument('--cache-on-disk', metavar='N', type=int, default=0,
                         help='use disk (instead of memory) cache for files greater than the given size in bytes ' +
                         '(default is %(default)s bytes)')
@@ -2548,8 +2595,16 @@ AWS_DEFAULT_REGION environment variable can be used to set the default AWS regio
                         help='default expiration for signed URL via xattrs (in seconds, default is 30 days)')
     parser.add_argument('--requester-pays', action='store_true',
                         help='requester pays for S3 interactions, the bucket must have Requester Pays enabled')
+
     parser.add_argument('-l', '--log', metavar='FILE',
                         help='filename for logs')
+    parser.add_argument('--log-mb-size', metavar='N', type=int, default=100,
+                        help='max size of log file')
+    parser.add_argument('--log-backup-count', metavar='N', type=int, default=10,
+                        help='number of backups log files')
+    parser.add_argument('--log-backup-gzip', action='store_true',
+                        help='flag to gzip backup files')
+
     parser.add_argument('-f', '--foreground', action='store_true',
                         help='run in foreground')
     parser.add_argument('-d', '--debug', action='store_true',
@@ -2562,7 +2617,12 @@ AWS_DEFAULT_REGION environment variable can be used to set the default AWS regio
     logger = logging.getLogger('yas3fs')
     formatter = logging.Formatter('%(asctime)s %(levelname)s %(message)s')
     if options.log: # Rotate log files at 100MB size
-        logHandler = logging.handlers.RotatingFileHandler(options.log, maxBytes=100*1024*1024, backupCount=10)
+        log_size =  options.log_mb_size *1024*1024
+        if options.log_backup_gzip:
+            logHandler = CompressedRotatingFileHandler(options.log, maxBytes=log_size, backupCount=options.log_backup_count)
+        else:
+            logHandler = logging.handlers.RotatingFileHandler(options.log, maxBytes=log_size, backupCount=options.log_backup_count)
+
         logHandler.setFormatter(formatter)
         logger.addHandler(logHandler)
     if options.foreground or not options.log:
