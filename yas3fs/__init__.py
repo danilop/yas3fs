@@ -1261,6 +1261,8 @@ class YAS3FS(LoggingMixIn, Operations):
             if metadata_values == None: 
                 metadata_values = {}
                 if not key:
+                    key = self.get_key(path)
+                if not key:
                     if path == '/': # First time mount of a new file system
                         self.mkdir(path, 0755)
                         logger.debug("get_metadata -> '%s' '%s' First time mount"
@@ -1272,7 +1274,7 @@ class YAS3FS(LoggingMixIn, Operations):
                             logger.debug("get_metadata '%s' '%s' no S3 return None"
                                          % (path, metadata_name))
                             return None
-                    key = self.get_key(path) # i didn't have a key before
+                else:
                     logger.debug("get_metadata '%s' '%s' '%s' S3 found"
                                          % (path, metadata_name, key))
 
@@ -1301,9 +1303,10 @@ class YAS3FS(LoggingMixIn, Operations):
                         uid, gid = get_uid_gid()
                         metadata_values['st_uid'] = uid
                         metadata_values['st_gid'] = gid
-                        if key == None and path != '/':
-                            # no key, default to empty file
-                            metadata_values['st_mode'] = (stat.S_IFREG | 0755)
+                        if key == None:
+                            ### # no key, default to empty file
+                            ### metadata_values['st_mode'] = (stat.S_IFREG | 0755)
+                            metadata_values['st_mode'] = (stat.S_IFDIR | 0755)
                         elif key and key.name != '' and key.name[-1] != '/':
                             metadata_values['st_mode'] = (stat.S_IFREG | 0755)
                         else:
