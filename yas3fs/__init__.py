@@ -1930,24 +1930,26 @@ class YAS3FS(LoggingMixIn, Operations):
             if stat.S_ISDIR(attr['st_mode']):
                 self.rename_dir(d_path, d_new_path)
             else:
-                self.rename_file(d_path, d_new_path)
-        self.rename_file(path, new_path)
+                self.rename_item(d_path, d_new_path)
+        self.rename_item(path, new_path, dir=True)
 
-    def rename_file(self, path, new_path):
+    def rename_item(self, path, new_path, dir=False):
         logger.debug("rename_file '%s' -> '%s'" % (path, new_path))
         source_path = path
-        target_path = ''.join([new_path, '/', os.path.basename(path)])
+        target_path = new_path
         self.cache.rename(source_path, target_path)
         key = self.get_key(source_path)
         if key: # For files in cache or dir not on S3 but still not flushed to S3
             self.cache.inc(source_path, 'deleted')
-            self.rename_on_s3(key, source_path, target_path)
+            self.rename_on_s3(key, source_path, target_path, dir)
 
-    def rename_on_s3(self, key, source_path, target_path):
+    def rename_on_s3(self, key, source_path, target_path, dir):
         # Otherwise we loose the Content-Type with S3 Copy
         key.metadata['Content-Type'] = key.content_type
         ### key.copy(key.bucket.name, target, key.metadata, preserve_acl=False)
         target = self.join_prefix(target_path)
+        if dir:
+            target += '/'
         pub = [ 'rename', source_path, target_path ]
         cmds = [ [ 'copy', [ key.bucket.name, target, key.metadata ],
                    { 'preserve_acl': False } ],
