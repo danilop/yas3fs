@@ -1195,15 +1195,7 @@ class YAS3FS(LoggingMixIn, Operations):
 
     def folder_has_contents(self, path, num=1):
         logger.debug("folder_has_contents '%s' %i" % (path, num))
-
-        # as file
-        full_path = self.join_prefix(path)
-        key_list = self.s3_bucket.list(full_path, '/', headers = self.default_headers)
-        if self.has_elements(key_list, num):
-            return True
-
-        # as directory
-        full_path = self.join_prefix(path + "/")
+        full_path = self.join_prefix(path + '/')
         key_list = self.s3_bucket.list(full_path, '/', headers = self.default_headers)
         return self.has_elements(key_list, num)
 
@@ -1918,33 +1910,38 @@ class YAS3FS(LoggingMixIn, Operations):
                 logger.debug("rename '%s' '%s' ENOENT no parent path '%s'" % (path, new_path, new_parent_path))
                 raise FuseOSError(errno.ENOENT)
             to_copy = {}
-        if (key and key.name[-1] == '/') or (not key and self.folder_has_contents(path, 2)):
-            full_key = self.join_prefix(path + '/')
-            key_list = self.s3_bucket.list(full_key, headers = self.default_headers) # Don't need to set a delimeter here
-            for k in key_list:
-                source = k.name
-                target = self.join_prefix(new_path + source[len(full_key) - 1:])
-                to_copy[source] = target
-        if not key: # Otherwise we miss the folder if there is no curresponding object on S3
-            to_copy[self.join_prefix(path)] = self.join_prefix(new_path)
-        for source, target in to_copy.iteritems():
-            source_path = source[len(self.s3_prefix):].rstrip('/')
-            if source_path[0] != '/':
-                source_path = '/' + source_path
-            if self.cache.has(source_path, 'deleted'): # Do not remove deleted items
-                continue
-            target_path = target[len(self.s3_prefix):].rstrip('/')
-            if target_path[0] != '/':
-                target_path = '/' + target_path
-            logger.debug("renaming '%s' ('%s') -> '%s' ('%s')" % (source, source_path, target, target_path))
-            self.cache.rename(source_path, target_path)
-            key = self.s3_bucket.get_key(source, headers=self.default_headers)
-            if key: # For files in cache but still not flushed to S3
-                self.cache.inc(source_path, 'deleted')
-                self.rename_on_s3(key, target, source_path, target_path)
-
+        attr = self.getattr(path)
+        if stat.S_ISDIR(attr['st_mode']):
+            self.rename_dir(path, new_path)
+        else:
+            self.rename_file(path, new_path)
         self.remove_from_parent_readdir(path)
         self.add_to_parent_readdir(new_path)
+
+    def rename_dir(self, path, new_path):
+        logger.debug("rename_dir '%s' -> '%s'" % (path, new_path))
+        dirs = self.readdir(path)
+        for d in dirs:
+            if d in ['.', '..']:
+                continue
+            d_path = ''.join(path, '/', d)
+            d_new_path = ''.join(new_path, '/', os.basename(path))
+            attr = self.getattr(d_path)
+            if stat.S_ISDIR(attr['st_mode']):
+                self.rename_dir(d_path, d_new_path)
+            else:
+                self.rename_file(d_path, d_new_path)
+        self.rename_file(path, new_path)
+
+    def rename_file(self, path, new_path):
+        logger.debug("rename_file '%s' -> '%s'" % (path, new_path))
+        source_path = path
+        target_path = ''.join(new_path, '/', os.basename(path))
+        self.cache.rename(source_path, target_path)
+        key = self.get_key(source_path)
+        if key: # For files in cache or dir not on S3 but still not flushed to S3                                
+            self.cache.inc(source_path, 'deleted')
+            self.rename_on_s3(key, target, source_path, target_path)
 
     def rename_on_s3(self, key, target, source_path, target_path):
         # Otherwise we loose the Content-Type with S3 Copy
