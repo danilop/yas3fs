@@ -1934,11 +1934,11 @@ class YAS3FS(LoggingMixIn, Operations):
         self.rename_item(path, new_path, dir=True)
 
     def rename_item(self, path, new_path, dir=False):
-        logger.debug("rename_iten '%s' -> '%s' dir?%s" % (path, new_path, dir))
+        logger.debug("rename_item '%s' -> '%s' dir?%s" % (path, new_path, dir))
         source_path = path
         target_path = new_path
-        self.cache.rename(source_path, target_path)
         key = self.get_key(source_path)
+        self.cache.rename(source_path, target_path)
         if key: # For files in cache or dir not on S3 but still not flushed to S3
             self.cache.inc(source_path, 'deleted')
             self.rename_on_s3(key, source_path, target_path, dir)
