@@ -1925,7 +1925,7 @@ class YAS3FS(LoggingMixIn, Operations):
             if d in ['.', '..']:
                 continue
             d_path = ''.join(path, '/', d)
-            d_new_path = ''.join(new_path, '/', os.basename(path))
+            d_new_path = ''.join(new_path, '/', os.path.basename(path))
             attr = self.getattr(d_path)
             if stat.S_ISDIR(attr['st_mode']):
                 self.rename_dir(d_path, d_new_path)
@@ -1936,7 +1936,7 @@ class YAS3FS(LoggingMixIn, Operations):
     def rename_file(self, path, new_path):
         logger.debug("rename_file '%s' -> '%s'" % (path, new_path))
         source_path = path
-        target_path = ''.join(new_path, '/', os.basename(path))
+        target_path = ''.join(new_path, '/', os.path.basename(path))
         self.cache.rename(source_path, target_path)
         key = self.get_key(source_path)
         if key: # For files in cache or dir not on S3 but still not flushed to S3                                
