@@ -1939,14 +1939,15 @@ class YAS3FS(LoggingMixIn, Operations):
         target_path = ''.join([new_path, '/', os.path.basename(path)])
         self.cache.rename(source_path, target_path)
         key = self.get_key(source_path)
-        if key: # For files in cache or dir not on S3 but still not flushed to S3                                
+        if key: # For files in cache or dir not on S3 but still not flushed to S3
             self.cache.inc(source_path, 'deleted')
-            self.rename_on_s3(key, target, source_path, target_path)
+            self.rename_on_s3(key, source_path, target_path)
 
-    def rename_on_s3(self, key, target, source_path, target_path):
+    def rename_on_s3(self, key, source_path, target_path):
         # Otherwise we loose the Content-Type with S3 Copy
         key.metadata['Content-Type'] = key.content_type
         ### key.copy(key.bucket.name, target, key.metadata, preserve_acl=False)
+        target = self.join_prefix(target_path)
         pub = [ 'rename', source_path, target_path ]
         cmds = [ [ 'copy', [ key.bucket.name, target, key.metadata ],
                    { 'preserve_acl': False } ],
