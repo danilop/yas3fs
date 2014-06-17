@@ -1231,8 +1231,8 @@ class YAS3FS(LoggingMixIn, Operations):
                 key = self.s3_bucket.get_key(self.join_prefix(full_path), headers=self.default_headers)
             if key:
                 logger.debug("get_key to cache '%s'" % (path))
-                self.cache.delete(path)
-                self.cache.add(path)
+                ###self.cache.delete(path) ### ???
+                ###self.cache.add(path)
                 self.cache.set(path, 'key', key)
 
                 if refresh_readdir_cache_if_found:
@@ -1296,8 +1296,7 @@ class YAS3FS(LoggingMixIn, Operations):
                         metadata_values['st_uid'] = uid
                         metadata_values['st_gid'] = gid
                         if key == None:
-                            ### # no key, default to empty file
-                            ### metadata_values['st_mode'] = (stat.S_IFREG | 0755)
+                            ### # no key, default to dir
                             metadata_values['st_mode'] = (stat.S_IFDIR | 0755)
                         elif key and key.name != '' and key.name[-1] != '/':
                             metadata_values['st_mode'] = (stat.S_IFREG | 0755)
@@ -1909,8 +1908,7 @@ class YAS3FS(LoggingMixIn, Operations):
             if not new_parent_key and not self.folder_has_contents(new_parent_path):
                 logger.debug("rename '%s' '%s' ENOENT no parent path '%s'" % (path, new_path, new_parent_path))
                 raise FuseOSError(errno.ENOENT)
-            to_copy = {}
-        attr = self.getattr(path)
+        attr = self.getattr(path) xxx
         if stat.S_ISDIR(attr['st_mode']):
             self.rename_path(path, new_path)
         else:
@@ -1925,7 +1923,7 @@ class YAS3FS(LoggingMixIn, Operations):
             if d in ['.', '..']:
                 continue
             d_path = ''.join(path, '/', d)
-            d_new_path = ''.join([new_path, '/', os.path.basename(path)])
+            d_new_path = ''.join([new_path, '/', os.path.basename(path), d])
             attr = self.getattr(d_path)
             if stat.S_ISDIR(attr['st_mode']):
                 self.rename_path(d_path, d_new_path)
@@ -1944,6 +1942,7 @@ class YAS3FS(LoggingMixIn, Operations):
             self.rename_on_s3(key, source_path, target_path, dir)
 
     def rename_on_s3(self, key, source_path, target_path, dir):
+        logger.debug("rename_on_s3 '%s' '%s' -> '%s' dir?%s" % (key, source_path, target_path, dir))
         # Otherwise we loose the Content-Type with S3 Copy
         key.metadata['Content-Type'] = key.content_type
         ### key.copy(key.bucket.name, target, key.metadata, preserve_acl=False)
