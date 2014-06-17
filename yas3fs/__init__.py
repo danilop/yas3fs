@@ -1908,7 +1908,7 @@ class YAS3FS(LoggingMixIn, Operations):
             if not new_parent_key and not self.folder_has_contents(new_parent_path):
                 logger.debug("rename '%s' '%s' ENOENT no parent path '%s'" % (path, new_path, new_parent_path))
                 raise FuseOSError(errno.ENOENT)
-        attr = self.getattr(path) xxx
+        attr = self.getattr(path)
         if stat.S_ISDIR(attr['st_mode']):
             self.rename_path(path, new_path)
         else:
