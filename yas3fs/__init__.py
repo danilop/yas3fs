@@ -1922,7 +1922,7 @@ class YAS3FS(LoggingMixIn, Operations):
         for d in dirs:
             if d in ['.', '..']:
                 continue
-            d_path = ''.join(path, '/', d)
+            d_path = ''.join([path, '/', d])
             d_new_path = ''.join([new_path, '/', os.path.basename(path), d])
             attr = self.getattr(d_path)
             if stat.S_ISDIR(attr['st_mode']):
