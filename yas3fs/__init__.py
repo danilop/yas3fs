@@ -1912,14 +1912,14 @@ class YAS3FS(LoggingMixIn, Operations):
             to_copy = {}
         attr = self.getattr(path)
         if stat.S_ISDIR(attr['st_mode']):
-            self.rename_dir(path, new_path)
+            self.rename_path(path, new_path)
         else:
-            self.rename_file(path, new_path)
+            self.rename_item(path, new_path)
         self.remove_from_parent_readdir(path)
         self.add_to_parent_readdir(new_path)
 
-    def rename_dir(self, path, new_path):
-        logger.debug("rename_dir '%s' -> '%s'" % (path, new_path))
+    def rename_path(self, path, new_path):
+        logger.debug("rename_path '%s' -> '%s'" % (path, new_path))
         dirs = self.readdir(path)
         for d in dirs:
             if d in ['.', '..']:
@@ -1928,13 +1928,13 @@ class YAS3FS(LoggingMixIn, Operations):
             d_new_path = ''.join([new_path, '/', os.path.basename(path)])
             attr = self.getattr(d_path)
             if stat.S_ISDIR(attr['st_mode']):
-                self.rename_dir(d_path, d_new_path)
+                self.rename_path(d_path, d_new_path)
             else:
                 self.rename_item(d_path, d_new_path)
         self.rename_item(path, new_path, dir=True)
 
     def rename_item(self, path, new_path, dir=False):
-        logger.debug("rename_file '%s' -> '%s'" % (path, new_path))
+        logger.debug("rename_iten '%s' -> '%s' dir?%s" % (path, new_path, dir))
         source_path = path
         target_path = new_path
         self.cache.rename(source_path, target_path)
