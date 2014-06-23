@@ -701,7 +701,7 @@ class YAS3FS(LoggingMixIn, Operations):
         if not self.s3:
             error_and_exit("no S3 connection")
         try:
-            self.s3_bucket = self.s3.get_bucket(self.s3_bucket_name)
+            self.s3_bucket = self.s3.get_bucket(self.s3_bucket_name, headers=self.default_headers)
         except boto.exception.S3ResponseError:
             error_and_exit("S3 bucket not found")
 
@@ -1016,7 +1016,7 @@ class YAS3FS(LoggingMixIn, Operations):
                     self.s3_prefix = s3url.path.strip('/')
                     logger.info("S3 prefix: '%s'" % self.s3_prefix)
                     try:
-                        self.s3_bucket = self.s3.get_bucket(self.s3_bucket_name)
+                        self.s3_bucket = self.s3.get_bucket(self.s3_bucket_name, headers=self.default_headers)
                     except boto.exception.S3ResponseError:
                         error_and_exit("S3 bucket not found")
             elif c[1] == 'cache':
@@ -1218,15 +1218,7 @@ class YAS3FS(LoggingMixIn, Operations):
 
     def folder_has_contents(self, path, num=1):
         logger.debug("folder_has_contents '%s' %i" % (path, num))
-
-        # as file
-        full_path = self.join_prefix(path)
-        key_list = self.s3_bucket.list(full_path, '/', headers = self.default_headers)
-        if self.has_elements(key_list, num):
-            return True
-
-        # as directory
-        full_path = self.join_prefix(path + "/")
+        full_path = self.join_prefix(path + '/')
         key_list = self.s3_bucket.list(full_path, '/', headers = self.default_headers)
         return self.has_elements(key_list, num)
 
@@ -1262,8 +1254,8 @@ class YAS3FS(LoggingMixIn, Operations):
                 key = self.s3_bucket.get_key(self.join_prefix(full_path), headers=self.default_headers)
             if key:
                 logger.debug("get_key to cache '%s'" % (path))
-                self.cache.delete(path)
-                self.cache.add(path)
+                ###self.cache.delete(path) ### ???
+                ###self.cache.add(path)
                 self.cache.set(path, 'key', key)
 
                 if refresh_readdir_cache_if_found:
@@ -1284,6 +1276,8 @@ class YAS3FS(LoggingMixIn, Operations):
             if metadata_values == None: 
                 metadata_values = {}
                 if not key:
+                    key = self.get_key(path)
+                if not key:
                     if path == '/': # First time mount of a new file system
                         self.mkdir(path, 0755)
                         logger.debug("get_metadata -> '%s' '%s' First time mount"
@@ -1295,7 +1289,7 @@ class YAS3FS(LoggingMixIn, Operations):
                             logger.debug("get_metadata '%s' '%s' no S3 return None"
                                          % (path, metadata_name))
                             return None
-                    key = self.get_key(path) # i didn't have a key before
+                else:
                     logger.debug("get_metadata '%s' '%s' '%s' S3 found"
                                          % (path, metadata_name, key))
 
@@ -1324,9 +1318,9 @@ class YAS3FS(LoggingMixIn, Operations):
                         uid, gid = get_uid_gid()
                         metadata_values['st_uid'] = uid
                         metadata_values['st_gid'] = gid
-                        if key == None and path != '/':
-                            # no key, default to empty file
-                            metadata_values['st_mode'] = (stat.S_IFREG | 0755)
+                        if key == None:
+                            ### # no key, default to dir
+                            metadata_values['st_mode'] = (stat.S_IFDIR | 0755)
                         elif key and key.name != '' and key.name[-1] != '/':
                             metadata_values['st_mode'] = (stat.S_IFREG | 0755)
                         else:
@@ -1640,7 +1634,15 @@ class YAS3FS(LoggingMixIn, Operations):
         thread_name = threading.current_thread().name
         logger.debug("download_data '%s' %i-%i [thread '%s']" % (path, start, end, thread_name))
 
-        key = copy.deepcopy(self.get_key(path))
+        original_key = self.get_key(path)
+        if original_key == None:
+            logger.debug("download_data no key (before) '%s' [thread '%s']"
+                             % (path, thread_name))
+            return
+        logger.debug("type k = '%s'" % type(original_key))
+        logger.debug(" dir k = '%s'" % dir(original_key))
+        logger.debug("     k = '%s'" % original_key)
+        key = copy.copy(original_key)
 
         if start > (key.size - 1):
             logger.debug("download_data EOF '%s' %i-%i [thread '%s']" % (path, start, end, thread_name))
@@ -1693,7 +1695,7 @@ class YAS3FS(LoggingMixIn, Operations):
                 logger.exception(e)
                 logger.info("download_data error '%s' %i-%i [thread '%s'] -> retrying" % (path, start, end, thread_name))
                 time.sleep(1.0) # Better wait 1 second before retrying
-                key = copy.deepcopy(self.get_key(path)) # Do I need this to overcome error "caching" ???
+                key = copy.copy(self.get_key(path)) # Do I need this to overcome error "caching" ???
 
         if debug:
             elapsed = (n2-n1).microseconds/1e6
@@ -1870,8 +1872,8 @@ class YAS3FS(LoggingMixIn, Operations):
                 logger.debug("rmdir '%s' cache ENOENT" % (path))
                 raise FuseOSError(errno.ENOENT)
             k = self.get_key(path)
-            if not k and not self.folder_has_contents(path):
-                logger.debug("rmdir '%s' key ENOENT" % (path))
+            if not k and not self.cache.has(path) and not self.folder_has_contents(path):
+                logger.debug("rmdir '%s' S3 ENOENT" % (path))
                 raise FuseOSError(errno.ENOENT)
             dirs = self.cache.get(path, 'readdir')
             if dirs == None:
@@ -1948,39 +1950,47 @@ class YAS3FS(LoggingMixIn, Operations):
             if not new_parent_key and not self.folder_has_contents(new_parent_path):
                 logger.debug("rename '%s' '%s' ENOENT no parent path '%s'" % (path, new_path, new_parent_path))
                 raise FuseOSError(errno.ENOENT)
-            to_copy = {}
-        if (key and key.name[-1] == '/') or (not key and self.folder_has_contents(path, 2)):
-            full_key = self.join_prefix(path + '/')
-            key_list = self.s3_bucket.list(full_key, headers = self.default_headers) # Don't need to set a delimeter here
-            for k in key_list:
-                source = k.name
-                target = self.join_prefix(new_path + source[len(full_key) - 1:])
-                to_copy[source] = target
-        if not key: # Otherwise we miss the folder if there is no curresponding object on S3
-            to_copy[self.join_prefix(path)] = self.join_prefix(new_path)
-        for source, target in to_copy.iteritems():
-            source_path = source[len(self.s3_prefix):].rstrip('/')
-            if source_path[0] != '/':
-                source_path = '/' + source_path
-            if self.cache.has(source_path, 'deleted'): # Do not remove deleted items
-                continue
-            target_path = target[len(self.s3_prefix):].rstrip('/')
-            if target_path[0] != '/':
-                target_path = '/' + target_path
-            logger.debug("renaming '%s' ('%s') -> '%s' ('%s')" % (source, source_path, target, target_path))
-            self.cache.rename(source_path, target_path)
-            key = self.s3_bucket.get_key(source, headers=self.default_headers)
-            if key: # For files in cache but still not flushed to S3
-                self.cache.inc(source_path, 'deleted')
-                self.rename_on_s3(key, target, source_path, target_path)
-
+        attr = self.getattr(path)
+        if stat.S_ISDIR(attr['st_mode']):
+            self.rename_path(path, new_path)
+        else:
+            self.rename_item(path, new_path)
         self.remove_from_parent_readdir(path)
         self.add_to_parent_readdir(new_path)
 
-    def rename_on_s3(self, key, target, source_path, target_path):
+    def rename_path(self, path, new_path):
+        logger.debug("rename_path '%s' -> '%s'" % (path, new_path))
+        dirs = self.readdir(path)
+        for d in dirs:
+            if d in ['.', '..']:
+                continue
+            d_path = ''.join([path, '/', d])
+            d_new_path = ''.join([new_path, '/', d])
+            attr = self.getattr(d_path)
+            if stat.S_ISDIR(attr['st_mode']):
+                self.rename_path(d_path, d_new_path)
+            else:
+                self.rename_item(d_path, d_new_path)
+        self.rename_item(path, new_path, dir=True)
+
+    def rename_item(self, path, new_path, dir=False):
+        logger.debug("rename_item '%s' -> '%s' dir?%s" % (path, new_path, dir))
+        source_path = path
+        target_path = new_path
+        key = self.get_key(source_path)
+        self.cache.rename(source_path, target_path)
+        if key: # For files in cache or dir not on S3 but still not flushed to S3
+            self.cache.inc(source_path, 'deleted')
+            self.rename_on_s3(key, source_path, target_path, dir)
+
+    def rename_on_s3(self, key, source_path, target_path, dir):
+        logger.debug("rename_on_s3 '%s' '%s' -> '%s' dir?%s" % (key, source_path, target_path, dir))
         # Otherwise we loose the Content-Type with S3 Copy
         key.metadata['Content-Type'] = key.content_type
         ### key.copy(key.bucket.name, target, key.metadata, preserve_acl=False)
+        target = self.join_prefix(target_path)
+        if dir:
+            target += '/'
         pub = [ 'rename', source_path, target_path ]
         cmds = [ [ 'copy', [ key.bucket.name, target, key.metadata ],
                    { 'preserve_acl': False } ],
