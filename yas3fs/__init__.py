@@ -40,6 +40,9 @@ import boto.sns
 import boto.sqs
 import boto.utils
 
+from functools import wraps
+from YAS3FSPlugin import YAS3FSPlugin
+
 from sys import exit
 
 from boto.s3.key import Key 
@@ -762,7 +765,27 @@ class YAS3FS(LoggingMixIn, Operations):
         if self.multipart_retries < 1:
             error_and_exit("The number of retries for multipart uploads cannot be less than 1")
 
+
+        self.plugin = None
+        if (options.with_plugin_file):
+            self.plugin = YAS3FSPlugin.load_from_file(options.with_plugin_file, options.with_plugin_class)
+            self.plugin.logger = logger
+
         signal.signal(signal.SIGINT, self.handler)
+
+    # faking the funk, fix me later
+    def withplugin(fn):
+        def fn_wrapper(*arg, **karg):
+            self = arg[0]
+            if self.plugin == None:
+                return fn(*arg, **karg)
+
+            try:
+                handlerFn = getattr(self.plugin, fn.__name__)
+                return handlerFn(fn).__call__(*arg, **karg)
+            except:
+                return fn(*arg, **karg)
+        return fn_wrapper
 
     def check_threads(self, first=False):
         logger.debug("check_threads '%s'" % first)
@@ -1727,6 +1750,7 @@ class YAS3FS(LoggingMixIn, Operations):
            except Queue.Empty:
                pass
 
+    @withplugin
     def do_on_s3(self, key, pub, cmds):
         if self.s3_num == 0:
             self.do_on_s3_now(key, pub, cmds)
@@ -1735,12 +1759,9 @@ class YAS3FS(LoggingMixIn, Operations):
             self.s3_queue[i].put((key, pub, cmds))
         pass
 
-    def do_cmd_on_s3_now(self, key, pub, action, args, kargs, retries = 1):
-        if retries <= 0:
-            logger.error("do_cmd_on_s3_now FAILED'%s' key '%s' args '%s' kargs '%s'" % (self.s3_retries - retries + 1, action, key, args, kargs))
-            return pub
-             
-        logger.debug("do_cmd_on_s3_now try %s action '%s' key '%s' args '%s' kargs '%s'" % (self.s3_retries - retries + 1, action, key, args, kargs))
+    @withplugin
+    def do_cmd_on_s3_now(self, key, pub, action, args, kargs):
+        logger.debug("do_cmd_on_s3_now action '%s' key '%s' args '%s' kargs '%s'" % (action, key, args, kargs))
 
         try:
             if action == 'delete':
@@ -1769,17 +1790,32 @@ class YAS3FS(LoggingMixIn, Operations):
                     data.delete('change')
                 pub.append(etag)
             else:
-                logger.error("do_on_s3_now Unknown action '%s'" % action)
+                logger.error("do_cmd_on_s3_now Unknown action '%s'" % action)
                 # SHOULD THROW EXCEPTION...
 
-        except Exception as e:
+        except Exception, e:
             logger.exception(e)
-            time.sleep(1.0) # Better wait 1 second before retrying 
-            self.do_cmd_on_s3_now(key, pub, action, args, kargs, retries -1)
+            raise e
 
-        logger.debug("do_on_s3_now action '%s' key '%s' args '%s' kargs '%s' done" % (action, key, args, kargs))
+        logger.debug("do_cmd_on_s3_now action '%s' key '%s' args '%s' kargs '%s' done" % (action, key, args, kargs))
         return pub
 
+
+    @withplugin
+    def do_cmd_on_s3_now_w_retries(self, key, pub, action, args, kargs, retries = 1):
+        last_exception = None
+        for tries in range(1, retries +1):
+            try:
+                logger.debug("do_cmd_on_s3_now_w_retries try %s action '%s' key '%s' args '%s' kargs '%s'" % (tries, action, key, args, kargs))
+                return self.do_cmd_on_s3_now(key, pub, action, args, kargs)
+            except Exception, e:
+                last_exception = e
+
+        logger.error("do_cmd_on_s3_now_w_retries FAILED '%s' key '%s' args '%s' kargs '%s'" % (action, key, args, kargs))
+
+        raise last_exception
+
+    @withplugin
     def do_on_s3_now(self, key, pub, cmds):
         for c in cmds:
             action = c[0]
@@ -1791,8 +1827,9 @@ class YAS3FS(LoggingMixIn, Operations):
             if len(c) > 2:
                 kargs = c[2]
 
-            pub = self.do_cmd_on_s3_now(key, pub, action, args, kargs, self.s3_retries)
-            self.publish(pub)
+            pub = self.do_cmd_on_s3_now_w_retries(key, pub, action, args, kargs, self.s3_retries)
+            if pub:
+                self.publish(pub)
 
     def readlink(self, path):
         logger.debug("readlink '%s'" % (path))
@@ -2595,6 +2632,12 @@ AWS_DEFAULT_REGION environment variable can be used to set the default AWS regio
                         help='default expiration for signed URL via xattrs (in seconds, default is 30 days)')
     parser.add_argument('--requester-pays', action='store_true',
                         help='requester pays for S3 interactions, the bucket must have Requester Pays enabled')
+
+    parser.add_argument('--with-plugin-file', metavar='FILE',
+                        help="YAS3FSPlugin file")
+    parser.add_argument('--with-plugin-class', metavar='CLASS',
+                        help="YAS3FSPlugin class, if this is not set it will take the first child of YAS3FSPlugin from exception handler file")
+
 
     parser.add_argument('-l', '--log', metavar='FILE',
                         help='filename for logs')
