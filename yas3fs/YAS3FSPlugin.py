@@ -33,9 +33,23 @@ class YAS3FSPlugin:
 		except Exception, e:
 			raise Exception("cannot load plugin file " + filepath + " " + e)
 
+		if not class_inst:
+			raise Exception("cannot load plugin class " + expected_class + " " + e)
+
 
 		return class_inst
 
+	@staticmethod
+	def load_from_class(expected_class):
+		try:
+			module_name = 'yas3fs.'  + expected_class
+			# i = imp.find_module(module_name)
+			module = __import__(module_name)
+			klass = getattr(module.__dict__[expected_class], expected_class)
+			class_inst = klass()
+			return class_inst
+		except Exception, e:
+			raise Exception("cannot load plugin class " + expected_class + " " + str(e))
 
 	def __init__(self, logger=None):
 		self.logger = logger
