@@ -628,6 +628,8 @@ class YAS3FS(LoggingMixIn, Operations):
         logger.info("Cache check interval (in seconds): '%i'" % self.cache_check_interval)
         self.recheck_s3 = options.recheck_s3
         logger.info("Cache ENOENT rechecks S3: %s" % self.recheck_s3)
+        self.aws_managed_encryption = options.aws_managed_encryption
+        logger.info("AWS Managed Encryption enabled: %s" % self.aws_managed_encryption)
 
         if options.use_ec2_hostname:
             instance_metadata = boto.utils.get_instance_metadata() # Very slow (to fail) outside of EC2
@@ -2153,6 +2155,11 @@ class YAS3FS(LoggingMixIn, Operations):
         written = False
         pub = [ 'upload', path ] # Add Etag before publish
         headers = { 'Content-Type': mimetype }
+        
+    	if self.aws_managed_encryption:
+    	    crypto_headers = { 'x-amz-server-side-encryption' : 'AES256' }
+    	    headers.update(crypto_headers)
+    	
         headers.update(self.default_headers)
         if self.multipart_num > 0:
             full_size = attr['st_size']
@@ -2169,6 +2176,7 @@ class YAS3FS(LoggingMixIn, Operations):
         logger.debug("upload_to_s3 '%s' done" % path)
 
     def multipart_upload(self, key_path, data, full_size, headers, metadata):
+    	
         logger.debug("multipart_upload '%s' '%s' '%s' '%s'" % (key_path, data, full_size, headers))
         part_num = 0
         part_pos = 0
@@ -2540,6 +2548,8 @@ AWS_DEFAULT_REGION environment variable can be used to set the default AWS regio
                         '(0 to disable multipart upload, default is %(default)s)')
     parser.add_argument('--mp-retries', metavar='N', type=int, default=3,
                         help='max number of retries in uploading a part (default is %(default)s)')
+    parser.add_argument('--aws-managed-encryption', action='store_true', 
+                        help='Enable AWS managed encryption (sets header x-amz-server-side-encryption = AES256)')
     parser.add_argument('--id',
                         help='a unique ID identifying this node in a cluster (default is a UUID)')
     parser.add_argument('--mkdir', action='store_true',
