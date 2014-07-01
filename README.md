@@ -145,6 +145,7 @@ To unmount the file system on a Mac you can use `umount`.
                   [--s3-num N] [--download-num N] [--prefetch-num N]
                   [--buffer-size N] [--buffer-prefetch N] [--no-metadata]
                   [--prefetch] [--mp-size N] [--mp-num N] [--mp-retries N]
+                  [--aws-managed-encryption]
                   [--id ID] [--mkdir] [--uid N] [--gid N] [--umask MASK]
                   [--expiration N] [-l FILE] [-f] [-d] [-V]
                   S3Path LocalPath
@@ -222,6 +223,7 @@ To unmount the file system on a Mac you can use `umount`.
                            disable multipart upload, default is 4)
       --mp-retries N       max number of retries in uploading a part (default is
                            3)
+      --aws-managed-encryption  Enable AWS managed encryption (sets header x-amz-server-side-encryption = AES256)
       --id ID              a unique ID identifying this node in a cluster (default
                            is a UUID)
       --mkdir              create mountpoint if not found (and create intermediate
