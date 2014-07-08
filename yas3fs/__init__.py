@@ -481,7 +481,7 @@ class SNS_HTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         if self.path != self.server.fs.http_listen_path:
             self.send_response(404)
             return
- 
+
         content_len = int(self.headers.getheader('content-length'))
         post_body = self.rfile.read(content_len)
 
@@ -495,7 +495,7 @@ class SNS_HTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             logger.debug('downloading certificate')
             self.certificate_url = url
             self.certificate = urllib2.urlopen(url).read()
- 
+
         signature_version = message_content['SignatureVersion']
         if signature_version != '1':
             logger.debug('unknown signature version')
@@ -768,12 +768,16 @@ class YAS3FS(LoggingMixIn, Operations):
 
         self.plugin = None
         if (options.with_plugin_file):
-            self.plugin = YAS3FSPlugin.load_from_file(options.with_plugin_file, options.with_plugin_class)
+            self.plugin = YAS3FSPlugin.load_from_file(self, options.with_plugin_file, options.with_plugin_class)
+        elif (options.with_plugin_class):
+            self.plugin = YAS3FSPlugin.load_from_class(self, options.with_plugin_class)
+
+        if self.plugin:
             self.plugin.logger = logger
 
         signal.signal(signal.SIGINT, self.handler)
 
-    # faking the funk, fix me later
+    # faking the funk, get a better wrapper model later
     def withplugin(fn):
         def fn_wrapper(*arg, **karg):
             self = arg[0]
