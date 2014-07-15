@@ -612,6 +612,10 @@ class YAS3FS(LoggingMixIn, Operations):
             logger.info("SNS topic ARN: '%s'" % self.sns_topic_arn)
         self.sqs_queue_name = options.queue # must be different for each client
         self.new_queue = options.new_queue
+        self.new_queue_with_hostname = options.new_queue_with_hostname
+        if self.new_queue_with_hostname:
+            self.new_queue = self.new_queue_with_hostname
+
         self.queue_wait_time = options.queue_wait
         self.queue_polling_interval = options.queue_polling
         if self.sqs_queue_name:
@@ -732,6 +736,8 @@ class YAS3FS(LoggingMixIn, Operations):
                     error_and_exit("With and SNS topic either the SQS queue name or the hostname and port to listen to SNS HTTP notifications must be provided")
 
         if self.sqs_queue_name or self.new_queue:
+            self.queue = None
+
             if not self.sns_topic_arn:
                 error_and_exit("The SNS topic must be provided when an SQS queue is used")
             if not self.aws_region in (r.name for r in boto.sqs.regions()):
@@ -740,11 +746,21 @@ class YAS3FS(LoggingMixIn, Operations):
             if not self.sqs:
                 error_and_exit("no SQS connection")
             if self.new_queue:
+                hostname_array = [] 
+                if self.new_queue_with_hostname:
+                    import socket
+                    hostname = socket.gethostname()
+                    # trims to the left side only
+                    hostname = re.sub(r'[^A-Za-z0-9\-].*', '', hostname)
+                    # removes dashes and other chars
+                    hostname = re.sub(r'[^A-Za-z0-9]', '', hostname)
+                    hostname_array = [hostname]
+
                 self.sqs_queue_name = '-'.join([ 'yas3fs',
                                                pattern.sub('', self.s3_bucket_name),
-                                               pattern.sub('', self.s3_prefix),
-                                               self.unique_id ])
-                self.queue = None
+                                               pattern.sub('', self.s3_prefix)]
+                                               + hostname_array
+                                               + [self.unique_id])
             else:
                 self.queue =  self.sqs.lookup(self.sqs_queue_name)
             if not self.queue:
@@ -2584,6 +2600,9 @@ AWS_DEFAULT_REGION environment variable can be used to set the default AWS regio
                         help='SNS topic ARN')
     parser.add_argument('--new-queue', action='store_true',
                         help='create a new SQS queue that is deleted on unmount to listen to SNS notifications, ' +
+                        'overrides --queue, queue name is BUCKET-PATH-ID with alphanumeric characters only')
+    parser.add_argument('--new-queue-with-hostname', action='store_true',
+                        help='create a new SQS queue with hostname in queuename, ' +
                         'overrides --queue, queue name is BUCKET-PATH-ID with alphanumeric characters only')
     parser.add_argument('--queue', metavar='NAME',
                         help='SQS queue name to listen to SNS notifications, a new queue is created if it doesn\'t exist')
