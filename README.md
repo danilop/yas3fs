@@ -135,106 +135,133 @@ To unmount the file system on a Mac you can use `umount`.
 
 ### Full Usage
 
-    yas3fs -h
+	usage: yas3fs [-h] [--region REGION] [--topic ARN] [--new-queue]
+								[--new-queue-with-hostname] [--queue NAME] [--queue-wait N]
+								[--queue-polling N] [--hostname HOSTNAME] [--use-ec2-hostname]
+								[--port N] [--cache-entries N] [--cache-mem-size N]
+								[--cache-disk-size N] [--cache-path PATH] [--recheck-s3]
+								[--cache-on-disk N] [--cache-check N] [--s3-num N]
+								[--download-num N] [--prefetch-num N] [--buffer-size N]
+								[--buffer-prefetch N] [--no-metadata] [--prefetch] [--mp-size N]
+								[--mp-num N] [--mp-retries N] [--aws-managed-encryption]
+								[--id ID] [--mkdir] [--nonempty] [--uid N] [--gid N]
+								[--umask MASK] [--read-only] [--expiration N] [--requester-pays]
+								[--with-plugin-file FILE] [--with-plugin-class CLASS] [-l FILE]
+								[--log-mb-size N] [--log-backup-count N] [--log-backup-gzip]
+								[-f] [-d] [-V]
+								S3Path LocalPath
 
-    usage: yas3fs [-h] [--region REGION] [--topic ARN] [--new-queue]
-                  [--queue NAME] [--queue-wait N] [--queue-polling N]
-                  [--hostname HOSTNAME] [--use-ec2-hostname] [--port N]
-                  [--cache-entries N] [--cache-mem-size N] [--cache-disk-size N]
-                  [--cache-path PATH] [--cache-on-disk N] [--cache-check N]
-                  [--s3-num N] [--download-num N] [--prefetch-num N]
-                  [--buffer-size N] [--buffer-prefetch N] [--no-metadata]
-                  [--prefetch] [--mp-size N] [--mp-num N] [--mp-retries N]
-                  [--id ID] [--mkdir] [--uid N] [--gid N] [--umask MASK]
-                  [--expiration N] [-l FILE] [-f] [-d] [-V]
-                  S3Path LocalPath
+	YAS3FS (Yet Another S3-backed File System) is a Filesystem in Userspace (FUSE)
+	interface to Amazon S3. It allows to mount an S3 bucket (or a part of it, if
+	you specify a path) as a local folder. It works on Linux and Mac OS X. For
+	maximum speed all data read from S3 is cached locally on the node, in memory
+	or on disk, depending of the file size. Parallel multi-part downloads are used
+	if there are reads in the middle of the file (e.g. for streaming). Parallel
+	multi-part uploads are used for files larger than a specified size. With
+	buffering enabled (the default) files can be accessed during the download from
+	S3 (e.g. for streaming). It can be used on more than one node to create a
+	"shared" file system (i.e. a yas3fs "cluster"). SNS notifications are used to
+	update other nodes in the cluster that something has changed on S3 and they
+	need to invalidate their cache. Notifications can be delivered to HTTP or SQS
+	endpoints. If the cache grows to its maximum size, the less recently accessed
+	files are removed. Signed URLs are provided through Extended file attributes
+	(xattr). AWS credentials can be passed using AWS_ACCESS_KEY_ID and
+	AWS_SECRET_ACCESS_KEY environment variables. In an EC2 instance a IAM role can
+	be used to give access to S3/SNS/SQS resources. AWS_DEFAULT_REGION environment
+	variable can be used to set the default AWS region.
 
-    YAS3FS (Yet Another S3-backed File System) is a Filesystem in Userspace (FUSE)
-    interface to Amazon S3. It allows to mount an S3 bucket (or a part of it, if
-    you specify a path) as a local folder. It works on Linux and Mac OS X. For
-    maximum speed all data read from S3 is cached locally on the node, in memory
-    or on disk, depending of the file size. Parallel multi-part downloads are used
-    if there are reads in the middle of the file (e.g. for streaming). Parallel
-    multi-part uploads are used for files larger than a specified size. With
-    buffering enabled (the default) files can be accessed during the download from
-    S3 (e.g. for streaming). It can be used on more than one node to create a
-    "shared" file system (i.e. a yas3fs "cluster"). SNS notifications are used to
-    update other nodes in the cluster that something has changed on S3 and they
-    need to invalidate their cache. Notifications can be delivered to HTTP or SQS
-    endpoints. If the cache grows to its maximum size, the less recently accessed
-    files are removed. Signed URLs are provided through Extended file attributes
-    (xattr). AWS credentials can be passed using AWS_ACCESS_KEY_ID and
-    AWS_SECRET_ACCESS_KEY environment variables. In an EC2 instance a IAM role can
-    be used to give access to S3/SNS/SQS resources. AWS_DEFAULT_REGION environment
-    variable can be used to set the default AWS region.
+	positional arguments:
+		S3Path                the S3 path to mount in s3://BUCKET/PATH format, PATH
+													can be empty, can contain subfolders and is created on
+													first mount if not found in the BUCKET
+		LocalPath             the local mount point
 
-    positional arguments:
-      S3Path               the S3 path to mount in s3://BUCKET/PATH format, PATH
-                           can be empty, can contain subfolders and is created on
-                           first mount if not found in the BUCKET
-      LocalPath            the local mount point
+	optional arguments:
+		-h, --help            show this help message and exit
+		--region REGION       AWS region to use for SNS and SQS (default is us-
+													east-1)
+		--topic ARN           SNS topic ARN
+		--new-queue           create a new SQS queue that is deleted on unmount to
+													listen to SNS notifications, overrides --queue, queue
+													name is BUCKET-PATH-ID with alphanumeric characters
+													only
+		--new-queue-with-hostname
+													create a new SQS queue with hostname in queuename,
+													overrides --queue, queue name is BUCKET-PATH-ID with
+													alphanumeric characters only
+		--queue NAME          SQS queue name to listen to SNS notifications, a new
+													queue is created if it doesn't exist
+		--queue-wait N        SQS queue wait time in seconds (using long polling, 0
+													to disable, default is 20 seconds)
+		--queue-polling N     SQS queue polling interval in seconds (default is 0
+													seconds)
+		--hostname HOSTNAME   public hostname to listen to SNS HTTP notifications
+		--use-ec2-hostname    get public hostname to listen to SNS HTTP
+													notifications from EC2 instance metadata (overrides
+													--hostname)
+		--port N              TCP port to listen to SNS HTTP notifications
+		--cache-entries N     max number of entries to cache (default is 100000
+													entries)
+		--cache-mem-size N    max size of the memory cache in MB (default is 128 MB)
+		--cache-disk-size N   max size of the disk cache in MB (default is 1024 MB)
+		--cache-path PATH     local path to use for disk cache (default is
+													/tmp/yas3fs/BUCKET/PATH)
+		--recheck-s3          Cached ENOENT (error no entry) rechecks S3 for new
+													file/directory
+		--cache-on-disk N     use disk (instead of memory) cache for files greater
+													than the given size in bytes (default is 0 bytes)
+		--cache-check N       interval between cache size checks in seconds (default
+													is 5 seconds)
+		--s3-num N            number of parallel S3 calls (0 to disable writeback,
+													default is 32)
+		--download-num N      number of parallel downloads (default is 4)
+		--prefetch-num N      number of parallel prefetching downloads (default is
+													2)
+		--buffer-size N       download buffer size in KB (0 to disable buffering,
+													default is 10240 KB)
+		--buffer-prefetch N   number of buffers to prefetch (default is 0)
+		--no-metadata         don't write user metadata on S3 to persist file system
+													attr/xattr
+		--prefetch            download file/directory content as soon as it is
+													discovered (doesn't download file content if download
+													buffers are used)
+		--mp-size N           size of parts to use for multipart upload in MB
+													(default value is 100 MB, the minimum allowed by S3 is
+													5 MB)
+		--mp-num N            max number of parallel multipart uploads per file (0
+													to disable multipart upload, default is 4)
+		--mp-retries N        max number of retries in uploading a part (default is
+													3)
+		--aws-managed-encryption
+													Enable AWS managed encryption (sets header x-amz-
+													server-side-encryption = AES256)
+		--id ID               a unique ID identifying this node in a cluster
+													(default is a UUID)
+		--mkdir               create mountpoint if not found (and create
+													intermediate directories as required)
+		--nonempty            allows mounts over a non-empty file or directory
+		--uid N               default UID
+		--gid N               default GID
+		--umask MASK          default umask
+		--read-only           mount read only
+		--expiration N        default expiration for signed URL via xattrs (in
+													seconds, default is 30 days)
+		--requester-pays      requester pays for S3 interactions, the bucket must
+													have Requester Pays enabled
+		--with-plugin-file FILE
+													YAS3FSPlugin file
+		--with-plugin-class CLASS
+													YAS3FSPlugin class, if this is not set it will take
+													the first child of YAS3FSPlugin from exception handler
+													file
+		-l FILE, --log FILE   filename for logs
+		--log-mb-size N       max size of log file
+		--log-backup-count N  number of backups log files
+		--log-backup-gzip     flag to gzip backup files
+		-f, --foreground      run in foreground
+		-d, --debug           show debug info
+		-V, --version         show program's version number and exit
 
-    optional arguments:
-      -h, --help           show this help message and exit
-      --region REGION      AWS region to use for SNS and SQS (default is eu-
-                           west-1)
-      --topic ARN          SNS topic ARN
-      --new-queue          create a new SQS queue that is deleted on unmount to
-                           listen to SNS notifications, overrides --queue, queue
-                           name is BUCKET-PATH-ID with alphanumeric characters
-                           only
-      --queue NAME         SQS queue name to listen to SNS notifications, a new
-                           queue is created if it doesn't exist
-      --queue-wait N       SQS queue wait time in seconds (using long polling, 0
-                           to disable, default is 20 seconds)
-      --queue-polling N    SQS queue polling interval in seconds (default is 0
-                           seconds)
-      --hostname HOSTNAME  public hostname to listen to SNS HTTP notifications
-      --use-ec2-hostname   get public hostname to listen to SNS HTTP notifications
-                           from EC2 instance metadata (overrides --hostname)
-      --port N             TCP port to listen to SNS HTTP notifications
-      --cache-entries N    max number of entries to cache (default is 100000
-                           entries)
-      --cache-mem-size N   max size of the memory cache in MB (default is 128 MB)
-      --cache-disk-size N  max size of the disk cache in MB (default is 1024 MB)
-      --cache-path PATH    local path to use for disk cache (default is
-                           /tmp/yas3fs/BUCKET/PATH)
-      --cache-on-disk N    use disk (instead of memory) cache for files greater
-                           than the given size in bytes (default is 0 bytes)
-      --cache-check N      interval between cache size checks in seconds (default
-                           is 5 seconds)
-      --s3-num N           number of parallel S3 calls (0 to disable writeback,
-                           default is 32)
-      --download-num N     number of parallel downloads (default is 4)
-      --prefetch-num N     number of parallel prefetching downloads (default is 2)
-      --buffer-size N      download buffer size in KB (0 to disable buffering,
-                           default is 10240 KB)
-      --buffer-prefetch N  number of buffers to prefetch (default is 0)
-      --no-metadata        don't write user metadata on S3 to persist file system
-                           attr/xattr
-      --prefetch           download file/directory content as soon as it is
-                           discovered (doesn't download file content if download
-                           buffers are used)
-      --mp-size N          size of parts to use for multipart upload in MB
-                           (default value is 100 MB, the minimum allowed by S3 is
-                           5 MB)
-      --mp-num N           max number of parallel multipart uploads per file (0 to
-                           disable multipart upload, default is 4)
-      --mp-retries N       max number of retries in uploading a part (default is
-                           3)
-      --id ID              a unique ID identifying this node in a cluster (default
-                           is a UUID)
-      --mkdir              create mountpoint if not found (and create intermediate
-                           directories as required)
-      --uid N              default UID
-      --gid N              default GID
-      --umask MASK         default umask
-      --expiration N       default expiration for signed URL via xattrs (in
-                           seconds, default is 30 days)
-      -l FILE, --log FILE  filename for logs
-      -f, --foreground     run in foreground
-      -d, --debug          show debug info
-      -V, --version        show program's version number and exit
 
 ### Signed URLs
 
