@@ -632,6 +632,9 @@ class YAS3FS(LoggingMixIn, Operations):
         self.recheck_s3 = options.recheck_s3
         logger.info("Cache ENOENT rechecks S3: %s" % self.recheck_s3)
 
+        self.aws_managed_encryption = options.aws_managed_encryption
+        logger.info("AWS Managed Encryption enabled: %s" % self.aws_managed_encryption)
+
         if options.use_ec2_hostname:
             instance_metadata = boto.utils.get_instance_metadata() # Very slow (to fail) outside of EC2
             self.hostname = instance_metadata['public-hostname']
@@ -702,8 +705,8 @@ class YAS3FS(LoggingMixIn, Operations):
             error_and_exit("no S3 connection")
         try:
             self.s3_bucket = self.s3.get_bucket(self.s3_bucket_name, headers=self.default_headers)
-        except boto.exception.S3ResponseError:
-            error_and_exit("S3 bucket not found")
+        except boto.exception.S3ResponseError, e:
+            error_and_exit("S3 bucket not found:" + str(e))
 
         pattern = re.compile('[\W_]+') # Alphanumeric characters only, to be used for pattern.sub('', s)
 
@@ -1021,8 +1024,8 @@ class YAS3FS(LoggingMixIn, Operations):
                     logger.info("S3 prefix: '%s'" % self.s3_prefix)
                     try:
                         self.s3_bucket = self.s3.get_bucket(self.s3_bucket_name, headers=self.default_headers)
-                    except boto.exception.S3ResponseError:
-                        error_and_exit("S3 bucket not found")
+                    except boto.exception.S3ResponseError, e:
+                        error_and_exit("S3 bucket not found:" + str(e))
             elif c[1] == 'cache':
                 if c[2] == 'entries' and c[3] > 0:
                     self.cache_entries = int(c[3])
@@ -2200,6 +2203,11 @@ class YAS3FS(LoggingMixIn, Operations):
         pub = [ 'upload', path ] # Add Etag before publish
         headers = { 'Content-Type': mimetype }
         headers.update(self.default_headers)
+
+        if self.aws_managed_encryption:
+            crypto_headers = { 'x-amz-server-side-encryption' : 'AES256' }
+            headers.update(crypto_headers)
+
         if self.multipart_num > 0:
             full_size = attr['st_size']
             if full_size > self.multipart_size:
@@ -2628,6 +2636,8 @@ AWS_DEFAULT_REGION environment variable can be used to set the default AWS regio
                         '(0 to disable multipart upload, default is %(default)s)')
     parser.add_argument('--mp-retries', metavar='N', type=int, default=3,
                         help='max number of retries in uploading a part (default is %(default)s)')
+    parser.add_argument('--aws-managed-encryption', action='store_true',
+                        help='Enable AWS managed encryption (sets header x-amz-server-side-encryption = AES256)')
     parser.add_argument('--id',
                         help='a unique ID identifying this node in a cluster (default is a UUID)')
     parser.add_argument('--mkdir', action='store_true',
