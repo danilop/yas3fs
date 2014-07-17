@@ -1359,6 +1359,11 @@ class YAS3FS(LoggingMixIn, Operations):
                             ### key.set_contents_from_string('', headers={'Content-Type': 'application/x-directory'})
                             headers = { 'Content-Type': 'application/x-directory' }
                             headers.update(self.default_headers)
+                            
+                            if self.aws_managed_encryption:
+            			crypto_headers = { 'x-amz-server-side-encryption' : 'AES256' }
+            			headers.update(crypto_headers)
+                            
                             cmds = [ [ 'set_contents_from_string', [ '' ], { 'headers': headers } ] ]
                             self.do_on_s3(key, pub, cmds)
                         else:
@@ -1475,6 +1480,11 @@ class YAS3FS(LoggingMixIn, Operations):
                 pub = [ 'mkdir', path ]
                 headers = { 'Content-Type': 'application/x-directory'}
                 headers.update(self.default_headers)
+                
+                if self.aws_managed_encryption:
+            	    crypto_headers = { 'x-amz-server-side-encryption' : 'AES256' }
+            	    headers.update(crypto_headers)
+                
                 cmds = [ [ 'set_contents_from_string', [ '' ], { 'headers': headers } ] ]
                 self.do_on_s3(k, pub, cmds)
             data.delete('change')
@@ -1525,6 +1535,11 @@ class YAS3FS(LoggingMixIn, Operations):
             pub = [ 'symlink', path ]
             headers = { 'Content-Type': 'application/x-symlink' }
             headers.update(self.default_headers)
+            
+            if self.aws_managed_encryption:
+            	crypto_headers = { 'x-amz-server-side-encryption' : 'AES256' }
+            	headers.update(crypto_headers)
+            
             cmds = [ [ 'set_contents_from_string', [ link ], { 'headers': headers } ] ]
             self.do_on_s3(k, pub, cmds)
             data.delete('change')
