@@ -141,10 +141,11 @@ To unmount the file system on a Mac you can use `umount`.
                   [--queue NAME] [--queue-wait N] [--queue-polling N]
                   [--hostname HOSTNAME] [--use-ec2-hostname] [--port N]
                   [--cache-entries N] [--cache-mem-size N] [--cache-disk-size N]
-                  [--cache-path PATH] [--cache-on-disk N] [--cache-check N]
+                  [--cache-path PATH] [--recheck-s3] [--cache-on-disk N] [--cache-check N]
                   [--s3-num N] [--download-num N] [--prefetch-num N]
                   [--buffer-size N] [--buffer-prefetch N] [--no-metadata]
                   [--prefetch] [--mp-size N] [--mp-num N] [--mp-retries N]
+                  [--aws-managed-encryption]
                   [--id ID] [--mkdir] [--uid N] [--gid N] [--umask MASK]
                   [--expiration N] [-l FILE] [-f] [-d] [-V]
                   S3Path LocalPath
@@ -199,6 +200,7 @@ To unmount the file system on a Mac you can use `umount`.
       --cache-disk-size N  max size of the disk cache in MB (default is 1024 MB)
       --cache-path PATH    local path to use for disk cache (default is
                            /tmp/yas3fs/BUCKET/PATH)
+      --recheck-s3         Cache ENOENT results in forced recheck of S3 for new file/directory
       --cache-on-disk N    use disk (instead of memory) cache for files greater
                            than the given size in bytes (default is 0 bytes)
       --cache-check N      interval between cache size checks in seconds (default
@@ -222,6 +224,7 @@ To unmount the file system on a Mac you can use `umount`.
                            disable multipart upload, default is 4)
       --mp-retries N       max number of retries in uploading a part (default is
                            3)
+      --aws-managed-encryption  Enable AWS managed encryption (sets header x-amz-server-side-encryption = AES256)
       --id ID              a unique ID identifying this node in a cluster (default
                            is a UUID)
       --mkdir              create mountpoint if not found (and create intermediate
