@@ -635,6 +635,8 @@ class YAS3FS(LoggingMixIn, Operations):
         logger.info("Cache check interval (in seconds): '%i'" % self.cache_check_interval)
         self.recheck_s3 = options.recheck_s3
         logger.info("Cache ENOENT rechecks S3: %s" % self.recheck_s3)
+        self.aws_managed_encryption = options.aws_managed_encryption
+        logger.info("AWS Managed Encryption enabled: %s" % self.aws_managed_encryption)
 
         self.aws_managed_encryption = options.aws_managed_encryption
         logger.info("AWS Managed Encryption enabled: %s" % self.aws_managed_encryption)
@@ -2233,6 +2235,11 @@ class YAS3FS(LoggingMixIn, Operations):
         written = False
         pub = [ 'upload', path ] # Add Etag before publish
         headers = { 'Content-Type': mimetype }
+        
+    	if self.aws_managed_encryption:
+    	    crypto_headers = { 'x-amz-server-side-encryption' : 'AES256' }
+    	    headers.update(crypto_headers)
+    	
         headers.update(self.default_headers)
 
         if self.aws_managed_encryption:
@@ -2254,6 +2261,7 @@ class YAS3FS(LoggingMixIn, Operations):
         logger.debug("upload_to_s3 '%s' done" % path)
 
     def multipart_upload(self, key_path, data, full_size, headers, metadata):
+    	
         logger.debug("multipart_upload '%s' '%s' '%s' '%s'" % (key_path, data, full_size, headers))
         part_num = 0
         part_pos = 0
