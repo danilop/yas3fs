@@ -635,8 +635,6 @@ class YAS3FS(LoggingMixIn, Operations):
         logger.info("Cache check interval (in seconds): '%i'" % self.cache_check_interval)
         self.recheck_s3 = options.recheck_s3
         logger.info("Cache ENOENT rechecks S3: %s" % self.recheck_s3)
-        self.aws_managed_encryption = options.aws_managed_encryption
-        logger.info("AWS Managed Encryption enabled: %s" % self.aws_managed_encryption)
 
         self.aws_managed_encryption = options.aws_managed_encryption
         logger.info("AWS Managed Encryption enabled: %s" % self.aws_managed_encryption)
@@ -1405,11 +1403,11 @@ class YAS3FS(LoggingMixIn, Operations):
                             ### key.set_contents_from_string('', headers={'Content-Type': 'application/x-directory'})
                             headers = { 'Content-Type': 'application/x-directory' }
                             headers.update(self.default_headers)
-                            
+
                             if self.aws_managed_encryption:
-            			crypto_headers = { 'x-amz-server-side-encryption' : 'AES256' }
-            			headers.update(crypto_headers)
-                            
+                                crypto_headers = { 'x-amz-server-side-encryption' : 'AES256' }
+                                headers.update(crypto_headers)
+
                             cmds = [ [ 'set_contents_from_string', [ '' ], { 'headers': headers } ] ]
                             self.do_on_s3(key, pub, cmds)
                         else:
@@ -1528,8 +1526,8 @@ class YAS3FS(LoggingMixIn, Operations):
                 headers.update(self.default_headers)
                 
                 if self.aws_managed_encryption:
-            	    crypto_headers = { 'x-amz-server-side-encryption' : 'AES256' }
-            	    headers.update(crypto_headers)
+                    crypto_headers = { 'x-amz-server-side-encryption' : 'AES256' }
+                    headers.update(crypto_headers)
                 
                 cmds = [ [ 'set_contents_from_string', [ '' ], { 'headers': headers } ] ]
                 self.do_on_s3(k, pub, cmds)
@@ -1583,8 +1581,8 @@ class YAS3FS(LoggingMixIn, Operations):
             headers.update(self.default_headers)
             
             if self.aws_managed_encryption:
-            	crypto_headers = { 'x-amz-server-side-encryption' : 'AES256' }
-            	headers.update(crypto_headers)
+                crypto_headers = { 'x-amz-server-side-encryption' : 'AES256' }
+                headers.update(crypto_headers)
             
             cmds = [ [ 'set_contents_from_string', [ link ], { 'headers': headers } ] ]
             self.do_on_s3(k, pub, cmds)
@@ -2236,15 +2234,11 @@ class YAS3FS(LoggingMixIn, Operations):
         pub = [ 'upload', path ] # Add Etag before publish
         headers = { 'Content-Type': mimetype }
         
-    	if self.aws_managed_encryption:
-    	    crypto_headers = { 'x-amz-server-side-encryption' : 'AES256' }
-    	    headers.update(crypto_headers)
-    	
-        headers.update(self.default_headers)
-
         if self.aws_managed_encryption:
             crypto_headers = { 'x-amz-server-side-encryption' : 'AES256' }
             headers.update(crypto_headers)
+
+        headers.update(self.default_headers)
 
         if self.multipart_num > 0:
             full_size = attr['st_size']
