@@ -1405,8 +1405,8 @@ class YAS3FS(LoggingMixIn, Operations):
                             headers.update(self.default_headers)
 
                             if self.aws_managed_encryption:
-                                crypto_headers = { 'x-amz-server-side-encryption' : 'AES256' }
-                                headers.update(crypto_headers)
+            			crypto_headers = { 'x-amz-server-side-encryption' : 'AES256' }
+            			headers.update(crypto_headers)
 
                             cmds = [ [ 'set_contents_from_string', [ '' ], { 'headers': headers } ] ]
                             self.do_on_s3(key, pub, cmds)
@@ -1526,8 +1526,8 @@ class YAS3FS(LoggingMixIn, Operations):
                 headers.update(self.default_headers)
                 
                 if self.aws_managed_encryption:
-                    crypto_headers = { 'x-amz-server-side-encryption' : 'AES256' }
-                    headers.update(crypto_headers)
+            	    crypto_headers = { 'x-amz-server-side-encryption' : 'AES256' }
+            	    headers.update(crypto_headers)
                 
                 cmds = [ [ 'set_contents_from_string', [ '' ], { 'headers': headers } ] ]
                 self.do_on_s3(k, pub, cmds)
@@ -1581,8 +1581,8 @@ class YAS3FS(LoggingMixIn, Operations):
             headers.update(self.default_headers)
             
             if self.aws_managed_encryption:
-                crypto_headers = { 'x-amz-server-side-encryption' : 'AES256' }
-                headers.update(crypto_headers)
+            	crypto_headers = { 'x-amz-server-side-encryption' : 'AES256' }
+            	headers.update(crypto_headers)
             
             cmds = [ [ 'set_contents_from_string', [ link ], { 'headers': headers } ] ]
             self.do_on_s3(k, pub, cmds)
@@ -2234,9 +2234,9 @@ class YAS3FS(LoggingMixIn, Operations):
         pub = [ 'upload', path ] # Add Etag before publish
         headers = { 'Content-Type': mimetype }
         
-        if self.aws_managed_encryption:
-            crypto_headers = { 'x-amz-server-side-encryption' : 'AES256' }
-            headers.update(crypto_headers)
+    	if self.aws_managed_encryption:
+    	    crypto_headers = { 'x-amz-server-side-encryption' : 'AES256' }
+    	    headers.update(crypto_headers)
 
         headers.update(self.default_headers)
 
@@ -2672,7 +2672,7 @@ AWS_DEFAULT_REGION environment variable can be used to set the default AWS regio
                         '(0 to disable multipart upload, default is %(default)s)')
     parser.add_argument('--mp-retries', metavar='N', type=int, default=3,
                         help='max number of retries in uploading a part (default is %(default)s)')
-    parser.add_argument('--aws-managed-encryption', action='store_true',
+    parser.add_argument('--aws-managed-encryption', action='store_true', 
                         help='Enable AWS managed encryption (sets header x-amz-server-side-encryption = AES256)')
     parser.add_argument('--id',
                         help='a unique ID identifying this node in a cluster (default is a UUID)')
