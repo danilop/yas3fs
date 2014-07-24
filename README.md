@@ -209,8 +209,7 @@ To unmount the file system on a Mac you can use `umount`.
       --cache-disk-size N  max size of the disk cache in MB (default is 1024 MB)
       --cache-path PATH    local path to use for disk cache (default is
                            /tmp/yas3fs/BUCKET/PATH)
-      --recheck-s3         Cache ENOENT results in forced recheck of S3 for 
-                           new file/directory
+      --recheck-s3         Cache ENOENT results in forced recheck of S3 for new file/directory
       --cache-on-disk N    use disk (instead of memory) cache for files greater
                            than the given size in bytes (default is 0 bytes)
       --cache-check N      interval between cache size checks in seconds (default
@@ -234,9 +233,7 @@ To unmount the file system on a Mac you can use `umount`.
                            disable multipart upload, default is 4)
       --mp-retries N       max number of retries in uploading a part (default is
                            3)
-      --aws-managed-encryption
-                           Enable AWS managed encryption (sets header x-amz-
-                           server-side-encryption = AES256)
+      --aws-managed-encryption  Enable AWS managed encryption (sets header x-amz- server-side-encryption = AES256)
       --id ID              a unique ID identifying this node in a cluster (default
                            is a UUID)
       --mkdir              create mountpoint if not found (and create intermediate
