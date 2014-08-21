@@ -138,7 +138,8 @@ To unmount the file system on a Mac you can use `umount`.
     yas3fs -h
 
     usage: yas3fs [-h] [--region REGION] [--topic ARN] [--new-queue]
-                  [--queue NAME] [--queue-wait N] [--queue-polling N]
+                  [--new-queue-with-hostname] [--queue NAME] 
+                  [--queue-wait N] [--queue-polling N]
                   [--hostname HOSTNAME] [--use-ec2-hostname] [--port N]
                   [--cache-entries N] [--cache-mem-size N] [--cache-disk-size N]
                   [--cache-path PATH] [--recheck-s3] [--cache-on-disk N] [--cache-check N]
@@ -147,7 +148,11 @@ To unmount the file system on a Mac you can use `umount`.
                   [--prefetch] [--mp-size N] [--mp-num N] [--mp-retries N]
                   [--aws-managed-encryption]
                   [--id ID] [--mkdir] [--uid N] [--gid N] [--umask MASK]
-                  [--expiration N] [-l FILE] [-f] [-d] [-V]
+                  [--read-only] [--expiration N] [--requester-pays]
+                  [--with-plugin-file FILE] [--with-plugin-class CLASS]
+                  [-l FILE] 
+                  [--log-mb-size N] [--log-backup-count N] [--log-backup-gzip]
+                  [-f] [-d] [-V]
                   S3Path LocalPath
 
     YAS3FS (Yet Another S3-backed File System) is a Filesystem in Userspace (FUSE)
@@ -184,6 +189,10 @@ To unmount the file system on a Mac you can use `umount`.
                            listen to SNS notifications, overrides --queue, queue
                            name is BUCKET-PATH-ID with alphanumeric characters
                            only
+      --new-queue-with-hostname
+                           create a new SQS queue with hostname in queuename,
+                           overrides --queue, queue name is BUCKET-PATH-ID with
+                           alphanumeric characters only
       --queue NAME         SQS queue name to listen to SNS notifications, a new
                            queue is created if it doesn't exist
       --queue-wait N       SQS queue wait time in seconds (using long polling, 0
@@ -232,9 +241,22 @@ To unmount the file system on a Mac you can use `umount`.
       --uid N              default UID
       --gid N              default GID
       --umask MASK         default umask
+      --read-only           mount read only
       --expiration N       default expiration for signed URL via xattrs (in
                            seconds, default is 30 days)
+      --requester-pays     requester pays for S3 interactions, the bucket must
+                           have Requester Pays enabled
+      --with-plugin-file FILE
+                           YAS3FSPlugin file
+      --with-plugin-class CLASS
+                           YAS3FSPlugin class, if this is not set it will 
+                           take the first child of YAS3FSPlugin from exception 
+                           handler file
       -l FILE, --log FILE  filename for logs
+      --log-mb-size N       max size of log file
+      --log-backup-count N  number of backups log files
+      --log-backup-gzip     flag to gzip backup files
+
       -f, --foreground     run in foreground
       -d, --debug          show debug info
       -V, --version        show program's version number and exit

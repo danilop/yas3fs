@@ -40,6 +40,9 @@ import boto.sns
 import boto.sqs
 import boto.utils
 
+from functools import wraps
+from YAS3FSPlugin import YAS3FSPlugin
+
 from sys import exit
 
 from boto.s3.key import Key 
@@ -478,7 +481,7 @@ class SNS_HTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         if self.path != self.server.fs.http_listen_path:
             self.send_response(404)
             return
- 
+
         content_len = int(self.headers.getheader('content-length'))
         post_body = self.rfile.read(content_len)
 
@@ -492,7 +495,7 @@ class SNS_HTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             logger.debug('downloading certificate')
             self.certificate_url = url
             self.certificate = urllib2.urlopen(url).read()
- 
+
         signature_version = message_content['SignatureVersion']
         if signature_version != '1':
             logger.debug('unknown signature version')
@@ -609,6 +612,10 @@ class YAS3FS(LoggingMixIn, Operations):
             logger.info("SNS topic ARN: '%s'" % self.sns_topic_arn)
         self.sqs_queue_name = options.queue # must be different for each client
         self.new_queue = options.new_queue
+        self.new_queue_with_hostname = options.new_queue_with_hostname
+        if self.new_queue_with_hostname:
+            self.new_queue = self.new_queue_with_hostname
+
         self.queue_wait_time = options.queue_wait
         self.queue_polling_interval = options.queue_polling
         if self.sqs_queue_name:
@@ -628,6 +635,9 @@ class YAS3FS(LoggingMixIn, Operations):
         logger.info("Cache check interval (in seconds): '%i'" % self.cache_check_interval)
         self.recheck_s3 = options.recheck_s3
         logger.info("Cache ENOENT rechecks S3: %s" % self.recheck_s3)
+        self.aws_managed_encryption = options.aws_managed_encryption
+        logger.info("AWS Managed Encryption enabled: %s" % self.aws_managed_encryption)
+
         self.aws_managed_encryption = options.aws_managed_encryption
         logger.info("AWS Managed Encryption enabled: %s" % self.aws_managed_encryption)
 
@@ -701,8 +711,8 @@ class YAS3FS(LoggingMixIn, Operations):
             error_and_exit("no S3 connection")
         try:
             self.s3_bucket = self.s3.get_bucket(self.s3_bucket_name, headers=self.default_headers)
-        except boto.exception.S3ResponseError:
-            error_and_exit("S3 bucket not found")
+        except boto.exception.S3ResponseError, e:
+            error_and_exit("S3 bucket not found:" + str(e))
 
         pattern = re.compile('[\W_]+') # Alphanumeric characters only, to be used for pattern.sub('', s)
 
@@ -728,6 +738,8 @@ class YAS3FS(LoggingMixIn, Operations):
                     error_and_exit("With and SNS topic either the SQS queue name or the hostname and port to listen to SNS HTTP notifications must be provided")
 
         if self.sqs_queue_name or self.new_queue:
+            self.queue = None
+
             if not self.sns_topic_arn:
                 error_and_exit("The SNS topic must be provided when an SQS queue is used")
             if not self.aws_region in (r.name for r in boto.sqs.regions()):
@@ -736,11 +748,21 @@ class YAS3FS(LoggingMixIn, Operations):
             if not self.sqs:
                 error_and_exit("no SQS connection")
             if self.new_queue:
+                hostname_array = [] 
+                if self.new_queue_with_hostname:
+                    import socket
+                    hostname = socket.gethostname()
+                    # trims to the left side only
+                    hostname = re.sub(r'[^A-Za-z0-9\-].*', '', hostname)
+                    # removes dashes and other chars
+                    hostname = re.sub(r'[^A-Za-z0-9]', '', hostname)
+                    hostname_array = [hostname]
+
                 self.sqs_queue_name = '-'.join([ 'yas3fs',
                                                pattern.sub('', self.s3_bucket_name),
-                                               pattern.sub('', self.s3_prefix),
-                                               self.unique_id ])
-                self.queue = None
+                                               pattern.sub('', self.s3_prefix)]
+                                               + hostname_array
+                                               + [self.unique_id])
             else:
                 self.queue =  self.sqs.lookup(self.sqs_queue_name)
             if not self.queue:
@@ -764,7 +786,31 @@ class YAS3FS(LoggingMixIn, Operations):
         if self.multipart_retries < 1:
             error_and_exit("The number of retries for multipart uploads cannot be less than 1")
 
+
+        self.plugin = None
+        if (options.with_plugin_file):
+            self.plugin = YAS3FSPlugin.load_from_file(self, options.with_plugin_file, options.with_plugin_class)
+        elif (options.with_plugin_class):
+            self.plugin = YAS3FSPlugin.load_from_class(self, options.with_plugin_class)
+
+        if self.plugin:
+            self.plugin.logger = logger
+
         signal.signal(signal.SIGINT, self.handler)
+
+    # faking the funk, get a better wrapper model later
+    def withplugin(fn):
+        def fn_wrapper(*arg, **karg):
+            self = arg[0]
+            if self.plugin == None:
+                return fn(*arg, **karg)
+
+            try:
+                handlerFn = getattr(self.plugin, fn.__name__)
+                return handlerFn(fn).__call__(*arg, **karg)
+            except:
+                return fn(*arg, **karg)
+        return fn_wrapper
 
     def check_threads(self, first=False):
         logger.debug("check_threads '%s'" % first)
@@ -996,8 +1042,8 @@ class YAS3FS(LoggingMixIn, Operations):
                     logger.info("S3 prefix: '%s'" % self.s3_prefix)
                     try:
                         self.s3_bucket = self.s3.get_bucket(self.s3_bucket_name, headers=self.default_headers)
-                    except boto.exception.S3ResponseError:
-                        error_and_exit("S3 bucket not found")
+                    except boto.exception.S3ResponseError, e:
+                        error_and_exit("S3 bucket not found:" + str(e))
             elif c[1] == 'cache':
                 if c[2] == 'entries' and c[3] > 0:
                     self.cache_entries = int(c[3])
@@ -1746,6 +1792,7 @@ class YAS3FS(LoggingMixIn, Operations):
            except Queue.Empty:
                pass
 
+    @withplugin
     def do_on_s3(self, key, pub, cmds):
         if self.s3_num == 0:
             self.do_on_s3_now(key, pub, cmds)
@@ -1754,59 +1801,77 @@ class YAS3FS(LoggingMixIn, Operations):
             self.s3_queue[i].put((key, pub, cmds))
         pass
 
+    @withplugin
+    def do_cmd_on_s3_now(self, key, pub, action, args, kargs):
+        logger.debug("do_cmd_on_s3_now action '%s' key '%s' args '%s' kargs '%s'" % (action, key, args, kargs))
+
+        try:
+            if action == 'delete':
+                path = pub[1]
+                key.delete()
+                self.cache.dec(path, 'deleted')
+            elif action == 'copy':
+                key.copy(*args, **kargs)
+            elif action == 'set_contents_from_string':
+                key.set_contents_from_string(*args,**kargs)
+            elif action == 'set_contents_from_file':
+                data = args[0] # First argument must be data
+                key.set_contents_from_file(data.get_content(),**kargs)
+                etag = key.etag[1:-1]
+                with data.get_lock():
+                    data.update_etag(etag)
+                    data.delete('change')
+                pub.append(etag)
+            elif action == 'multipart_upload':
+                data = args[1] # Second argument must be data
+                complete = self.multipart_upload(*args)
+                etag = complete.etag[1:-1]
+                self.cache.delete(data.path, 'key')
+                with data.get_lock():
+                    data.update_etag(etag)
+                    data.delete('change')
+                pub.append(etag)
+            else:
+                logger.error("do_cmd_on_s3_now Unknown action '%s'" % action)
+                # SHOULD THROW EXCEPTION...
+
+        except Exception, e:
+            logger.exception(e)
+            raise e
+
+        logger.debug("do_cmd_on_s3_now action '%s' key '%s' args '%s' kargs '%s' done" % (action, key, args, kargs))
+        return pub
+
+
+    @withplugin
+    def do_cmd_on_s3_now_w_retries(self, key, pub, action, args, kargs, retries = 1):
+        last_exception = None
+        for tries in range(1, retries +1):
+            try:
+                logger.debug("do_cmd_on_s3_now_w_retries try %s action '%s' key '%s' args '%s' kargs '%s'" % (tries, action, key, args, kargs))
+                return self.do_cmd_on_s3_now(key, pub, action, args, kargs)
+            except Exception, e:
+                last_exception = e
+
+        logger.error("do_cmd_on_s3_now_w_retries FAILED '%s' key '%s' args '%s' kargs '%s'" % (action, key, args, kargs))
+
+        raise last_exception
+
+    @withplugin
     def do_on_s3_now(self, key, pub, cmds):
         for c in cmds:
             action = c[0]
+            args = None
+            kargs = None
+
             if len(c) > 1:
                 args = c[1]
-                if len(c) > 2:
-                    kargs = c[2]
-                else:
-                    kargs = None
-            else:
-                args = None
-                kargs = None
+            if len(c) > 2:
+                kargs = c[2]
 
-            logger.debug("do_on_s3_now action '%s' key '%s' args '%s' kargs '%s'" % (action, key, args, kargs))
-
-            for retry in range(self.s3_retries):
-                try:
-                    if action == 'delete':
-                        path = pub[1]
-                        key.delete()
-                        self.cache.dec(path, 'deleted')
-                    elif action == 'copy':
-                        key.copy(*args, **kargs)
-                    elif action == 'set_contents_from_string':
-                        key.set_contents_from_string(*args,**kargs)
-                    elif action == 'set_contents_from_file':
-                        data = args[0] # First argument must be data
-                        key.set_contents_from_file(data.get_content(),**kargs)
-                        etag = key.etag[1:-1]
-                        with data.get_lock():
-                            data.update_etag(etag)
-                            data.delete('change')
-                        pub.append(etag)
-                    elif action == 'multipart_upload':
-                        data = args[1] # Second argument must be data
-                        complete = self.multipart_upload(*args)
-                        etag = complete.etag[1:-1]
-                        self.cache.delete(data.path, 'key')
-                        with data.get_lock():
-                            data.update_etag(etag)
-                            data.delete('change')
-                        pub.append(etag)
-                    else:
-                        logger.error("do_on_s3_now Unknown action '%s'" % action)
-                    break
-                except Exception as e:
-                    logger.exception(e)
-                    time.sleep(1.0) # Better wait 1 second before retrying 
-                    logger.info("do_on_s3_now action '%s' key '%s' args '%s' kargs '%s' retry %i" % (action, key, args, kargs, retry))
-
-            logger.debug("do_on_s3_now action '%s' key '%s' args '%s' kargs '%s' done" % (action, key, args, kargs))
-
-            self.publish(pub)
+            pub = self.do_cmd_on_s3_now_w_retries(key, pub, action, args, kargs, self.s3_retries)
+            if pub:
+                self.publish(pub)
 
     def readlink(self, path):
         logger.debug("readlink '%s'" % (path))
@@ -2176,6 +2241,7 @@ class YAS3FS(LoggingMixIn, Operations):
     	    headers.update(crypto_headers)
     	
         headers.update(self.default_headers)
+
         if self.multipart_num > 0:
             full_size = attr['st_size']
             if full_size > self.multipart_size:
@@ -2419,6 +2485,48 @@ class TracebackLoggingThread(threading.Thread):
             logger.exception("Uncaught Exception in Thread")
             raise
 
+class CompressedRotatingFileHandler(logging.handlers.RotatingFileHandler):
+    """ compress old files 
+    from http://roadtodistributed.blogspot.com/2011/04/compressed-rotatingfilehandler-for.html
+    """
+    def __init__(self, filename, mode='a', maxBytes=0, backupCount=0, encoding=None, delay=0):
+        logging.handlers.RotatingFileHandler.__init__(self, filename, mode, maxBytes, backupCount, encoding, delay)
+
+    def doRollover(self):
+        self.stream.close()
+        if self.backupCount > 0:
+            for i in range(self.backupCount - 1, 0, -1):
+                sfn = "%s.%d.gz" % (self.baseFilename, i)
+                dfn = "%s.%d.gz" % (self.baseFilename, i + 1)
+                if os.path.exists(sfn):
+                    #print "%s -> %s" % (sfn, dfn)
+                    if os.path.exists(dfn):
+                        os.remove(dfn)
+                    os.rename(sfn, dfn)
+            dfn = self.baseFilename + ".1.gz"
+            if os.path.exists(dfn):
+                os.remove(dfn)
+            import gzip
+            try:
+                f_in = open(self.baseFilename, 'rb')
+                f_out = gzip.open(dfn, 'wb')
+                f_out.writelines(f_in)
+            except:
+                if not os.path.exists(dfn):
+                    if os.path.exists(self.baseFilename):
+                        os.rename(self.baseFilename, dfn)
+            finally:
+                if "f_out" in dir() and f_out is not None:
+                    f_out.close()
+                if "f_in" in dir() and f_in is not None:
+                    f_in.close()
+            if os.path.exists(self.baseFilename):
+                os.remove(self.baseFilename)
+            #os.rename(self.baseFilename, dfn)
+            #print "%s -> %s" % (self.baseFilename, dfn)
+        self.mode = 'w'
+        self.stream = self._open()
+
 ### Utility functions
 
 def error_and_exit(error, exitCode=1):
@@ -2512,6 +2620,9 @@ AWS_DEFAULT_REGION environment variable can be used to set the default AWS regio
     parser.add_argument('--new-queue', action='store_true',
                         help='create a new SQS queue that is deleted on unmount to listen to SNS notifications, ' +
                         'overrides --queue, queue name is BUCKET-PATH-ID with alphanumeric characters only')
+    parser.add_argument('--new-queue-with-hostname', action='store_true',
+                        help='create a new SQS queue with hostname in queuename, ' +
+                        'overrides --queue, queue name is BUCKET-PATH-ID with alphanumeric characters only')
     parser.add_argument('--queue', metavar='NAME',
                         help='SQS queue name to listen to SNS notifications, a new queue is created if it doesn\'t exist')
     parser.add_argument('--queue-wait', metavar='N', type=int, default=20,
@@ -2534,7 +2645,7 @@ AWS_DEFAULT_REGION environment variable can be used to set the default AWS regio
     parser.add_argument('--cache-path', metavar='PATH', default='',
                         help='local path to use for disk cache (default is /tmp/yas3fs/BUCKET/PATH)')
     parser.add_argument('--recheck-s3', action='store_true',
-                        help='"Cache ENOENT rechecks S3 for new file/directory')
+                        help='Cached ENOENT (error no entry) rechecks S3 for new file/directory')
     parser.add_argument('--cache-on-disk', metavar='N', type=int, default=0,
                         help='use disk (instead of memory) cache for files greater than the given size in bytes ' +
                         '(default is %(default)s bytes)')
@@ -2583,8 +2694,22 @@ AWS_DEFAULT_REGION environment variable can be used to set the default AWS regio
                         help='default expiration for signed URL via xattrs (in seconds, default is 30 days)')
     parser.add_argument('--requester-pays', action='store_true',
                         help='requester pays for S3 interactions, the bucket must have Requester Pays enabled')
+
+    parser.add_argument('--with-plugin-file', metavar='FILE',
+                        help="YAS3FSPlugin file")
+    parser.add_argument('--with-plugin-class', metavar='CLASS',
+                        help="YAS3FSPlugin class, if this is not set it will take the first child of YAS3FSPlugin from exception handler file")
+
+
     parser.add_argument('-l', '--log', metavar='FILE',
                         help='filename for logs')
+    parser.add_argument('--log-mb-size', metavar='N', type=int, default=100,
+                        help='max size of log file')
+    parser.add_argument('--log-backup-count', metavar='N', type=int, default=10,
+                        help='number of backups log files')
+    parser.add_argument('--log-backup-gzip', action='store_true',
+                        help='flag to gzip backup files')
+
     parser.add_argument('-f', '--foreground', action='store_true',
                         help='run in foreground')
     parser.add_argument('-d', '--debug', action='store_true',
@@ -2597,7 +2722,12 @@ AWS_DEFAULT_REGION environment variable can be used to set the default AWS regio
     logger = logging.getLogger('yas3fs')
     formatter = logging.Formatter('%(asctime)s %(levelname)s %(message)s')
     if options.log: # Rotate log files at 100MB size
-        logHandler = logging.handlers.RotatingFileHandler(options.log, maxBytes=100*1024*1024, backupCount=10)
+        log_size =  options.log_mb_size *1024*1024
+        if options.log_backup_gzip:
+            logHandler = CompressedRotatingFileHandler(options.log, maxBytes=log_size, backupCount=options.log_backup_count)
+        else:
+            logHandler = logging.handlers.RotatingFileHandler(options.log, maxBytes=log_size, backupCount=options.log_backup_count)
+
         logHandler.setFormatter(formatter)
         logger.addHandler(logHandler)
     if options.foreground or not options.log:
