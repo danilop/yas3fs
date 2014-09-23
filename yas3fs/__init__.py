@@ -1014,7 +1014,7 @@ class YAS3FS(LoggingMixIn, Operations):
                 self.delete_cache(c[2])
                 self.delete_cache(c[3])
             elif c[1] == 'upload':
-                if c[2] != None:
+                if c[2] != None and len(c) == 4: # fix for https://github.com/danilop/yas3fs/issues/42
                     self.invalidate_cache(c[2], c[3])
                 else: # Invalidate all the cached data
                     for path in self.cache.entries.keys():
