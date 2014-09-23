@@ -218,6 +218,7 @@ To unmount the file system on a Mac you can use `umount`.
                            default is 32)
       --download-num N     number of parallel downloads (default is 4)
       --prefetch-num N     number of parallel prefetching downloads (default is 2)
+      --st-blksize N       st_blksize to return to getattr() callers in bytes, optional
       --buffer-size N      download buffer size in KB (0 to disable buffering,
                            default is 10240 KB)
       --buffer-prefetch N  number of buffers to prefetch (default is 0)
