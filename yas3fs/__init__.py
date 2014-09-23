@@ -758,13 +758,20 @@ class YAS3FS(LoggingMixIn, Operations):
 
                 self.sqs_queue_name = '-'.join([ 'yas3fs',
                                                pattern.sub('', self.s3_bucket_name),
-                                               pattern.sub('', self.s3_prefix)]
-                                               + hostname_array
-                                               + [self.unique_id])
+                                               pattern.sub('', self.s3_prefix),
+                                               hostname,
+                                               self.unique_id])
+                self.sqs_queue_name = self.sqs_queue_name[:80]  # fix for https://github.com/danilop/yas3fs/issues/40
+                self.sqs_queue_name = re.sub(r'-+', '-', self.sqs_queue_name)
+                logger.info("Attempting to create SQS queue: " + self.sqs_queue_name)
+
             else:
                 self.queue =  self.sqs.lookup(self.sqs_queue_name)
             if not self.queue:
-                self.queue = self.sqs.create_queue(self.sqs_queue_name)
+                try:
+                    self.queue = self.sqs.create_queue(self.sqs_queue_name)
+                except boto.exception.SQSError, sqsErr:
+                    error_and_exit("Unexpected error creating SQS queue:" + str(sqsErr))
             logger.info("SQS queue name (new): '%s'" % self.sqs_queue_name)
             self.queue.set_message_class(boto.sqs.message.RawMessage) # There is a bug with the default Message class in boto
 
