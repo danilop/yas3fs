@@ -638,6 +638,10 @@ class YAS3FS(LoggingMixIn, Operations):
 
         self.aws_managed_encryption = options.aws_managed_encryption
         logger.info("AWS Managed Encryption enabled: %s" % self.aws_managed_encryption)
+        
+        if options.st_blksize:
+            self.st_blksize = options.st_blksize
+            logger.info("getattr() st_blksize: '%i'" % self.st_blksize)
 
         if options.use_ec2_hostname:
             instance_metadata = boto.utils.get_instance_metadata() # Very slow (to fail) outside of EC2
@@ -1445,6 +1449,10 @@ class YAS3FS(LoggingMixIn, Operations):
             if attr['st_size'] == 0 and stat.S_ISDIR(attr['st_mode']):
                 attr['st_size'] = 4096 # For compatibility...
             attr['st_nlink'] = 1 # Something better TODO ???
+            
+            if self.st_blksize:
+            	attr['st_blksize'] = self.st_blksize
+            
             if self.full_prefetch: # Prefetch
                 if stat.S_ISDIR(attr['st_mode']):
                     self.readdir(path)
@@ -2662,6 +2670,8 @@ AWS_DEFAULT_REGION environment variable can be used to set the default AWS regio
                         help='number of parallel downloads (default is %(default)s)')
     parser.add_argument('--prefetch-num', metavar='N', type=int, default=2,
                         help='number of parallel prefetching downloads (default is %(default)s)')
+    parser.add_argument('--st-blksize', metavar='N', type=int, default=None,
+                        help='st_blksize to return to getattr() callers in bytes, optional')
     parser.add_argument('--buffer-size', metavar='N', type=int, default=10240,
                         help='download buffer size in KB (0 to disable buffering, default is %(default)s KB)')
     parser.add_argument('--buffer-prefetch', metavar='N', type=int, default=0,
