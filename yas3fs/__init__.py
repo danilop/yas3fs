@@ -657,7 +657,16 @@ class YAS3FS(LoggingMixIn, Operations):
         self.s3_num = options.s3_num
         logger.info("Number of parallel S3 threads (0 to disable writeback): '%i'" % self.s3_num)
         self.download_num = options.download_num
-        logger.info("Number of parallel donwloading threads: '%i'" % self.download_num)
+        logger.info("Number of parallel downloading threads: '%i'" % self.download_num)
+        
+        
+        # for https://github.com/danilop/yas3fs/issues/46
+        self.download_retries_num = options.download_retries_num
+        logger.info("Number download retry attempts: '%i'" % self.download_retries_num)
+        self.download_retries_sleep = options.download_retries_sleep
+        logger.info("Download retry sleep time seconds: '%i'" % self.download_retries_sleep)
+        
+        
         self.prefetch_num = options.prefetch_num
         logger.info("Number of parallel prefetching threads: '%i'" % self.prefetch_num)
         self.buffer_size = options.buffer_size * 1024 # To convert KB to bytes
@@ -751,6 +760,7 @@ class YAS3FS(LoggingMixIn, Operations):
                 error_and_exit("no SQS connection")
             if self.new_queue:
                 hostname_array = [] 
+                hostname = ''
                 if self.new_queue_with_hostname:
                     import socket
                     hostname = socket.gethostname()
@@ -1732,8 +1742,11 @@ class YAS3FS(LoggingMixIn, Operations):
         range_headers.update(self.default_headers) ### Should I check self.requester_pays first?
 
         retry = True
+        # for https://github.com/danilop/yas3fs/issues/46
+        retriesAttempted = 0
         while retry:
-            logger.debug("download_data range '%s' '%s' [thread '%s']" % (path, range_headers, thread_name))
+            retriesAttempted += 1
+            logger.debug("download_data range '%s' '%s' [thread '%s'] max: %i sleep: %i retries: %i" % (path, range_headers, thread_name, self.download_retries_num, self.download_retries_sleep, retriesAttempted))
             try:
                 if debug:
                     n1=dt.datetime.now()
@@ -1744,10 +1757,15 @@ class YAS3FS(LoggingMixIn, Operations):
                 if debug:
                     n2=dt.datetime.now()
                 retry = False
+                
+                # for https://github.com/danilop/yas3fs/issues/46
+                if retriesAttempted > self.download_retries_num: 
+                	retry = False
+                	
             except Exception as e:
                 logger.exception(e)
-                logger.info("download_data error '%s' %i-%i [thread '%s'] -> retrying" % (path, start, end, thread_name))
-                time.sleep(1.0) # Better wait 1 second before retrying
+                logger.info("download_data error '%s' %i-%i [thread '%s'] -> retrying max: %i sleep: %i retries: %i" % (path, start, end, thread_name, self.download_retries_num, self.download_retries_sleep, retriesAttempted))
+                time.sleep(self.download_retries_sleep) # for https://github.com/danilop/yas3fs/issues/46
                 key = copy.copy(self.get_key(path)) # Do I need this to overcome error "caching" ???
 
         if debug:
@@ -2590,8 +2608,8 @@ def get_uid_gid():
 def thread_is_not_alive(t):
     return t == None or not t.is_alive()
 
-def custom_sys_excepthook(type, value, traceback):
-    logger.exception("Uncaught Exception")
+def custom_sys_excepthook(type, value, tb):
+    logger.exception("Uncaught Exception: " + str(type) + " " + str(value) + " " + str(traceback))
 
 ### Main
 
@@ -2668,6 +2686,10 @@ AWS_DEFAULT_REGION environment variable can be used to set the default AWS regio
                         help='number of parallel S3 calls (0 to disable writeback, default is %(default)s)')
     parser.add_argument('--download-num', metavar='N', type=int, default=4,
                         help='number of parallel downloads (default is %(default)s)')
+    parser.add_argument('--download-retries-num', metavar='N', type=int, default=60,
+                        help='max number of retries when downloading (default is %(default)s)')
+    parser.add_argument('--download-retries-sleep', metavar='N', type=int, default=1,
+                        help='how long to sleep in seconds between download retries (default is %(default)s seconds)')
     parser.add_argument('--prefetch-num', metavar='N', type=int, default=2,
                         help='number of parallel prefetching downloads (default is %(default)s)')
     parser.add_argument('--st-blksize', metavar='N', type=int, default=None,
@@ -2800,5 +2822,4 @@ AWS_DEFAULT_REGION environment variable can be used to set the default AWS regio
     fuse = FUSE(YAS3FS(options), **mount_options)
 
 if __name__ == '__main__':
-
-    main()
+ 	main()
