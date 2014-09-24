@@ -640,6 +640,10 @@ class YAS3FS(LoggingMixIn, Operations):
 
         self.aws_managed_encryption = options.aws_managed_encryption
         logger.info("AWS Managed Encryption enabled: %s" % self.aws_managed_encryption)
+        
+        if options.st_blksize:
+            self.st_blksize = options.st_blksize
+            logger.info("getattr() st_blksize: '%i'" % self.st_blksize)
 
         if options.use_ec2_hostname:
             instance_metadata = boto.utils.get_instance_metadata() # Very slow (to fail) outside of EC2
@@ -760,13 +764,20 @@ class YAS3FS(LoggingMixIn, Operations):
 
                 self.sqs_queue_name = '-'.join([ 'yas3fs',
                                                pattern.sub('', self.s3_bucket_name),
-                                               pattern.sub('', self.s3_prefix)]
-                                               + hostname_array
-                                               + [self.unique_id])
+                                               pattern.sub('', self.s3_prefix),
+                                               hostname,
+                                               self.unique_id])
+                self.sqs_queue_name = self.sqs_queue_name[:80]  # fix for https://github.com/danilop/yas3fs/issues/40
+                self.sqs_queue_name = re.sub(r'-+', '-', self.sqs_queue_name)
+                logger.info("Attempting to create SQS queue: " + self.sqs_queue_name)
+
             else:
                 self.queue =  self.sqs.lookup(self.sqs_queue_name)
             if not self.queue:
-                self.queue = self.sqs.create_queue(self.sqs_queue_name)
+                try:
+                    self.queue = self.sqs.create_queue(self.sqs_queue_name)
+                except boto.exception.SQSError, sqsErr:
+                    error_and_exit("Unexpected error creating SQS queue:" + str(sqsErr))
             logger.info("SQS queue name (new): '%s'" % self.sqs_queue_name)
             self.queue.set_message_class(boto.sqs.message.RawMessage) # There is a bug with the default Message class in boto
 
@@ -1016,7 +1027,7 @@ class YAS3FS(LoggingMixIn, Operations):
                 self.delete_cache(c[2])
                 self.delete_cache(c[3])
             elif c[1] == 'upload':
-                if c[2] != None:
+                if c[2] != None and len(c) == 4: # fix for https://github.com/danilop/yas3fs/issues/42
                     self.invalidate_cache(c[2], c[3])
                 else: # Invalidate all the cached data
                     for path in self.cache.entries.keys():
@@ -1415,7 +1426,7 @@ class YAS3FS(LoggingMixIn, Operations):
                         else:
                             ### key.copy(key.bucket.name, key.name, key.metadata, preserve_acl=False)
                             cmds = [ [ 'copy', [ key.bucket.name, key.name, key.metadata ],
-                                       { 'preserve_acl': False } ] ]
+                                       { 'preserve_acl': False, 'encrypt_key':self.aws_managed_encryption } ] ]
                             self.do_on_s3(key, pub, cmds)
                         ###self.publish(['md', metadata_name, path])
                     
@@ -1440,6 +1451,10 @@ class YAS3FS(LoggingMixIn, Operations):
             if attr['st_size'] == 0 and stat.S_ISDIR(attr['st_mode']):
                 attr['st_size'] = 4096 # For compatibility...
             attr['st_nlink'] = 1 # Something better TODO ???
+            
+            if self.st_blksize:
+            	attr['st_blksize'] = self.st_blksize
+            
             if self.full_prefetch: # Prefetch
                 if stat.S_ISDIR(attr['st_mode']):
                     self.readdir(path)
@@ -2033,7 +2048,7 @@ class YAS3FS(LoggingMixIn, Operations):
             target += '/'
         pub = [ 'rename', source_path, target_path ]
         cmds = [ [ 'copy', [ key.bucket.name, target, key.metadata ],
-                   { 'preserve_acl': False } ],
+                   { 'preserve_acl': False , 'encrypt_key':self.aws_managed_encryption } ],
                  [ 'delete', [], { 'headers': self.default_headers } ] ]
         self.do_on_s3(key, pub, cmds)
         ###key.delete()
@@ -2657,6 +2672,8 @@ AWS_DEFAULT_REGION environment variable can be used to set the default AWS regio
                         help='number of parallel downloads (default is %(default)s)')
     parser.add_argument('--prefetch-num', metavar='N', type=int, default=2,
                         help='number of parallel prefetching downloads (default is %(default)s)')
+    parser.add_argument('--st-blksize', metavar='N', type=int, default=None,
+                        help='st_blksize to return to getattr() callers in bytes, optional')
     parser.add_argument('--buffer-size', metavar='N', type=int, default=10240,
                         help='download buffer size in KB (0 to disable buffering, default is %(default)s KB)')
     parser.add_argument('--buffer-prefetch', metavar='N', type=int, default=0,
