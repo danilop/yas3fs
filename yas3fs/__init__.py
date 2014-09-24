@@ -1746,6 +1746,11 @@ class YAS3FS(LoggingMixIn, Operations):
         retriesAttempted = 0
         while retry:
             retriesAttempted += 1
+            
+            # for https://github.com/danilop/yas3fs/issues/46
+            if retriesAttempted > self.download_retries_num:
+                retry = False
+            
             logger.debug("download_data range '%s' '%s' [thread '%s'] max: %i sleep: %i retries: %i" % (path, range_headers, thread_name, self.download_retries_num, self.download_retries_sleep, retriesAttempted))
             try:
                 if debug:
@@ -1757,10 +1762,6 @@ class YAS3FS(LoggingMixIn, Operations):
                 if debug:
                     n2=dt.datetime.now()
                 retry = False
-                
-                # for https://github.com/danilop/yas3fs/issues/46
-                if retriesAttempted > self.download_retries_num: 
-                	retry = False
                 	
             except Exception as e:
                 logger.exception(e)
@@ -2609,7 +2610,7 @@ def thread_is_not_alive(t):
     return t == None or not t.is_alive()
 
 def custom_sys_excepthook(type, value, tb):
-    logger.exception("Uncaught Exception: " + str(type) + " " + str(value) + " " + str(tb))
+    logger.exception("Uncaught Exception: " + str(type) + " " + str(value) + " " + str(traceback))
 
 ### Main
 
