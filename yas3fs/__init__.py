@@ -2609,7 +2609,7 @@ def thread_is_not_alive(t):
     return t == None or not t.is_alive()
 
 def custom_sys_excepthook(type, value, tb):
-    logger.exception("Uncaught Exception: " + str(type) + " " + str(value) + " " + str(traceback))
+    logger.exception("Uncaught Exception: " + str(type) + " " + str(value) + " " + str(tb))
 
 ### Main
 
