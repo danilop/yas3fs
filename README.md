@@ -143,10 +143,12 @@ To unmount the file system on a Mac you can use `umount`.
                   [--hostname HOSTNAME] [--use-ec2-hostname] [--port N]
                   [--cache-entries N] [--cache-mem-size N] [--cache-disk-size N]
                   [--cache-path PATH] [--recheck-s3] [--cache-on-disk N] [--cache-check N]
-                  [--s3-num N] [--download-num N] [--prefetch-num N]
+                  [--s3-num N] [--download-num N] [--prefetch-num N] [--st-blksize N]
                   [--buffer-size N] [--buffer-prefetch N] [--no-metadata]
                   [--prefetch] [--mp-size N] [--mp-num N] [--mp-retries N]
-                  [--aws-managed-encryption]
+                  [--aws-managed-encryption] 
+                  [--download-retries-num N] [--download-retries-sleep N]
+                  [--read-retries-num N] [--read-retries-sleep N]
                   [--id ID] [--mkdir] [--uid N] [--gid N] [--umask MASK]
                   [--read-only] [--expiration N] [--requester-pays]
                   [--with-plugin-file FILE] [--with-plugin-class CLASS]
@@ -217,6 +219,10 @@ To unmount the file system on a Mac you can use `umount`.
       --s3-num N           number of parallel S3 calls (0 to disable writeback,
                            default is 32)
       --download-num N     number of parallel downloads (default is 4)
+      --download-retries-num N max number of retries when downloading (default is 60)
+      --download-retries-sleep N how long to sleep in seconds between download retries (default is 1)
+      --read-retries-num N max number of retries when read() is invoked (default is 10)
+      --read-retries-sleep N how long to sleep in seconds between read() retries (default is 1)
       --prefetch-num N     number of parallel prefetching downloads (default is 2)
       --st-blksize N       st_blksize to return to getattr() callers in bytes, optional
       --buffer-size N      download buffer size in KB (0 to disable buffering,
