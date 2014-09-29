@@ -666,6 +666,11 @@ class YAS3FS(LoggingMixIn, Operations):
         self.download_retries_sleep = options.download_retries_sleep
         logger.info("Download retry sleep time seconds: '%i'" % self.download_retries_sleep)
         
+        self.read_retries_num = options.read_retries_num
+        logger.info("Number read retry attempts: '%i'" % self.read_retries_num)
+        self.read_retries_sleep = options.read_retries_sleep
+        logger.info("Read retry sleep time seconds: '%i'" % self.read_retries_sleep)
+        
         
         self.prefetch_num = options.prefetch_num
         logger.info("Number of parallel prefetching threads: '%i'" % self.prefetch_num)
@@ -2163,7 +2168,19 @@ class YAS3FS(LoggingMixIn, Operations):
         if not self.cache.has(path) or self.cache.is_empty(path):
             logger.debug("read '%s' '%i' '%i' '%s' ENOENT" % (path, length, offset, fh))
             raise FuseOSError(errno.ENOENT)
-        while True:
+
+        retry = True
+        # for https://github.com/danilop/yas3fs/issues/46
+        retriesAttempted = 0
+        while retry:
+            retriesAttempted += 1
+            
+            # for https://github.com/danilop/yas3fs/issues/46
+            if retriesAttempted > self.read_retries_num:
+            	logger.error("read '%s' '%i' '%i' '%s' max read retries exceeded max: %i sleep: %i retries: %i, returning empty string ''" % (path, length, offset, fh, self.read_retries_num, self.read_retries_sleep, retriesAttempted))
+                retry = False
+                return ''
+            
             data = self.cache.get(path, 'data')
             if not data:
                 logger.debug("read '%s' '%i' '%i' '%s' no data" % (path, length, offset, fh))  
@@ -2172,7 +2189,8 @@ class YAS3FS(LoggingMixIn, Operations):
             if data_range == None:
                 logger.debug("read '%s' '%i' '%i' '%s' no range" % (path, length, offset, fh))
                 break
-	    attr = self.get_metadata(path, 'attr')
+                
+	        attr = self.get_metadata(path, 'attr')
             file_size = attr['st_size']
             end_interval = min(offset + length, file_size) - 1
             if offset > end_interval:
@@ -2192,8 +2210,12 @@ class YAS3FS(LoggingMixIn, Operations):
                 logger.debug("read '%s' '%i' '%i' '%s' in range" % (path, length, offset, fh))                
                 break
             else:
+                # Note added max retries as this can go on forever... for https://github.com/danilop/yas3fs/issues/46
                 logger.debug("read '%s' '%i' '%i' '%s' out of range" % (path, length, offset, fh))
                 self.enqueue_download_data(path, offset, length)
+                time.sleep(self.read_retries_sleep)
+                
+                
             logger.debug("read wait '%s' '%i' '%i' '%s'" % (path, length, offset, fh))
             data_range.wait()
             logger.debug("read awake '%s' '%i' '%i' '%s'" % (path, length, offset, fh))
@@ -2691,6 +2713,10 @@ AWS_DEFAULT_REGION environment variable can be used to set the default AWS regio
                         help='max number of retries when downloading (default is %(default)s)')
     parser.add_argument('--download-retries-sleep', metavar='N', type=int, default=1,
                         help='how long to sleep in seconds between download retries (default is %(default)s seconds)')
+    parser.add_argument('--read-retries-num', metavar='N', type=int, default=10,
+                        help='max number of retries when read() is invoked (default is %(default)s)')
+    parser.add_argument('--read-retries-sleep', metavar='N', type=int, default=1,
+                        help='how long to sleep in seconds between read() retries (default is %(default)s seconds)')
     parser.add_argument('--prefetch-num', metavar='N', type=int, default=2,
                         help='number of parallel prefetching downloads (default is %(default)s)')
     parser.add_argument('--st-blksize', metavar='N', type=int, default=None,
