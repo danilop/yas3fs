@@ -219,6 +219,8 @@ To unmount the file system on a Mac you can use `umount`.
       --download-num N     number of parallel downloads (default is 4)
       --download-retries-num N max number of retries when downloading (default is 60)
       --download-retries-sleep N how long to sleep in seconds between download retries (default is 1)
+      --read-retries-num N max number of retries when read() is invoked (default is 10)
+      --read-retries-sleep N how long to sleep in seconds between read() retries (default is 1)
       --prefetch-num N     number of parallel prefetching downloads (default is 2)
       --st-blksize N       st_blksize to return to getattr() callers in bytes, optional
       --buffer-size N      download buffer size in KB (0 to disable buffering,
