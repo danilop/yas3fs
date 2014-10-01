@@ -639,6 +639,7 @@ class YAS3FS(LoggingMixIn, Operations):
         self.aws_managed_encryption = options.aws_managed_encryption
         logger.info("AWS Managed Encryption enabled: %s" % self.aws_managed_encryption)
         
+        self.st_blksize = None
         if options.st_blksize:
             self.st_blksize = options.st_blksize
             logger.info("getattr() st_blksize: '%i'" % self.st_blksize)
