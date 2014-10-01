@@ -2193,7 +2193,7 @@ class YAS3FS(LoggingMixIn, Operations):
                 logger.debug("read '%s' '%i' '%i' '%s' no range" % (path, length, offset, fh))
                 break
                 
-	        attr = self.get_metadata(path, 'attr')
+            attr = self.get_metadata(path, 'attr')
             file_size = attr['st_size']
             end_interval = min(offset + length, file_size) - 1
             if offset > end_interval:
