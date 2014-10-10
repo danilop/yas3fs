@@ -406,6 +406,10 @@ To the previous message all yas3fs instances will answer publishing a message on
 
     [ "id", "status", hostname, number of entries in cache, cache memory size,
       cache disk size, download queue length, prefetch queue length, S3 queue length ]
+      
+### Loading files into S3
+
+Have to load a massive amount of files into an S3 bucket that you intend to front though yas3fs? Check out [s3-bucket-loader](https://github.com/bitsofinfo/s3-bucket-loader) for massively parrallel imports to S3.
 
 ### Testing
 
