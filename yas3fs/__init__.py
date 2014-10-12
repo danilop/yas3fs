@@ -307,6 +307,13 @@ class FSData():
                 if data_range:
                     logger.debug('wake after range delete')
                     data_range.wake(False) # To make downloading threads go on... and then exit
+                    
+                # for https://github.com/danilop/yas3fs/issues/52
+                if prop == 'change' and 'invoke_after_change' in self.props:
+                    logger.debug('FSData.props[change] removed, now executing invoke_after_change lambda for: ' + self.path)
+                    self.get('invoke_after_change')(self.path)
+                    del self.props['invoke_after_change'] # cLeanup
+                    
     def rename(self, new_path):
         with self.get_lock():
             if self.store == 'disk':
@@ -1445,6 +1452,13 @@ class YAS3FS(LoggingMixIn, Operations):
                                        { 'preserve_acl': False, 'encrypt_key':self.aws_managed_encryption } ] ]
                             self.do_on_s3(key, pub, cmds)
                         ###self.publish(['md', metadata_name, path])
+                        
+            # handle a request to set metadata, but we can't right now because the node is currently
+            # in the middle of a 'change' https://github.com/danilop/yas3fs/issues/52
+            elif self.write_metadata and data and data.has('change'):
+                if metadata_name == 'attr' and metadata_values == None:
+                    logger.debug("set_metadata: 'change' already in progress, setting FSData.props[invoke_after_change] lambda for self.set_metadata("+path+",attr)")
+                    data.set('invoke_after_change',(lambda path: self.set_metadata(path,'attr')))
                     
     def getattr(self, path, fh=None):
         logger.debug("getattr -> '%s' '%s'" % (path, fh))
