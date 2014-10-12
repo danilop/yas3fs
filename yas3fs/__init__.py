@@ -2194,6 +2194,7 @@ class YAS3FS(LoggingMixIn, Operations):
             if retriesAttempted > self.read_retries_num:
             	logger.error("read '%s' '%i' '%i' '%s' max read retries exceeded max: %i sleep: %i retries: %i, raising FuseOSError(errno.EIO) ''" % (path, length, offset, fh, self.read_retries_num, self.read_retries_sleep, retriesAttempted))
                 retry = False
+                self.invalidate_cache(path)
                 raise FuseOSError(errno.EIO)
             
             data = self.cache.get(path, 'data')
