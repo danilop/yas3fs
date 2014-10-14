@@ -1936,26 +1936,28 @@ class YAS3FS(LoggingMixIn, Operations):
                 if not self.check_data(path):
                     logger.debug("readlink '%s' ENOENT" % (path))
                     raise FuseOSError(errno.ENOENT)
-                data = self.cache.get(path, 'data')
-                if data == None:
-                    logger.error("readlink '%s' no data ENOENT" % (path))
-                    raise FuseOSError(errno.ENOENT) # ??? That should not happen
+
+            data = self.cache.get(path, 'data')
+            if data == None:
+                logger.error("readlink '%s' no data ENOENT" % (path))
+                raise FuseOSError(errno.ENOENT) # ??? That should not happen
+
+        data_range = data.get('range')
+        if data_range:
+            self.enqueue_download_data(path)
+            # self.download_data(path)
+            while True:
+                logger.debug("readlink wait '%s'" % (path))
+                data_range.wait()
+                logger.debug("readlink awake '%s'" % (path))
                 data_range = data.get('range')
-                if data_range:
-                    self.enqueue_download_data(path)
-                    while True:
-                        logger.debug("readlink wait '%s'" % (path))
-                        data_range.wait()
-                        logger.debug("readlink awake '%s'" % (path))
-                        data_range = data.get('range')
-                        if not data_range:
-                            break
-                data.open()
-                link = data.get_content_as_string()
-                data.close()
-                return link
-            logger.debug("readlink '%s' EINVAL" % (path))
-            raise FuseOSError(errno.EINVAL)
+                if not data_range:
+                    break
+        data.open()
+        link = data.get_content_as_string()
+        data.close()
+        return link
+
  
     def rmdir(self, path):
         logger.debug("rmdir '%s'" % (path))
