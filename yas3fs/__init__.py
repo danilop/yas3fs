@@ -7,6 +7,7 @@ caching data locally and using SNS to notify
 other nodes for changes that need cache invalidation.
 """
 
+import urllib
 import argparse
 import errno  
 import stat  
@@ -1276,7 +1277,8 @@ class YAS3FS(LoggingMixIn, Operations):
     def folder_has_contents(self, path, num=1):
         logger.debug("folder_has_contents '%s' %i" % (path, num))
         full_path = self.join_prefix(path + '/')
-        key_list = self.s3_bucket.list(full_path, '/', headers = self.default_headers)
+        # encoding for https://github.com/danilop/yas3fs/issues/56
+        key_list = self.s3_bucket.list(full_path.encode('utf-8'), '/', headers = self.default_headers)
         return self.has_elements(key_list, num)
 
 
@@ -1304,11 +1306,13 @@ class YAS3FS(LoggingMixIn, Operations):
                     look_on_S3 = False
         if look_on_S3:
             logger.debug("get_key from S3 #1 '%s'" % (path))
-            key = self.s3_bucket.get_key(self.join_prefix(path), headers=self.default_headers)
+            # encoding for https://github.com/danilop/yas3fs/issues/56
+            key = self.s3_bucket.get_key(self.join_prefix(path).encode('utf-8'), headers=self.default_headers)
             if not key and path != '/':
                 full_path = path + '/'
                 logger.debug("get_key from S3 #2 '%s' '%s'" % (path, full_path))
-                key = self.s3_bucket.get_key(self.join_prefix(full_path), headers=self.default_headers)
+                # encoding for https://github.com/danilop/yas3fs/issues/56
+                key = self.s3_bucket.get_key(self.join_prefix(full_path).encode('utf-8'), headers=self.default_headers)
             if key:
                 logger.debug("get_key to cache '%s'" % (path))
                 ###self.cache.delete(path) ### ???
@@ -1410,7 +1414,7 @@ class YAS3FS(LoggingMixIn, Operations):
                     if path != '/' or self.write_metadata:
                         full_path = path + '/'
                         key = Key(self.s3_bucket)
-                        key.key = self.join_prefix(full_path)
+                        key.key = self.join_prefix(full_path).encode('utf-8')
                         new_key = True
                 if key:
                     if metadata_name:
@@ -1507,9 +1511,14 @@ class YAS3FS(LoggingMixIn, Operations):
                 elif full_path != '' and full_path[-1] != '/':
                     full_path += '/'
                 logger.debug("readdir '%s' '%s' S3 list '%s'" % (path, fh, full_path))
-                key_list = self.s3_bucket.list(full_path, '/', headers = self.default_headers)
+                # encoding for https://github.com/danilop/yas3fs/issues/56
+                key_list = self.s3_bucket.list(full_path.encode('utf-8'), '/', headers = self.default_headers, encoding_type='url')
                 dirs = ['.', '..']
                 for k in key_list:
+                    
+                    # 'unquoting' for https://github.com/danilop/yas3fs/issues/56
+                    k.name = urllib.unquote_plus(str(k.name)).decode('utf-8') 
+                    
                     logger.debug("readdir '%s' '%s' S3 list key '%s'" % (path, fh, k))
                     d = k.name[len(full_path):]
                     if len(d) > 0:
@@ -1521,6 +1530,13 @@ class YAS3FS(LoggingMixIn, Operations):
                         if self.cache.has(d_path, 'deleted'):
                             continue
                         dirs.append(d)
+
+                # for https://github.com/danilop/yas3fs/issues/56
+                convertedDirs = []
+                for dir in dirs:
+                    convertedDirs.append(unicode(dir))
+                dirs = convertedDirs
+                
                 self.cache.set(path, 'readdir', dirs)
 
             logger.debug("readdir '%s' '%s' '%s'" % (path, fh, dirs))
@@ -2349,7 +2365,8 @@ class YAS3FS(LoggingMixIn, Operations):
         logger.debug("initiate_multipart_upload '%s' '%s'" % (key_path, headers))
         num_threads = min(part_num, self.multipart_num)
         logger.debug("multipart_upload '%s' num_threads '%s'" % (key_path, num_threads))
-        mpu = self.s3_bucket.initiate_multipart_upload(key_path, headers=headers, metadata=metadata)
+        # encoding for https://github.com/danilop/yas3fs/issues/56
+        mpu = self.s3_bucket.initiate_multipart_upload(key_path.encode('utf-8'), headers=headers, metadata=metadata)
         for i in range(num_threads): 
             t = TracebackLoggingThread(target=self.part_upload, args=(mpu, part_queue))
             t.demon = True
