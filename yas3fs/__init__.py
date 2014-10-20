@@ -1632,7 +1632,7 @@ class YAS3FS(LoggingMixIn, Operations):
             data.open()
             self.write(path, link, 0)
             data.close()
-            k.key = self.join_prefix(path)
+            k.key = self.join_prefix(path).encode('utf-8')
             self.cache.set(path, 'key', k)
             self.add_to_parent_readdir(path)
             logger.debug("symlink '%s' '%s' '%s' S3" % (path, link, k))
@@ -2306,7 +2306,7 @@ class YAS3FS(LoggingMixIn, Operations):
         k = self.get_key(path)
         if not k: # New key
             k = Key(self.s3_bucket)
-            k.key = self.join_prefix(path)
+            k.key = self.join_prefix(path).encode('utf-8')
             self.cache.set(path, 'key', k)
         now = get_current_time()
         attr = self.get_metadata(path, 'attr', k)
