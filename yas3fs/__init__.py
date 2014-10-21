@@ -2660,6 +2660,9 @@ def error_and_exit(error, exitCode=1):
 def create_dirs(dirname):
     logger.debug("create_dirs '%s'" % dirname)
     try:
+        if not isinstance(dirname,str):
+            dirname = dirname.encode('utf-8')
+            
         os.makedirs(dirname)
         logger.debug("create_dirs '%s' done" % dirname)
     except OSError as exc: # Python >2.5                                                                 
@@ -2668,6 +2671,10 @@ def create_dirs(dirname):
             pass
         else:
             raise
+            
+    except Exception as exc: # Python >2.5
+        logger.debug("create_dirs '%s' ERROR %s" % (dirname, exc))
+        raise
 
 def remove_empty_dirs(dirname):
     logger.debug("remove_empty_dirs '%s'" % (dirname))
