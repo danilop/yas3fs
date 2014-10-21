@@ -51,6 +51,25 @@ from boto.s3.key import Key
 from fuse import FUSE, FuseOSError, Operations, LoggingMixIn, fuse_get_context
 from _version import __version__
 
+class UTF8DecodingKey(boto.s3.key.Key):
+    def __init__(self, key_or_bucket=None, name=None):
+        if isinstance(key_or_bucket, boto.s3.key.Key):
+            # this is a key,
+            self.__dict__.update(key_or_bucket.__dict__)
+            self.name = name
+        else:
+            # this is a bucket
+            super(UTF8DecodingKey, self).__init__(key_or_bucket,name)
+
+
+    def __str__(self):
+        if self.name is None:
+            return 'None'
+        if isinstance(self.name, str):
+            return self.name.decode('utf8', 'replace')
+            
+        return self.name
+
 class Interval():
     """ Simple integer interval arthmetic."""
     def __init__(self):
@@ -357,9 +376,9 @@ class FSCache():
     def get_memory_usage(self):
         return [ len(self.entries) ] + [ self.size[store] for store in FSData.stores ]
     def get_cache_filename(self, path):
-        return self.cache_path + '/files' + path # path begins with '/'
+        return self.cache_path + '/files' + path.encode('utf-8') # path begins with '/'
     def get_cache_etags_filename(self, path):
-        return self.cache_path + '/etags' + path # path begins with '/'
+        return self.cache_path + '/etags' + path.encode('utf-8') # path begins with '/'
     def get_lock(self, path):
         with self.lock: # Global cache lock, used only for giving file-level locks
             try:
@@ -736,6 +755,7 @@ class YAS3FS(LoggingMixIn, Operations):
             error_and_exit("no S3 connection")
         try:
             self.s3_bucket = self.s3.get_bucket(self.s3_bucket_name, headers=self.default_headers)
+            self.s3_bucket.key_class = UTF8DecodingKey
         except boto.exception.S3ResponseError, e:
             error_and_exit("S3 bucket not found:" + str(e))
 
@@ -1075,6 +1095,7 @@ class YAS3FS(LoggingMixIn, Operations):
                     logger.info("S3 prefix: '%s'" % self.s3_prefix)
                     try:
                         self.s3_bucket = self.s3.get_bucket(self.s3_bucket_name, headers=self.default_headers)
+                        self.s3_bucket.key_class = UTF8DecodingKey
                     except boto.exception.S3ResponseError, e:
                         error_and_exit("S3 bucket not found:" + str(e))
             elif c[1] == 'cache':
@@ -1314,6 +1335,8 @@ class YAS3FS(LoggingMixIn, Operations):
                 # encoding for https://github.com/danilop/yas3fs/issues/56
                 key = self.s3_bucket.get_key(self.join_prefix(full_path).encode('utf-8'), headers=self.default_headers)
             if key:
+                key = UTF8DecodingKey(key)
+                key.name = key.name.decode('utf-8')
                 logger.debug("get_key to cache '%s'" % (path))
                 ###self.cache.delete(path) ### ???
                 ###self.cache.add(path)
@@ -1413,8 +1436,8 @@ class YAS3FS(LoggingMixIn, Operations):
                 if not key and self.folder_has_contents(path):
                     if path != '/' or self.write_metadata:
                         full_path = path + '/'
-                        key = Key(self.s3_bucket)
-                        key.key = self.join_prefix(full_path).encode('utf-8')
+                        key = UTF8DecodingKey(self.s3_bucket)
+                        key.key = self.join_prefix(full_path)
                         new_key = True
                 if key:
                     if metadata_name:
@@ -1443,14 +1466,19 @@ class YAS3FS(LoggingMixIn, Operations):
                             headers.update(self.default_headers)
                             
                             if self.aws_managed_encryption:
-            			crypto_headers = { 'x-amz-server-side-encryption' : 'AES256' }
-            			headers.update(crypto_headers)
+            			        crypto_headers = { 'x-amz-server-side-encryption' : 'AES256' }
+            			        headers.update(crypto_headers)
                             
                             cmds = [ [ 'set_contents_from_string', [ '' ], { 'headers': headers } ] ]
                             self.do_on_s3(key, pub, cmds)
                         else:
                             ### key.copy(key.bucket.name, key.name, key.metadata, preserve_acl=False)
-                            cmds = [ [ 'copy', [ key.bucket.name, key.name, key.metadata ],
+                            if isinstance(key.name,str):
+                                 key_name = key.name.decode('utf-8')
+                            else:
+                                 key_name = key.name
+                                 
+                            cmds = [ [ 'copy', [ key.bucket.name, key_name, key.metadata ],
                                        { 'preserve_acl': False, 'encrypt_key':self.aws_managed_encryption } ] ]
                             self.do_on_s3(key, pub, cmds)
                         ###self.publish(['md', metadata_name, path])
@@ -1567,7 +1595,7 @@ class YAS3FS(LoggingMixIn, Operations):
             data = FSData(self.cache, 'mem', path)
             self.cache.set(path, 'data', data)
             data.set('change', True)
-            k = Key(self.s3_bucket)
+            k = UTF8DecodingKey(self.s3_bucket)
             self.set_metadata(path, 'attr', attr, k)
             self.set_metadata(path, 'xattr', {}, k)
             self.cache.set(path, 'key', k)
@@ -1626,13 +1654,13 @@ class YAS3FS(LoggingMixIn, Operations):
                 data = FSData(self.cache, 'disk', path)
             self.cache.set(path, 'data', data)
             data.set('change', True)
-            k = Key(self.s3_bucket)
+            k = UTF8DecodingKey(self.s3_bucket)
             self.set_metadata(path, 'attr', attr, k)
             self.set_metadata(path, 'xattr', {}, k)
             data.open()
             self.write(path, link, 0)
             data.close()
-            k.key = self.join_prefix(path).encode('utf-8')
+            k.key = self.join_prefix(path)
             self.cache.set(path, 'key', k)
             self.add_to_parent_readdir(path)
             logger.debug("symlink '%s' '%s' '%s' S3" % (path, link, k))
@@ -1972,7 +2000,7 @@ class YAS3FS(LoggingMixIn, Operations):
         data.open()
         link = data.get_content_as_string()
         data.close()
-        return link
+        return link.decode('utf-8')
 
  
     def rmdir(self, path):
@@ -2102,7 +2130,13 @@ class YAS3FS(LoggingMixIn, Operations):
         if dir:
             target += '/'
         pub = [ 'rename', source_path, target_path ]
-        cmds = [ [ 'copy', [ key.bucket.name, target, key.metadata ],
+        
+        if isinstance(target,str):
+            target_for_cmd = target.decode('utf-8')
+        else:
+            target_for_cmd = target
+        
+        cmds = [ [ 'copy', [ key.bucket.name, target_for_cmd, key.metadata ],
                    { 'preserve_acl': False , 'encrypt_key':self.aws_managed_encryption } ],
                  [ 'delete', [], { 'headers': self.default_headers } ] ]
         self.do_on_s3(key, pub, cmds)
@@ -2268,7 +2302,7 @@ class YAS3FS(LoggingMixIn, Operations):
             raise FuseOSError(errno.ENOENT)
         if isinstance(new_data, unicode): # Fix for unicode
             logger.debug("write '%s' '%i' '%i' '%s' unicode fix" % (path, len(new_data), offset, fh))
-            new_data = str(new_data)
+            new_data = str(new_data.encode('utf-8'))
 	length = len(new_data)
 
         data = self.cache.get(path, 'data')
@@ -2286,7 +2320,7 @@ class YAS3FS(LoggingMixIn, Operations):
             if not data.content:
                 logger.info("write awake '%s' '%i' '%i' '%s' no content" % (path, len(new_data), offset, fh))            
                 return 0
-            logger.debug("write '%s' '%i' '%i' '%s' '%s' content" % (path, len(new_data), offset, fh, data.content))
+            logger.debug("write '%s' '%i' '%i' '%s' '%s' content" % (path, len(new_data), offset, fh, data.content.name.decode('utf-8')))
             data.content.seek(offset)
             data.content.write(new_data)
             data.set('change', True)
@@ -2305,8 +2339,8 @@ class YAS3FS(LoggingMixIn, Operations):
         logger.debug("upload_to_s3 '%s'" % path)
         k = self.get_key(path)
         if not k: # New key
-            k = Key(self.s3_bucket)
-            k.key = self.join_prefix(path).encode('utf-8')
+            k = UTF8DecodingKey(self.s3_bucket)
+            k.key = self.join_prefix(path)
             self.cache.set(path, 'key', k)
         now = get_current_time()
         attr = self.get_metadata(path, 'attr', k)
@@ -2648,12 +2682,12 @@ def remove_empty_dirs(dirname):
 
 def create_dirs_for_file(filename):
     logger.debug("create_dirs_for_file '%s'" % filename)
-    dirname = os.path.dirname(filename)
+    dirname = os.path.dirname(filename.decode('utf-8'))
     create_dirs(dirname)
 
 def remove_empty_dirs_for_file(filename):
     logger.debug("remove_empty_dirs_for_file '%s'" % filename)
-    dirname = os.path.dirname(filename)
+    dirname = os.path.dirname(filename.decode('utf-8'))
     remove_empty_dirs(dirname)
 
 def get_current_time():
