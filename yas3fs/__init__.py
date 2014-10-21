@@ -56,7 +56,8 @@ class UTF8DecodingKey(boto.s3.key.Key):
         if isinstance(key_or_bucket, boto.s3.key.Key):
             # this is a key,
             self.__dict__.update(key_or_bucket.__dict__)
-            self.name = name
+            if name is not None:
+                self.name = name
         else:
             # this is a bucket
             super(UTF8DecodingKey, self).__init__(key_or_bucket,name)
