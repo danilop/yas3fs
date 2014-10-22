@@ -615,7 +615,13 @@ class YAS3FS(LoggingMixIn, Operations):
         ### self.http_listen_path_length = 30
         self.running = True
         self.check_status_interval = 5.0 # Seconds, no need to configure that
-        self.s3_retries = 3 # Maximum number of S3 retries (outside of boto)
+        
+        self.s3_retries = options.s3_retries # Maximum number of S3 retries (outside of boto)
+        logger.info("s3-retries: '%i'" % self.s3_retries)
+        
+        self.s3_retries_sleep = options.s3_retries_sleep # retry sleep in seconds
+        logger.info("s3-retries-sleep: '%i' seconds" % self.s3_retries_sleep)
+        
         self.yas3fs_xattrs = [ 'yas3fs.bucket', 'yas3fs.key', 'yas3fs.URL', 'yas3fs.signedURL',
                                'yas3fs.expiration' ]
 
@@ -1944,6 +1950,8 @@ class YAS3FS(LoggingMixIn, Operations):
     def do_cmd_on_s3_now_w_retries(self, key, pub, action, args, kargs, retries = 1):
         last_exception = None
         for tries in range(1, retries +1):
+            if tries > 1:
+                time.sleep(this.s3_retries_sleep) # Better wait N seconds before retrying
             try:
                 logger.debug("do_cmd_on_s3_now_w_retries try %s action '%s' key '%s' args '%s' kargs '%s'" % (tries, action, key, args, kargs))
                 return self.do_cmd_on_s3_now(key, pub, action, args, kargs)
@@ -2414,7 +2422,7 @@ class YAS3FS(LoggingMixIn, Operations):
             logger.debug("multipart_upload ok '%s' '%s' '%s'" % (key_path, data, headers))
             new_key = mpu.complete_upload()
         else:
-            logger.debug("multipart_upload cancel '%s' '%s' '%s' '%i' != '%i'" % (key_path, data, headers, mpu.get_all_parts(), part_num))
+            logger.debug("multipart_upload cancel '%s' '%s' '%s' '%i' != '%i'" % (key_path, data, headers, len(mpu.get_all_parts()), part_num))
             mpu.cancel_upload()
             new_key = None
         return new_key
@@ -2434,7 +2442,7 @@ class YAS3FS(LoggingMixIn, Operations):
                         logger.exception(e)
                         logger.info("error during multipart upload part %i retry %i: %s"
                                     % (num, retry, sys.exc_info()[0]))
-                        time.sleep(1.0) # Better wait 1 second before retrying  
+                        time.sleep(this.s3_retries_sleep) # Better wait N seconds before retrying  
                 logger.debug("end upload of part %i retry %i" % (num, retry))
                 part_queue.task_done()
         except Queue.Empty:
@@ -2784,6 +2792,14 @@ AWS_DEFAULT_REGION environment variable can be used to set the default AWS regio
                         help='interval between cache size checks in seconds (default is %(default)s seconds)')
     parser.add_argument('--s3-num', metavar='N', type=int, default=32,
                         help='number of parallel S3 calls (0 to disable writeback, default is %(default)s)')
+    
+    parser.add_argument('--s3-retries', metavar='N', type=int, default=3,
+                        help='number of of times to retry any s3 write operation (default is %(default)s)')
+         
+    parser.add_argument('--s3-retries-sleep', metavar='N', type=int, default=1,
+                        help='retry sleep in seconds between s3 write operations (default is %(default)s)')
+               
+                        
     parser.add_argument('--download-num', metavar='N', type=int, default=4,
                         help='number of parallel downloads (default is %(default)s)')
     parser.add_argument('--download-retries-num', metavar='N', type=int, default=60,
