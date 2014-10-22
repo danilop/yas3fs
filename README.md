@@ -146,6 +146,7 @@ To unmount the file system on a Mac you can use `umount`.
                   [--s3-num N] [--download-num N] [--prefetch-num N] [--st-blksize N]
                   [--buffer-size N] [--buffer-prefetch N] [--no-metadata]
                   [--prefetch] [--mp-size N] [--mp-num N] [--mp-retries N]
+                  [--s3-retries N] [--s3-retries-sleep N]
                   [--aws-managed-encryption] 
                   [--download-retries-num N] [--download-retries-sleep N]
                   [--read-retries-num N] [--read-retries-sleep N]
@@ -218,6 +219,8 @@ To unmount the file system on a Mac you can use `umount`.
                            is 5 seconds)
       --s3-num N           number of parallel S3 calls (0 to disable writeback,
                            default is 32)
+      --s3-retries N       number of retries for s3 write operations (default 3)
+      --s3-retries-sleep N  number of seconds between retries for s3 write operations (default 1)
       --download-num N     number of parallel downloads (default is 4)
       --download-retries-num N max number of retries when downloading (default is 60)
       --download-retries-sleep N how long to sleep in seconds between download retries (default is 1)
