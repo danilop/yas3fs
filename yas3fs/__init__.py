@@ -1951,7 +1951,7 @@ class YAS3FS(LoggingMixIn, Operations):
         last_exception = None
         for tries in range(1, retries +1):
             if tries > 1:
-                time.sleep(this.s3_retries_sleep) # Better wait N seconds before retrying
+                time.sleep(self.s3_retries_sleep) # Better wait N seconds before retrying
             try:
                 logger.debug("do_cmd_on_s3_now_w_retries try %s action '%s' key '%s' args '%s' kargs '%s'" % (tries, action, key, args, kargs))
                 return self.do_cmd_on_s3_now(key, pub, action, args, kargs)
@@ -2442,7 +2442,7 @@ class YAS3FS(LoggingMixIn, Operations):
                         logger.exception(e)
                         logger.info("error during multipart upload part %i retry %i: %s"
                                     % (num, retry, sys.exc_info()[0]))
-                        time.sleep(this.s3_retries_sleep) # Better wait N seconds before retrying  
+                        time.sleep(self.s3_retries_sleep) # Better wait N seconds before retrying  
                 logger.debug("end upload of part %i retry %i" % (num, retry))
                 part_queue.task_done()
         except Queue.Empty:
