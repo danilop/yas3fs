@@ -600,8 +600,7 @@ class PartOfFSData():
     def tell(self):
         return self.pos
     def read(self, n=-1):
-       logger.debug("read '%i' '%s' at '%i' starting from '%i' for '%i'"
-                     % (n, self.content, self.pos, self.start, self.length))
+       logger.debug("read '%i' '%s' at '%i' starting from '%i' for '%i'" % (n, self.content, self.pos, self.start, self.length))
 
         if n >= 0:
             n = min([n, self.length - self.pos])
@@ -609,8 +608,7 @@ class PartOfFSData():
             s = self.content.read(n)
 
             if len(s) != n:
-                logger.critical("read length not-equal! '%i' '%s' at '%i' starting from '%i' for '%i'  length of return ['%s] "
-                     % (n, self.content, self.pos, self.start, self.length, len(s)))
+                logger.critical("read length not-equal! '%i' '%s' at '%i' starting from '%i' for '%i'  length of return ['%s] " % (n, self.content, self.pos, self.start, self.length, len(s)))
 
             self.pos += len(s)
             return s
