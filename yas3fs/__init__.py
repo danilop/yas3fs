@@ -583,23 +583,35 @@ class PartOfFSData():
         self.start = start
         self.length = length
         self.pos = 0
+
+        self.init_start = start
+        self.init_length = length
+        self.init_pos = 0
+
     def seek(self, offset, whence=0):
-        logger.debug("seek '%i' '%i'" % (offset, whence))
+        logger.debug("seek '%s' '%i' '%i' " % (self.content, offset, whence))
         if whence == 0:
             self.pos = offset
         elif whence == 1:
             self.pos = self.pos + offset
         elif whence == 2:
             self.pos = self.length + offset
+        
     def tell(self):
         return self.pos
     def read(self, n=-1):
-        logger.debug("read '%i' '%s' at '%i' starting from '%i' for '%i'"
+       logger.debug("read '%i' '%s' at '%i' starting from '%i' for '%i'"
                      % (n, self.content, self.pos, self.start, self.length))
+
         if n >= 0:
             n = min([n, self.length - self.pos])
             self.content.seek(self.start + self.pos)
             s = self.content.read(n)
+
+            if len(s) != n:
+                logger.critical("read length not-equal! '%i' '%s' at '%i' starting from '%i' for '%i'  length of return ['%s] "
+                     % (n, self.content, self.pos, self.start, self.length, len(s)))
+
             self.pos += len(s)
             return s
         else:
@@ -614,6 +626,7 @@ class YAS3FS(LoggingMixIn, Operations):
         # Some constants
         ### self.http_listen_path_length = 30
         self.running = True
+       
         self.check_status_interval = 5.0 # Seconds, no need to configure that
         
         self.s3_retries = options.s3_retries # Maximum number of S3 retries (outside of boto)
@@ -624,6 +637,8 @@ class YAS3FS(LoggingMixIn, Operations):
         
         self.yas3fs_xattrs = [ 'yas3fs.bucket', 'yas3fs.key', 'yas3fs.URL', 'yas3fs.signedURL',
                                'yas3fs.expiration' ]
+
+        self.multipart_uploads_in_progress = 0
 
         # Initialization
         global debug
@@ -1171,6 +1186,8 @@ class YAS3FS(LoggingMixIn, Operations):
             logger.info("entries, mem_size, disk_size, download_queue, prefetch_queue, s3_queue: %i, %i, %i, %i, %i, %i"
                         % (num_entries, mem_size, disk_size,
                            self.download_queue.qsize(), self.prefetch_queue.qsize(), s3q))
+                           
+            logger.info("multipart_uploads_in_progress = " + str(self.multipart_uploads_in_progress))
 
             if debug:
                 logger.debug("new_locks, unused_locks: %i, %i"
@@ -1926,8 +1943,18 @@ class YAS3FS(LoggingMixIn, Operations):
                     data.delete('change')
                 pub.append(etag)
             elif action == 'multipart_upload':
+
                 data = args[1] # Second argument must be data
+                full_size = args[2] # Third argument must be full_size
                 complete = self.multipart_upload(*args)
+
+                uploaded_key = self.s3_bucket.get_key(key.name.encode('utf-8'), headers=self.default_headers)
+
+                logger.debug("Multipart-upload Key Sizes '%s' local: %i remote: %i" %(key, full_size, uploaded_key.size))
+                if full_size != uploaded_key.size:
+                     logger.error("Multipart-upload Key Sizes do not match for '%s' local: %i remote: %i" %(key, full_size, uploaded_key.size))
+                     raise Exception("Multipart-upload KEY SIZES DO NOT MATCH")
+
                 etag = complete.etag[1:-1]
                 self.cache.delete(data.path, 'key')
                 with data.get_lock():
@@ -2373,6 +2400,7 @@ class YAS3FS(LoggingMixIn, Operations):
     	
         headers.update(self.default_headers)
 
+        logger.debug("multipart test: key '%s' mp-num '%s' st_size '%s' mp-size '%s'" %(path, self.multipart_num, attr['st_size'], self.multipart_size))
         if self.multipart_num > 0:
             full_size = attr['st_size']
             if full_size > self.multipart_size:
@@ -2388,7 +2416,7 @@ class YAS3FS(LoggingMixIn, Operations):
         logger.debug("upload_to_s3 '%s' done" % path)
 
     def multipart_upload(self, key_path, data, full_size, headers, metadata):
-    	
+
         logger.debug("multipart_upload '%s' '%s' '%s' '%s'" % (key_path, data, full_size, headers))
         part_num = 0
         part_pos = 0
@@ -2408,8 +2436,12 @@ class YAS3FS(LoggingMixIn, Operations):
         logger.debug("initiate_multipart_upload '%s' '%s'" % (key_path, headers))
         num_threads = min(part_num, self.multipart_num)
         logger.debug("multipart_upload '%s' num_threads '%s'" % (key_path, num_threads))
+        
         # encoding for https://github.com/danilop/yas3fs/issues/56
         mpu = self.s3_bucket.initiate_multipart_upload(key_path.encode('utf-8'), headers=headers, metadata=metadata)
+        
+        self.multipart_uploads_in_progress += 1
+        
         for i in range(num_threads): 
             t = TracebackLoggingThread(target=self.part_upload, args=(mpu, part_queue))
             t.demon = True
@@ -2421,10 +2453,12 @@ class YAS3FS(LoggingMixIn, Operations):
         if len(mpu.get_all_parts()) == part_num:
             logger.debug("multipart_upload ok '%s' '%s' '%s'" % (key_path, data, headers))
             new_key = mpu.complete_upload()
+            self.multipart_uploads_in_progress -= 1
         else:
             logger.debug("multipart_upload cancel '%s' '%s' '%s' '%i' != '%i'" % (key_path, data, headers, len(mpu.get_all_parts()), part_num))
             mpu.cancel_upload()
             new_key = None
+            self.multipart_uploads_in_progress -= 1
         return new_key
 
     def part_upload(self, mpu, part_queue):
@@ -2434,16 +2468,23 @@ class YAS3FS(LoggingMixIn, Operations):
                 logger.debug("trying to get a part from the queue")
                 [ num, part ] = part_queue.get(False)
                 for retry in range(self.multipart_retries):
-                    logger.debug("begin upload of part %i retry %i" % (num, retry))
+                    logger.debug("begin upload of part %i retry %i part__ %s" % (num, retry, str(part.__dict__)))
                     try:
                         mpu.upload_part_from_file(fp=part, part_num=num)
                         break
                     except Exception as e:
+
+                        # reset to initial position, before next retry
+                        # this force fixes an issue where the position
+                        # is off after an uncaught low-level connection
+                        # exception is thrown 
+                        part.pos = 0
+
                         logger.exception(e)
-                        logger.info("error during multipart upload part %i retry %i: %s"
-                                    % (num, retry, sys.exc_info()[0]))
+                        logger.info("error during multipart upload part %i retry %i part__ %s : %s"
+                                    % (num, retry, str(part.__dict__), sys.exc_info()[0]))
                         time.sleep(self.s3_retries_sleep) # Better wait N seconds before retrying  
-                logger.debug("end upload of part %i retry %i" % (num, retry))
+                logger.debug("end upload of part %i retry %i part__ %s" % (num, retry, str(part.__dict__)))
                 part_queue.task_done()
         except Queue.Empty:
             logger.debug("the queue is empty")
