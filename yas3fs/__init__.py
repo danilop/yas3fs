@@ -8,8 +8,8 @@ other nodes for changes that need cache invalidation.
 """
 
 import argparse
-import errno  
-import stat  
+import errno
+import stat
 import time
 import os
 import os.path
@@ -35,7 +35,7 @@ import datetime as dt
 import gc # For debug only
 
 import boto
-import boto.s3        
+import boto.s3
 import boto.sns
 import boto.sqs
 import boto.utils
@@ -45,7 +45,7 @@ from YAS3FSPlugin import YAS3FSPlugin
 
 from sys import exit
 
-from boto.s3.key import Key 
+from boto.s3.key import Key
 
 from fuse import FUSE, FuseOSError, Operations, LoggingMixIn, fuse_get_context
 from _version import __version__
@@ -245,7 +245,7 @@ class FSData():
             with self.get_lock():
                 return self.content.getvalue()
         elif self.store == 'disk':
-            with self.get_lock():                
+            with self.get_lock():
                 self.content.seek(0) # Go to the beginning
                 return self.content.read()
         else:
@@ -307,13 +307,13 @@ class FSData():
                 if data_range:
                     logger.debug('wake after range delete')
                     data_range.wake(False) # To make downloading threads go on... and then exit
-                    
+
                 # for https://github.com/danilop/yas3fs/issues/52
                 if prop == 'change' and 'invoke_after_change' in self.props:
                     logger.debug('FSData.props[change] removed, now executing invoke_after_change lambda for: ' + self.path)
                     self.get('invoke_after_change')(self.path)
                     del self.props['invoke_after_change'] # cLeanup
-                    
+
     def rename(self, new_path):
         with self.get_lock():
             if self.store == 'disk':
@@ -462,7 +462,7 @@ class FSCache():
         if self.has(path) and not self.has(path, 'attr'):
             return True
         else:
-            return False 
+            return False
         ###try:
         ###    return len(self.get(path)) <= 1 # Empty or just with 'lock'
         ###except TypeError: # if get returns None
@@ -471,12 +471,12 @@ class FSCache():
         if self.has(path) and self.has(path, 'attr'):
             return True
         else:
-            return False 
+            return False
         ###try:
         ###    return len(self.get(path)) > 1 # More than just 'lock'
         ###except TypeError: # if get returns None
         ###    return False
- 
+
 class SNS_HTTPServer(BaseHTTPServer.HTTPServer):
     """ HTTP Server to receive SNS notifications via HTTP """
     def set_fs(self, fs):
@@ -647,7 +647,7 @@ class YAS3FS(LoggingMixIn, Operations):
 
         self.aws_managed_encryption = options.aws_managed_encryption
         logger.info("AWS Managed Encryption enabled: %s" % self.aws_managed_encryption)
-        
+
         self.st_blksize = None
         if options.st_blksize:
             self.st_blksize = options.st_blksize
@@ -668,20 +668,20 @@ class YAS3FS(LoggingMixIn, Operations):
         logger.info("Number of parallel S3 threads (0 to disable writeback): '%i'" % self.s3_num)
         self.download_num = options.download_num
         logger.info("Number of parallel downloading threads: '%i'" % self.download_num)
-        
-        
+
+
         # for https://github.com/danilop/yas3fs/issues/46
         self.download_retries_num = options.download_retries_num
         logger.info("Number download retry attempts: '%i'" % self.download_retries_num)
         self.download_retries_sleep = options.download_retries_sleep
         logger.info("Download retry sleep time seconds: '%i'" % self.download_retries_sleep)
-        
+
         self.read_retries_num = options.read_retries_num
         logger.info("Number read retry attempts: '%i'" % self.read_retries_num)
         self.read_retries_sleep = options.read_retries_sleep
         logger.info("Read retry sleep time seconds: '%i'" % self.read_retries_sleep)
-        
-        
+
+
         self.prefetch_num = options.prefetch_num
         logger.info("Number of parallel prefetching threads: '%i'" % self.prefetch_num)
         self.buffer_size = options.buffer_size * 1024 # To convert KB to bytes
@@ -702,7 +702,7 @@ class YAS3FS(LoggingMixIn, Operations):
         logger.info("Default expiration for signed URLs via xattrs: '%s'" % str(self.default_expiration))
         self.requester_pays = options.requester_pays
         logger.info("S3 Request Payer: '%s'" % str(self.requester_pays))
-        
+
         if self.requester_pays:
             self.default_headers = { 'x-amz-request-payer' : 'requester' }
         else:
@@ -748,7 +748,7 @@ class YAS3FS(LoggingMixIn, Operations):
         unique_id_list.append(str(uuid.uuid4()))
         self.unique_id = '-'.join(unique_id_list)
         logger.info("Unique node ID: '%s'" % self.unique_id)
-                
+
         if self.sns_topic_arn:
             if not self.aws_region in (r.name for r in boto.sns.regions()):
                 error_and_exit("wrong AWS region '%s' for SNS" % self.aws_region)
@@ -774,7 +774,7 @@ class YAS3FS(LoggingMixIn, Operations):
             if not self.sqs:
                 error_and_exit("no SQS connection")
             if self.new_queue:
-                hostname_array = [] 
+                hostname_array = []
                 hostname = ''
                 if self.new_queue_with_hostname:
                     import socket
@@ -806,7 +806,7 @@ class YAS3FS(LoggingMixIn, Operations):
 
         if self.hostname or self.sns_http_port:
             if not self.sns_topic_arn:
-                error_and_exit("The SNS topic must be provided when the hostname/port to listen to SNS HTTP notifications is given")            
+                error_and_exit("The SNS topic must be provided when the hostname/port to listen to SNS HTTP notifications is given")
 
         if self.sns_http_port:
             if not self.hostname:
@@ -914,7 +914,7 @@ class YAS3FS(LoggingMixIn, Operations):
         self.prefetch_threads = {}
         for i in range(self.prefetch_num):
             self.prefetch_threads[i] = None
-       
+
         self.publish_thread = None
         self.queue_listen_thread = None
         self.http_listen_thread = None
@@ -947,7 +947,7 @@ class YAS3FS(LoggingMixIn, Operations):
                 data = self.cache.get(path, 'data')
                 if data and data.has('change'):
                     self.upload_to_s3(path, data)
- 
+
     def destroy(self, path):
         logger.debug("destroy '%s'" % (path))
         # Cleanup for unmount
@@ -958,7 +958,7 @@ class YAS3FS(LoggingMixIn, Operations):
         if self.http_listen_thread:
             self.httpd.shutdown() # To stop HTTP listen thread
             logger.info("waiting for HTTP listen thread to shutdown...")
-            self.http_listen_thread.join(5.0) # 5 seconds should be enough   
+            self.http_listen_thread.join(5.0) # 5 seconds should be enough
             logger.info("HTTP listen thread ended")
             self.sns.unsubscribe(self.http_subscription)
             logger.info("Unsubscribed SNS HTTP endpoint")
@@ -988,7 +988,7 @@ class YAS3FS(LoggingMixIn, Operations):
             logger.info("waiting for check cache thread to shutdown...")
             self.check_cache_thread.join(self.cache_check_interval + 1.0)
         logger.info('File system unmounted.')
-        
+
     def listen_for_messages_over_http(self):
         logger.info("Listening on: '%s'" % self.http_listen_url)
         server_class = SNS_HTTPServer
@@ -1060,9 +1060,14 @@ class YAS3FS(LoggingMixIn, Operations):
                     self.cache.delete(c[3], 'key')
                     self.cache.delete(c[3], c[2])
             elif c[1] == 'reset':
-                with self.cache.lock:
-                    self.flush_all_cache()
-                    self.cache.reset_all() # Completely reset the cache
+                if len(c) == 2 and c[2] == None: # If no path, reset everything.
+                    with self.cache.lock:
+                        self.flush_all_cache()
+                        self.cache.reset_all() # Completely reset the cache
+                elif c[2] != None: # If there is a path passed in, reset all the items in the path.
+                    for path in self.cache.entries.keys():
+                        if path.startswith(c[2]):
+                            self.delete_cache(path)
             elif c[1] == 'url':
                 with self.cache.lock:
                     self.flush_all_cache()
@@ -1126,7 +1131,7 @@ class YAS3FS(LoggingMixIn, Operations):
                 self.publish_queue.task_done()
             except Queue.Empty:
                 pass
-                
+
     def publish(self, message):
         if self.sns_topic_arn:
             logger.debug("publish '%s'" % (message))
@@ -1158,7 +1163,7 @@ class YAS3FS(LoggingMixIn, Operations):
             time.sleep(self.check_status_interval)
 
     def check_cache_size(self):
-        
+
         logger.debug("check_cache_size")
 
         while self.cache_entries:
@@ -1328,11 +1333,11 @@ class YAS3FS(LoggingMixIn, Operations):
     def get_metadata(self, path, metadata_name, key=None):
         logger.debug("get_metadata -> '%s' '%s' '%s'" % (path, metadata_name, key))
         with self.cache.get_lock(path): # To avoid consistency issues, e.g. with a concurrent purge
-            metadata_values = None 
+            metadata_values = None
             if self.cache.has(path, metadata_name):
                 metadata_values = self.cache.get(path, metadata_name)
 
-            if metadata_values == None: 
+            if metadata_values == None:
                 metadata_values = {}
                 if not key:
                     key = self.get_key(path)
@@ -1439,11 +1444,11 @@ class YAS3FS(LoggingMixIn, Operations):
                             ### key.set_contents_from_string('', headers={'Content-Type': 'application/x-directory'})
                             headers = { 'Content-Type': 'application/x-directory' }
                             headers.update(self.default_headers)
-                            
+
                             if self.aws_managed_encryption:
             			crypto_headers = { 'x-amz-server-side-encryption' : 'AES256' }
             			headers.update(crypto_headers)
-                            
+
                             cmds = [ [ 'set_contents_from_string', [ '' ], { 'headers': headers } ] ]
                             self.do_on_s3(key, pub, cmds)
                         else:
@@ -1452,14 +1457,14 @@ class YAS3FS(LoggingMixIn, Operations):
                                        { 'preserve_acl': False, 'encrypt_key':self.aws_managed_encryption } ] ]
                             self.do_on_s3(key, pub, cmds)
                         ###self.publish(['md', metadata_name, path])
-                        
+
             # handle a request to set metadata, but we can't right now because the node is currently
             # in the middle of a 'change' https://github.com/danilop/yas3fs/issues/52
             elif self.write_metadata and data and data.has('change'):
                 if metadata_name == 'attr' and metadata_values == None:
                     logger.debug("set_metadata: 'change' already in progress, setting FSData.props[invoke_after_change] lambda for self.set_metadata("+path+",attr)")
                     data.set('invoke_after_change',(lambda path: self.set_metadata(path,'attr')))
-                    
+
     def getattr(self, path, fh=None):
         logger.debug("getattr -> '%s' '%s'" % (path, fh))
         with self.cache.get_lock(path): # To avoid consistency issues, e.g. with a concurrent purge
@@ -1481,10 +1486,10 @@ class YAS3FS(LoggingMixIn, Operations):
             if attr['st_size'] == 0 and stat.S_ISDIR(attr['st_mode']):
                 attr['st_size'] = 4096 # For compatibility...
             attr['st_nlink'] = 1 # Something better TODO ???
-            
+
             if self.st_blksize:
             	attr['st_blksize'] = self.st_blksize
-            
+
             if self.full_prefetch: # Prefetch
                 if stat.S_ISDIR(attr['st_mode']):
                     self.readdir(path)
@@ -1571,11 +1576,11 @@ class YAS3FS(LoggingMixIn, Operations):
                 pub = [ 'mkdir', path ]
                 headers = { 'Content-Type': 'application/x-directory'}
                 headers.update(self.default_headers)
-                
+
                 if self.aws_managed_encryption:
             	    crypto_headers = { 'x-amz-server-side-encryption' : 'AES256' }
             	    headers.update(crypto_headers)
-                
+
                 cmds = [ [ 'set_contents_from_string', [ '' ], { 'headers': headers } ] ]
                 self.do_on_s3(k, pub, cmds)
             data.delete('change')
@@ -1583,7 +1588,7 @@ class YAS3FS(LoggingMixIn, Operations):
             ###    self.publish(['mkdir', path])
 
             return 0
- 
+
     def symlink(self, path, link):
         logger.debug("symlink '%s' '%s'" % (path, link))
         with self.cache.get_lock(path):
@@ -1626,11 +1631,11 @@ class YAS3FS(LoggingMixIn, Operations):
             pub = [ 'symlink', path ]
             headers = { 'Content-Type': 'application/x-symlink' }
             headers.update(self.default_headers)
-            
+
             if self.aws_managed_encryption:
             	crypto_headers = { 'x-amz-server-side-encryption' : 'AES256' }
             	headers.update(crypto_headers)
-            
+
             cmds = [ [ 'set_contents_from_string', [ link ], { 'headers': headers } ] ]
             self.do_on_s3(k, pub, cmds)
             data.delete('change')
@@ -1638,7 +1643,7 @@ class YAS3FS(LoggingMixIn, Operations):
 
             return 0
 
-    def check_data(self, path): 
+    def check_data(self, path):
         logger.debug("check_data '%s'" % (path))
         with self.cache.get_lock(path):
             data = self.cache.get(path, 'data')
@@ -1705,7 +1710,7 @@ class YAS3FS(LoggingMixIn, Operations):
                if prefetch:
                    (path, start, end) = self.prefetch_queue.get(True, 1) # 1 second time-out
                else:
-                   
+
                    (path, start, end) = self.download_queue.get(True, 1) # 1 second time-out
                self.download_data(path, start, end)
                if prefetch:
@@ -1768,11 +1773,11 @@ class YAS3FS(LoggingMixIn, Operations):
         retriesAttempted = 0
         while retry:
             retriesAttempted += 1
-            
+
             # for https://github.com/danilop/yas3fs/issues/46
             if retriesAttempted > self.download_retries_num:
                 retry = False
-            
+
             logger.debug("download_data range '%s' '%s' [thread '%s'] max: %i sleep: %i retries: %i" % (path, range_headers, thread_name, self.download_retries_num, self.download_retries_sleep, retriesAttempted))
             try:
                 if debug:
@@ -1784,7 +1789,7 @@ class YAS3FS(LoggingMixIn, Operations):
                 if debug:
                     n2=dt.datetime.now()
                 retry = False
-                	
+
             except Exception as e:
                 logger.exception(e)
                 logger.info("download_data error '%s' %i-%i [thread '%s'] -> retrying max: %i sleep: %i retries: %i" % (path, start, end, thread_name, self.download_retries_num, self.download_retries_sleep, retriesAttempted))
@@ -1958,7 +1963,7 @@ class YAS3FS(LoggingMixIn, Operations):
                 return link
             logger.debug("readlink '%s' EINVAL" % (path))
             raise FuseOSError(errno.EINVAL)
- 
+
     def rmdir(self, path):
         logger.debug("rmdir '%s'" % (path))
         with self.cache.get_lock(path):
@@ -2191,23 +2196,23 @@ class YAS3FS(LoggingMixIn, Operations):
         retriesAttempted = 0
         while retry:
             retriesAttempted += 1
-            
+
             # for https://github.com/danilop/yas3fs/issues/46
             if retriesAttempted > self.read_retries_num:
             	logger.error("read '%s' '%i' '%i' '%s' max read retries exceeded max: %i sleep: %i retries: %i, raising FuseOSError(errno.EIO) ''" % (path, length, offset, fh, self.read_retries_num, self.read_retries_sleep, retriesAttempted))
                 retry = False
                 self.invalidate_cache(path)
                 raise FuseOSError(errno.EIO)
-            
+
             data = self.cache.get(path, 'data')
             if not data:
-                logger.debug("read '%s' '%i' '%i' '%s' no data" % (path, length, offset, fh))  
+                logger.debug("read '%s' '%i' '%i' '%s' no data" % (path, length, offset, fh))
                 return '' # Something better ???
             data_range = data.get('range')
             if data_range == None:
                 logger.debug("read '%s' '%i' '%i' '%s' no range" % (path, length, offset, fh))
                 break
-                
+
             attr = self.get_metadata(path, 'attr')
             file_size = attr['st_size']
             end_interval = min(offset + length, file_size) - 1
@@ -2225,15 +2230,15 @@ class YAS3FS(LoggingMixIn, Operations):
                         prefetch_interval = [prefetch_start, prefetch_end_interval]
                         if not data_range.interval.contains(prefetch_interval):
                             self.enqueue_download_data(path, prefetch_start, prefetch_length, prefetch=True)
-                logger.debug("read '%s' '%i' '%i' '%s' in range" % (path, length, offset, fh))                
+                logger.debug("read '%s' '%i' '%i' '%s' in range" % (path, length, offset, fh))
                 break
             else:
                 # Note added max retries as this can go on forever... for https://github.com/danilop/yas3fs/issues/46
                 logger.debug("read '%s' '%i' '%i' '%s' out of range" % (path, length, offset, fh))
                 self.enqueue_download_data(path, offset, length)
                 time.sleep(self.read_retries_sleep)
-                
-                
+
+
             logger.debug("read wait '%s' '%i' '%i' '%s'" % (path, length, offset, fh))
             data_range.wait()
             logger.debug("read awake '%s' '%i' '%i' '%s'" % (path, length, offset, fh))
@@ -2261,14 +2266,14 @@ class YAS3FS(LoggingMixIn, Operations):
         if data_range:
             self.enqueue_download_data(path)
             while data_range:
-                logger.debug("write wait '%s' '%i' '%i' '%s'" % (path, len(new_data), offset, fh))            
+                logger.debug("write wait '%s' '%i' '%i' '%s'" % (path, len(new_data), offset, fh))
                 data_range.wait()
-                logger.debug("write awake '%s' '%i' '%i' '%s'" % (path, len(new_data), offset, fh))            
+                logger.debug("write awake '%s' '%i' '%i' '%s'" % (path, len(new_data), offset, fh))
                 data_range = data.get('range')
-                
+
 	with data.get_lock():
             if not data.content:
-                logger.info("write awake '%s' '%i' '%i' '%s' no content" % (path, len(new_data), offset, fh))            
+                logger.info("write awake '%s' '%i' '%i' '%s' no content" % (path, len(new_data), offset, fh))
                 return 0
             logger.debug("write '%s' '%i' '%i' '%s' '%s' content" % (path, len(new_data), offset, fh, data.content))
             data.content.seek(offset)
@@ -2284,7 +2289,7 @@ class YAS3FS(LoggingMixIn, Operations):
             attr['st_mtime'] = now
             attr['st_atime'] = now
         return length
-                         
+
     def upload_to_s3(self, path, data):
         logger.debug("upload_to_s3 '%s'" % path)
         k = self.get_key(path)
@@ -2307,11 +2312,11 @@ class YAS3FS(LoggingMixIn, Operations):
         written = False
         pub = [ 'upload', path ] # Add Etag before publish
         headers = { 'Content-Type': mimetype }
-        
+
     	if self.aws_managed_encryption:
     	    crypto_headers = { 'x-amz-server-side-encryption' : 'AES256' }
     	    headers.update(crypto_headers)
-    	
+
         headers.update(self.default_headers)
 
         if self.multipart_num > 0:
@@ -2329,7 +2334,7 @@ class YAS3FS(LoggingMixIn, Operations):
         logger.debug("upload_to_s3 '%s' done" % path)
 
     def multipart_upload(self, key_path, data, full_size, headers, metadata):
-    	
+
         logger.debug("multipart_upload '%s' '%s' '%s' '%s'" % (key_path, data, full_size, headers))
         part_num = 0
         part_pos = 0
@@ -2350,7 +2355,7 @@ class YAS3FS(LoggingMixIn, Operations):
         num_threads = min(part_num, self.multipart_num)
         logger.debug("multipart_upload '%s' num_threads '%s'" % (key_path, num_threads))
         mpu = self.s3_bucket.initiate_multipart_upload(key_path, headers=headers, metadata=metadata)
-        for i in range(num_threads): 
+        for i in range(num_threads):
             t = TracebackLoggingThread(target=self.part_upload, args=(mpu, part_queue))
             t.demon = True
             t.start()
@@ -2382,12 +2387,12 @@ class YAS3FS(LoggingMixIn, Operations):
                         logger.exception(e)
                         logger.info("error during multipart upload part %i retry %i: %s"
                                     % (num, retry, sys.exc_info()[0]))
-                        time.sleep(1.0) # Better wait 1 second before retrying  
+                        time.sleep(1.0) # Better wait 1 second before retrying
                 logger.debug("end upload of part %i retry %i" % (num, retry))
                 part_queue.task_done()
         except Queue.Empty:
             logger.debug("the queue is empty")
-            
+
     def chmod(self, path, mode):
         logger.debug("chmod '%s' '%i'" % (path, mode))
         with self.cache.get_lock(path):
@@ -2519,7 +2524,7 @@ class YAS3FS(LoggingMixIn, Operations):
                 logger.debug("setxattr '%s' '%s' ENOENT" % (path, name))
                 raise FuseOSError(errno.ENOENT)
             if name in [ 'yas3fs.bucket', 'yas3fs.key', 'yas3fs.signedURL30d' ]:
-                return 0 # Do nothing    
+                return 0 # Do nothing
             xattr = self.get_metadata(path, 'xattr')
             if xattr < 0:
                 return xattr
@@ -2558,7 +2563,7 @@ class TracebackLoggingThread(threading.Thread):
             raise
 
 class CompressedRotatingFileHandler(logging.handlers.RotatingFileHandler):
-    """ compress old files 
+    """ compress old files
     from http://roadtodistributed.blogspot.com/2011/04/compressed-rotatingfilehandler-for.html
     """
     def __init__(self, filename, mode='a', maxBytes=0, backupCount=0, encoding=None, delay=0):
@@ -2610,7 +2615,7 @@ def create_dirs(dirname):
     try:
         os.makedirs(dirname)
         logger.debug("create_dirs '%s' done" % dirname)
-    except OSError as exc: # Python >2.5                                                                 
+    except OSError as exc: # Python >2.5
         if exc.errno == errno.EEXIST and os.path.isdir(dirname):
             logger.debug("create_dirs '%s' already there" % dirname)
             pass
@@ -2756,7 +2761,7 @@ AWS_DEFAULT_REGION environment variable can be used to set the default AWS regio
                         '(0 to disable multipart upload, default is %(default)s)')
     parser.add_argument('--mp-retries', metavar='N', type=int, default=3,
                         help='max number of retries in uploading a part (default is %(default)s)')
-    parser.add_argument('--aws-managed-encryption', action='store_true', 
+    parser.add_argument('--aws-managed-encryption', action='store_true',
                         help='Enable AWS managed encryption (sets header x-amz-server-side-encryption = AES256)')
     parser.add_argument('--id',
                         help='a unique ID identifying this node in a cluster (default is a UUID)')
@@ -2823,7 +2828,7 @@ AWS_DEFAULT_REGION environment variable can be used to set the default AWS regio
         logger.setLevel(logging.INFO)
 
     sys.excepthook = custom_sys_excepthook # This is not working for new threads that start afterwards
-        
+
     logger.debug("options = %s" % options)
 
     if options.mkdir:
