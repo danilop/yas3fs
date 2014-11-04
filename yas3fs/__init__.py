@@ -1833,6 +1833,12 @@ class YAS3FS(LoggingMixIn, Operations):
         # for https://github.com/danilop/yas3fs/issues/46
         retriesAttempted = 0
         while retry:
+                 
+            # for https://github.com/danilop/yas3fs/issues/62
+            if key is None:
+                logger.warn("download_data 'key' is None!.. exiting retry loop")
+                break
+                
             retriesAttempted += 1
             
             # for https://github.com/danilop/yas3fs/issues/46
