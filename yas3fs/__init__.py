@@ -1065,7 +1065,7 @@ class YAS3FS(LoggingMixIn, Operations):
                         self.flush_all_cache()
                         self.cache.reset_all() # Completely reset the cache
                 elif c[2] != None: # If there is a path passed in, reset all the items in the path.
-                    # If the reset is a specific file, make sure to delete the cache speccifically
+                    # If the reset is a specific file, make sure to delete the cache specifically
                     # which will allow the parent directory to be deleted even if the file is not in cache.
                     self.delete_cache(c[2]);
                     for path in self.cache.entries.keys():
