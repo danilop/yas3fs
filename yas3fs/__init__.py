@@ -34,6 +34,12 @@ import copy
 import traceback
 import datetime as dt
 import gc # For debug only
+import pprint # For debug only
+
+from sys import exit
+from functools import wraps
+
+from fuse import FUSE, FuseOSError, Operations, LoggingMixIn, fuse_get_context
 
 import boto
 import boto.s3        
@@ -41,17 +47,16 @@ import boto.sns
 import boto.sqs
 import boto.utils
 
-from functools import wraps
-from YAS3FSPlugin import YAS3FSPlugin
-
-from sys import exit
-
+from boto.utils import compute_md5, compute_hash
 from boto.s3.key import Key 
 
-from fuse import FUSE, FuseOSError, Operations, LoggingMixIn, fuse_get_context
+from YAS3FSPlugin import YAS3FSPlugin
+
 from _version import __version__
 
 class UTF8DecodingKey(boto.s3.key.Key):
+    BufferSize = 131072
+
     def __init__(self, key_or_bucket=None, name=None):
         if isinstance(key_or_bucket, boto.s3.key.Key):
             # this is a key,
@@ -70,6 +75,15 @@ class UTF8DecodingKey(boto.s3.key.Key):
             return self.name.decode('utf8', 'replace')
             
         return self.name
+
+    def compute_md5(self, fp, size=None):
+        hex_digest, b64_digest, data_size = compute_md5(fp, buf_size=131072, size=size)
+
+        self.size = data_size
+        return (hex_digest, b64_digest)
+
+
+
 
 class Interval():
     """ Simple integer interval arthmetic."""
@@ -380,7 +394,41 @@ class FSCache():
         return self.cache_path + '/files' + path.encode('utf-8') # path begins with '/'
     def get_cache_etags_filename(self, path):
         return self.cache_path + '/etags' + path.encode('utf-8') # path begins with '/'
-    def get_lock(self, path):
+
+    def is_ready(self, path):
+        return self.wait_until_cleared(path, ('deleting', 's3_busy'))
+
+    def wait_until_cleared(self, path, proplist = ['deleting'], max_retries = 10, wait_time = 1):
+        for prop in proplist:
+            if not self.has(path, prop):
+                continue
+            logger.debug("wait_until_cleared %s found something for %s."%(prop, path))
+            check_count = 0
+            cleared = False
+            while check_count <= max_retries:
+                logger.debug("wait_until_cleared %s found something for %s. (%i) "%(prop, path, check_count))
+                # the cache/key disappeared
+                if not self.has(path, prop):
+                    logger.debug("wait_until_cleared %s did not find %s anymore."%(prop, path))
+                    cleared = True
+                    break
+                # the cache got a '.dec()' from do_on_s3_now...
+                if self.get(path, prop) == 0:
+                    logger.debug("wait_until_cleared %s got all dec for %s anymore."%(prop, path))
+                    cleared = True
+                    break
+                time.sleep(wait_time)
+                check_count += 1
+
+            if not cleared:
+                logger.debug("wait_until_cleared %s could not clear '%s'" % (prop, path))
+                raise Exception("Path has not yet been cleared but operation wants to happen on it %s"%(path))
+        return True
+
+    def get_lock(self, path, skip_is_ready = False):
+        if not skip_is_ready:
+            self.is_ready(path)
+
         with self.lock: # Global cache lock, used only for giving file-level locks
             try:
                 return self.entries[path]['lock']
@@ -390,7 +438,7 @@ class FSCache():
                 except KeyError:
                     new_lock = threading.RLock()
                     self.new_locks[path] = new_lock
-                    return new_lock;
+                    return new_lock
     def add(self, path):
         with self.get_lock(path):
             if not path in self.entries:
@@ -424,10 +472,16 @@ class FSCache():
                     data = self.entries[path]['data']
                     with data.get_lock():
                         data.rename(new_path)
-                self.entries[new_path] = self.entries[path]
+                self.entries[new_path] = copy.copy(self.entries[path])
                 self.lru.append(new_path)
                 self.lru.delete(path)
-                del self.entries[path] # So that the next reset doesn't delete the entry props
+
+# 6.59 working except rename...
+#                del self.entries[path] # So that the next reset doesn't delete the entry props
+
+                self.inc(path, 'deleting')
+                self.inc(new_path, 's3_busy')
+
     def get(self, path, prop=None):
         self.lru.move_to_the_tail(path) # Move to the tail of the LRU cache
         try:
@@ -466,10 +520,13 @@ class FSCache():
                         del self.entries[path][prop]
                 except KeyError:
                     pass # Nothing to do
+
     def reset(self, path):
         with self.get_lock(path):
             self.delete(path)
             self.add(path)
+            self.inc(path, 'deleting')
+
     def has(self, path, prop=None):
         self.lru.move_to_the_tail(path) # Move to the tail of the LRU cache
         if prop == None:
@@ -608,7 +665,7 @@ class PartOfFSData():
             s = self.content.read(n)
 
             if len(s) != n:
-                logger.critical("read length not-equal! '%i' '%s' at '%i' starting from '%i' for '%i'  length of return ['%s] " % (n, self.content, self.pos, self.start, self.length, len(s)))
+                logger.error("read length not-equal! '%i' '%s' at '%i' starting from '%i' for '%i'  length of return ['%s] " % (n, self.content, self.pos, self.start, self.length, len(s)))
 
             self.pos += len(s)
             return s
@@ -1062,6 +1119,8 @@ class YAS3FS(LoggingMixIn, Operations):
             self.cache.delete(path, 'key')
             self.cache.delete(path, 'attr')
             self.cache.delete(path, 'xattr')
+            self.cache.delete(path, 'deleting')
+            self.cache.delete(path, 's3_busy')
             data = self.cache.get(path, 'data')
             if data:
                 if data.has('range'):
@@ -1294,6 +1353,9 @@ class YAS3FS(LoggingMixIn, Operations):
         logger.debug("reset_parent_readdir '%s' parent_path '%s'" % (path, parent_path))
         self.cache.delete(parent_path, 'readdir')
 
+    def remove_prefix(self, keyname):
+        return keyname[len(self.s3_prefix):]
+
     def join_prefix(self, path):
         if self.s3_prefix == '':
             if path != '/':
@@ -1309,7 +1371,7 @@ class YAS3FS(LoggingMixIn, Operations):
         for k in iter:
             logger.debug("has_element '%s' -> '%s'" % (iter, k))
             path = k.name[len(self.s3_prefix):]
-            if not self.cache.has(path, 'deleted'):
+            if not self.cache.has(path, 'deleting'):
                 c += 1
             if c >= num:
                 logger.debug("has_element '%s' OK" % (iter))
@@ -1326,16 +1388,16 @@ class YAS3FS(LoggingMixIn, Operations):
 
 
     def get_key(self, path, cache=True):
-        if cache:
-            if self.cache.has(path, 'deleted'):
-                logger.debug("get_key from cache deleted '%s'" % (path))
-                if not self.recheck_s3:
-                     return None
-            else:
-                key = self.cache.get(path, 'key')
-                if key:
-                    logger.debug("get_key from cache '%s'" % (path))
-                    return key
+        if cache and self.cache.is_ready(path):
+#            if self.cache.has(path, 'deleting'):
+#                logger.debug("get_key from cache deleted '%s'" % (path))
+#                if not self.recheck_s3:
+#                     return None
+#            else:
+            key = self.cache.get(path, 'key')
+            if key:
+                logger.debug("get_key from cache '%s'" % (path))
+                return key
         logger.debug("get_key %s", path)
         look_on_S3 = True
 
@@ -1577,7 +1639,7 @@ class YAS3FS(LoggingMixIn, Operations):
                         d_path = k.name[len(self.s3_prefix):]
                         if d[-1] == '/':
                             d = d[:-1]
-                        if self.cache.has(d_path, 'deleted'):
+                        if self.cache.has(d_path, 'deleting'):
                             continue
                         dirs.append(d)
 
@@ -1933,9 +1995,18 @@ class YAS3FS(LoggingMixIn, Operations):
             if action == 'delete':
                 path = pub[1]
                 key.delete()
-                self.cache.dec(path, 'deleted')
+                # self.cache.dec(path, 'deleting')
+                del self.cache.entries[path]
+
             elif action == 'copy':
                 key.copy(*args, **kargs)
+
+                path = self.remove_prefix(args[1])
+                # renaming?
+                if path != key.name:
+                    # del self.cache.entries[path]
+                    self.cache.entries[path]['s3_busy'] = 0
+
             elif action == 'set_contents_from_string':
                 key.set_contents_from_string(*args,**kargs)
             elif action == 'set_contents_from_file':
@@ -2070,7 +2141,6 @@ class YAS3FS(LoggingMixIn, Operations):
                 logger.debug("rmdir '%s' '%s' S3" % (path, k))
                 pub = [ 'rmdir', path ]
                 cmds = [ [ 'delete', [] , { 'headers': self.default_headers } ] ]
-                self.cache.inc(path, 'deleted')
                 self.do_on_s3(k, pub, cmds)
 
             return 0
@@ -2158,7 +2228,6 @@ class YAS3FS(LoggingMixIn, Operations):
         key = self.get_key(source_path)
         self.cache.rename(source_path, target_path)
         if key: # For files in cache or dir not on S3 but still not flushed to S3
-            self.cache.inc(source_path, 'deleted')
             self.rename_on_s3(key, source_path, target_path, dir)
 
     def rename_on_s3(self, key, source_path, target_path, dir):
@@ -2234,7 +2303,6 @@ class YAS3FS(LoggingMixIn, Operations):
                 ###self.publish(['unlink', path])
                 pub = [ 'unlink', path ]
                 cmds = [ [ 'delete', [], { 'headers': self.default_headers } ] ]
-                self.cache.inc(path, 'deleted')
                 self.do_on_s3(k, pub, cmds)
                 # self.do_on_s3_now(k, pub, cmds)
 
@@ -2919,6 +2987,9 @@ AWS_DEFAULT_REGION environment variable can be used to set the default AWS regio
     parser.add_argument('-V', '--version', action='version', version='%(prog)s {version}'.format(version=__version__))
 
     options = parser.parse_args()
+
+    global pp
+    pp = pprint.PrettyPrinter(indent=1)
 
     global logger
     logger = logging.getLogger('yas3fs')
