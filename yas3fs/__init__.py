@@ -402,11 +402,11 @@ class FSCache():
         for prop in proplist:
             if not self.has(path, prop):
                 continue
-            logger.debug("wait_until_cleared %s found something for %s."%(prop, path))
             check_count = 0
             cleared = False
             while check_count <= max_retries:
-                logger.debug("wait_until_cleared %s found something for %s. (%i) "%(prop, path, check_count))
+                if check_count:
+                    logger.debug("wait_until_cleared %s found something for %s. (%i) "%(prop, path, check_count))
                 # the cache/key disappeared
                 if not self.has(path, prop):
                     logger.debug("wait_until_cleared %s did not find %s anymore."%(prop, path))
