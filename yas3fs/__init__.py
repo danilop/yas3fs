@@ -402,9 +402,8 @@ class FSCache():
         for prop in proplist:
             if not self.has(path, prop):
                 continue
-            check_count = 0
             cleared = False
-            while check_count <= max_retries:
+            for check_count in range(0, max_retries):
                 if check_count:
                     logger.debug("wait_until_cleared %s found something for %s. (%i) "%(prop, path, check_count))
                 # the cache/key disappeared
@@ -418,11 +417,10 @@ class FSCache():
                     cleared = True
                     break
                 time.sleep(wait_time)
-                check_count += 1
 
             if not cleared:
-                logger.debug("wait_until_cleared %s could not clear '%s'" % (prop, path))
-                raise Exception("Path has not yet been cleared but operation wants to happen on it %s"%(path))
+                logger.error("wait_until_cleared %s could not clear '%s'" % (prop, path))
+                raise Exception("Path has not yet been cleared but operation wants to happen on it '%s' '%s'"%(prop, path))
         return True
 
     def get_lock(self, path, skip_is_ready = False):
@@ -1139,70 +1137,73 @@ class YAS3FS(LoggingMixIn, Operations):
     def process_message(self, messages):
         logger.debug("process_message '%s'" % (messages))
         c = json.loads(messages)
-        if not c[0] == self.unique_id: # discard message coming from itself
-            if c[1] in ( 'mkdir', 'mknod', 'symlink' ) and c[2] != None:
-                self.delete_cache(c[2])
-            elif c[1] in ( 'rmdir', 'unlink' ) and c[2] != None:
-                self.delete_cache(c[2])
-            elif c[1] == 'rename' and c[2] != None and c[3] != None:
-                self.delete_cache(c[2])
-                self.delete_cache(c[3])
-            elif c[1] == 'upload':
-                if c[2] != None and len(c) == 4: # fix for https://github.com/danilop/yas3fs/issues/42
-                    self.invalidate_cache(c[2], c[3])
-                else: # Invalidate all the cached data
-                    for path in self.cache.entries.keys():
-                        self.invalidate_cache(path)
-            elif c[1] == 'md':
-                if c[2]:
-                    self.cache.delete(c[3], 'key')
-                    self.cache.delete(c[3], c[2])
-            elif c[1] == 'reset':
-                with self.cache.lock:
-                    self.flush_all_cache()
-                    self.cache.reset_all() # Completely reset the cache
-            elif c[1] == 'url':
-                with self.cache.lock:
-                    self.flush_all_cache()
-                    self.cache.reset_all() # Completely reset the cache
-                    s3url = urlparse.urlparse(c[2])
-                    if s3url.scheme != 's3':
-                        error_and_exit("The S3 path to mount must be in URL format: s3://BUCKET/PATH")
-                    self.s3_bucket_name = s3url.netloc
-                    logger.info("S3 bucket: '%s'" % self.s3_bucket_name)
-                    self.s3_prefix = s3url.path.strip('/')
-                    logger.info("S3 prefix: '%s'" % self.s3_prefix)
-                    try:
-                        self.s3_bucket = self.s3.get_bucket(self.s3_bucket_name, headers=self.default_headers)
-                        self.s3_bucket.key_class = UTF8DecodingKey
-                    except boto.exception.S3ResponseError, e:
-                        error_and_exit("S3 bucket not found:" + str(e))
-            elif c[1] == 'cache':
-                if c[2] == 'entries' and c[3] > 0:
-                    self.cache_entries = int(c[3])
-                elif c[2] == 'mem' and c[3] > 0:
-                    self.cache_mem_size = int(c[3]) * (1024 * 1024) # MB
-                elif c[2] == 'disk' and c[3] > 0:
-                    self.cache_disk_size = int(c[3]) * (1024 * 1024) # MB
-            elif c[1] == 'buffer' and c[3] >= 0:
-                if c[2] == 'size':
-                    self.buffer_size = int(c[3]) * 1024 # KB
-                elif c[2] == 'prefetch':
-                    self.buffer_prefetch = int(c[3])
-            elif c[1] == 'prefetch':
-                if c[2] == 'on':
-                    self.full_prefetch = True
-                elif c[2] == 'off':
-                    self.full_prefetch = False
-            elif c[1] == 'multipart':
-                if c[2] == 'size' and c[3] >= 5120:
-                    self.multipart_size = c[3] * 1024
-                elif c[2] == 'num' and c[3] >= 0:
-                    self.multipart_num = c[3]
-                elif c[2] == 'retries' and c[3] >= 1:
-                    self.multipart_retries = c[3]
-            elif c[1] == 'ping':
-                self.publish_status()
+        if not c[0] == self.unique_id: 
+            # discard message coming from itself
+            return
+
+        if c[1] in ( 'mkdir', 'mknod', 'symlink' ) and c[2] != None:
+            self.delete_cache(c[2])
+        elif c[1] in ( 'rmdir', 'unlink' ) and c[2] != None:
+            self.delete_cache(c[2])
+        elif c[1] == 'rename' and c[2] != None and c[3] != None:
+            self.delete_cache(c[2])
+            self.delete_cache(c[3])
+        elif c[1] == 'upload':
+            if c[2] != None and len(c) == 4: # fix for https://github.com/danilop/yas3fs/issues/42
+                self.invalidate_cache(c[2], c[3])
+            else: # Invalidate all the cached data
+                for path in self.cache.entries.keys():
+                    self.invalidate_cache(path)
+        elif c[1] == 'md':
+            if c[2]:
+                self.cache.delete(c[3], 'key')
+                self.cache.delete(c[3], c[2])
+        elif c[1] == 'reset':
+            with self.cache.lock:
+                self.flush_all_cache()
+                self.cache.reset_all() # Completely reset the cache
+        elif c[1] == 'url':
+            with self.cache.lock:
+                self.flush_all_cache()
+                self.cache.reset_all() # Completely reset the cache
+                s3url = urlparse.urlparse(c[2])
+                if s3url.scheme != 's3':
+                    error_and_exit("The S3 path to mount must be in URL format: s3://BUCKET/PATH")
+                self.s3_bucket_name = s3url.netloc
+                logger.info("S3 bucket: '%s'" % self.s3_bucket_name)
+                self.s3_prefix = s3url.path.strip('/')
+                logger.info("S3 prefix: '%s'" % self.s3_prefix)
+                try:
+                    self.s3_bucket = self.s3.get_bucket(self.s3_bucket_name, headers=self.default_headers)
+                    self.s3_bucket.key_class = UTF8DecodingKey
+                except boto.exception.S3ResponseError, e:
+                    error_and_exit("S3 bucket not found:" + str(e))
+        elif c[1] == 'cache':
+            if c[2] == 'entries' and c[3] > 0:
+                self.cache_entries = int(c[3])
+            elif c[2] == 'mem' and c[3] > 0:
+                self.cache_mem_size = int(c[3]) * (1024 * 1024) # MB
+            elif c[2] == 'disk' and c[3] > 0:
+                self.cache_disk_size = int(c[3]) * (1024 * 1024) # MB
+        elif c[1] == 'buffer' and c[3] >= 0:
+            if c[2] == 'size':
+                self.buffer_size = int(c[3]) * 1024 # KB
+            elif c[2] == 'prefetch':
+                self.buffer_prefetch = int(c[3])
+        elif c[1] == 'prefetch':
+            if c[2] == 'on':
+                self.full_prefetch = True
+            elif c[2] == 'off':
+                self.full_prefetch = False
+        elif c[1] == 'multipart':
+            if c[2] == 'size' and c[3] >= 5120:
+                self.multipart_size = c[3] * 1024
+            elif c[2] == 'num' and c[3] >= 0:
+                self.multipart_num = c[3]
+            elif c[2] == 'retries' and c[3] >= 1:
+                self.multipart_retries = c[3]
+        elif c[1] == 'ping':
+            self.publish_status()
 
     def publish_status(self):
         hostname = socket.getfqdn()
@@ -1354,6 +1355,8 @@ class YAS3FS(LoggingMixIn, Operations):
         self.cache.delete(parent_path, 'readdir')
 
     def remove_prefix(self, keyname):
+        if self.s3_prefix == '':
+            return '/' + keyname
         return keyname[len(self.s3_prefix):]
 
     def join_prefix(self, path):
@@ -2005,7 +2008,8 @@ class YAS3FS(LoggingMixIn, Operations):
                 # renaming?
                 if path != key.name:
                     # del self.cache.entries[path]
-                    self.cache.entries[path]['s3_busy'] = 0
+                    if self.cache.has(path, 's3_busy'):
+                        self.cache.entries[path]['s3_busy'] = 0
 
             elif action == 'set_contents_from_string':
                 key.set_contents_from_string(*args,**kargs)
@@ -3058,4 +3062,4 @@ AWS_DEFAULT_REGION environment variable can be used to set the default AWS regio
     fuse = FUSE(YAS3FS(options), **mount_options)
 
 if __name__ == '__main__':
- 	main()
+    main()
