@@ -225,8 +225,8 @@ class FSData():
             self.content = None # Not open, yet
         else:
             raise FSData.unknown_store
-    def get_lock(self):
-        return self.cache.get_lock(self.path)
+    def get_lock(self, wait_until_cleared_proplist = None):
+        return self.cache.get_lock(self.path, wait_until_cleared_proplist)
     def open(self):
         with self.get_lock():
             if not self.has('open'):
@@ -268,8 +268,8 @@ class FSData():
             self.size = current_size
         with self.cache.data_size_lock:
             self.cache.size[self.store] += delta
-    def get_content(self):
-        with self.get_lock():
+    def get_content(self, wait_until_cleared_proplist = None):
+        with self.get_lock(wait_until_cleared_proplist):
             if self.store == 'disk':
                 filename = self.cache.get_cache_filename(self.path)
                 return open(filename, mode='rb+')
@@ -395,10 +395,14 @@ class FSCache():
     def get_cache_etags_filename(self, path):
         return self.cache_path + '/etags' + path.encode('utf-8') # path begins with '/'
 
-    def is_ready(self, path):
-        return self.wait_until_cleared(path, ('deleting', 's3_busy'))
+    def is_ready(self, path, proplist = None):
+        return self.wait_until_cleared(path, proplist = proplist)
 
-    def wait_until_cleared(self, path, proplist = ['deleting'], max_retries = 10, wait_time = 1):
+    def wait_until_cleared(self, path, proplist = None, max_retries = 10, wait_time = 1):
+        default_proplist = ['deleting', 's3_busy']
+        if proplist is None:
+            proplist = default_proplist
+
         for prop in proplist:
             if not self.has(path, prop):
                 continue
@@ -419,13 +423,16 @@ class FSCache():
                 time.sleep(wait_time)
 
             if not cleared:
+#                import inspect
+#                inspect_stack = inspect.stack() 
+#                logger.critical("WAIT_UNTIL_CLEARED stack: '%s'"% pp.pformat(inspect_stack))
                 logger.error("wait_until_cleared %s could not clear '%s'" % (prop, path))
                 raise Exception("Path has not yet been cleared but operation wants to happen on it '%s' '%s'"%(prop, path))
         return True
 
-    def get_lock(self, path, skip_is_ready = False):
+    def get_lock(self, path, skip_is_ready = False, wait_until_cleared_proplist = None):
         if not skip_is_ready:
-            self.is_ready(path)
+            self.is_ready(path, proplist = wait_until_cleared_proplist)
 
         with self.lock: # Global cache lock, used only for giving file-level locks
             try:
@@ -1392,11 +1399,6 @@ class YAS3FS(LoggingMixIn, Operations):
 
     def get_key(self, path, cache=True):
         if cache and self.cache.is_ready(path):
-#            if self.cache.has(path, 'deleting'):
-#                logger.debug("get_key from cache deleted '%s'" % (path))
-#                if not self.recheck_s3:
-#                     return None
-#            else:
             key = self.cache.get(path, 'key')
             if key:
                 logger.debug("get_key from cache '%s'" % (path))
@@ -1976,6 +1978,12 @@ class YAS3FS(LoggingMixIn, Operations):
         while self.running:
            try:
                (key, pub, cmds) = self.s3_queue[i].get(True, 1) # 1 second time-out
+               # MUTABLE PROTECTION
+               # various sections of do_cmd_on_s3_now have the potential
+               #     of mutating pub, this tries to keep the queue clean 
+               #     in case a retry happens.
+               pub = copy.copy(pub)
+
                self.do_on_s3_now(key, pub, cmds)
                self.s3_queue[i].task_done()
            except Queue.Empty:
@@ -1984,11 +1992,10 @@ class YAS3FS(LoggingMixIn, Operations):
     @withplugin
     def do_on_s3(self, key, pub, cmds):
         if self.s3_num == 0:
-            self.do_on_s3_now(key, pub, cmds)
-        else:
-            i = hash(key.name) % self.s3_num # To distribute files consistently across threads
-            self.s3_queue[i].put((key, pub, cmds))
-        pass
+            return self.do_on_s3_now(key, pub, cmds)
+
+        i = hash(key.name) % self.s3_num # To distribute files consistently across threads
+        self.s3_queue[i].put((key, pub, cmds))
 
     @withplugin
     def do_cmd_on_s3_now(self, key, pub, action, args, kargs):
@@ -2015,9 +2022,17 @@ class YAS3FS(LoggingMixIn, Operations):
                 key.set_contents_from_string(*args,**kargs)
             elif action == 'set_contents_from_file':
                 data = args[0] # First argument must be data
-                key.set_contents_from_file(data.get_content(),**kargs)
+                try:
+                    # ignore deleting flag, though will fail w/ IOError
+                    key.set_contents_from_file(data.get_content(wait_until_cleared_proplist = ['s3_busy']),**kargs)
+                except IOError as e:
+                    logger.error("set_contents_from_file IOError on " + str(data))
+                    raise e
+
                 etag = key.etag[1:-1]
-                with data.get_lock():
+
+                # ignore deleting flag
+                with data.get_lock(wait_until_cleared_proplist = ['s3_busy']):
                     data.update_etag(etag)
                     data.delete('change')
                 pub.append(etag)
