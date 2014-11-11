@@ -395,6 +395,13 @@ class FSCache():
     def get_cache_etags_filename(self, path):
         return self.cache_path + '/etags' + path.encode('utf-8') # path begins with '/'
 
+    def is_deleting(self, path, prop = 'deleting'):
+        if not self.has(path, prop):
+             return False
+        if self.get(path, prop) == 0:
+             return False
+        return True
+
     def is_ready(self, path, proplist = None):
         return self.wait_until_cleared(path, proplist = proplist)
 
@@ -1398,6 +1405,10 @@ class YAS3FS(LoggingMixIn, Operations):
 
 
     def get_key(self, path, cache=True):
+        if self.cache.is_deleting(path):
+            logger.debug("get_key path '%s' is deleting -- returning None" % (path))
+            return None
+ 
         if cache and self.cache.is_ready(path):
             key = self.cache.get(path, 'key')
             if key:
@@ -1581,6 +1592,10 @@ class YAS3FS(LoggingMixIn, Operations):
                     
     def getattr(self, path, fh=None):
         logger.debug("getattr -> '%s' '%s'" % (path, fh))
+        if self.cache.is_deleting(path):
+            logger.debug("getattr path '%s' is deleting -- throwing ENOENT" % (path))
+            raise FuseOSError(errno.ENOENT)
+
         with self.cache.get_lock(path): # To avoid consistency issues, e.g. with a concurrent purge
             cache = True
             recheck_s3 = False
@@ -1614,6 +1629,11 @@ class YAS3FS(LoggingMixIn, Operations):
 
     def readdir(self, path, fh=None):
         logger.debug("readdir '%s' '%s'" % (path, fh))
+
+        if self.cache.is_deleting(path):
+            logger.debug("readdir path '%s' is deleting -- throwing ENOENT" % (path))
+            raise FuseOSError(errno.ENOENT)
+
         with self.cache.get_lock(path):
             if self.cache.is_empty(path):
                 logger.debug("readdir '%s' '%s' ENOENT" % (path, fh))
@@ -2101,6 +2121,11 @@ class YAS3FS(LoggingMixIn, Operations):
 
     def readlink(self, path):
         logger.debug("readlink '%s'" % (path))
+
+        if self.cache.is_deleting(path):
+            logger.debug("readlink path '%s' is deleting -- throwing ENOENT" % (path))
+            raise FuseOSError(errno.ENOENT)
+
         with self.cache.get_lock(path):
             if self.cache.is_empty(path):
                 logger.debug("readlink '%s' ENOENT" % (path))
@@ -2135,6 +2160,11 @@ class YAS3FS(LoggingMixIn, Operations):
  
     def rmdir(self, path):
         logger.debug("rmdir '%s'" % (path))
+
+        if self.cache.is_deleting(path):
+            logger.debug("rmdir path '%s' is deleting -- throwing ENOENT" % (path))
+            raise FuseOSError(errno.ENOENT)
+
         with self.cache.get_lock(path):
             if self.cache.is_empty(path):
                 logger.debug("rmdir '%s' cache ENOENT" % (path))
@@ -2166,6 +2196,11 @@ class YAS3FS(LoggingMixIn, Operations):
 
     def truncate(self, path, size):
         logger.debug("truncate '%s' '%i'" % (path, size))
+
+        if self.cache.is_deleting(path):
+            logger.debug("truncate path '%s' is deleting -- throwing ENOENT" % (path))
+            raise FuseOSError(errno.ENOENT)
+
         with self.cache.get_lock(path):
             if self.cache.is_empty(path):
                 logger.debug("truncate '%s' '%i' ENOENT" % (path, size))
@@ -2204,6 +2239,11 @@ class YAS3FS(LoggingMixIn, Operations):
     ### Should work for files in cache but not flushed to S3...
     def rename(self, path, new_path):
         logger.debug("rename '%s' '%s'" % (path, new_path))
+
+        if self.cache.is_deleting(path):
+            logger.debug("rename path '%s' is deleting -- throwing ENOENT" % (path))
+            raise FuseOSError(errno.ENOENT)
+
         with self.cache.get_lock(path):
             if self.cache.is_empty(path):
                 logger.debug("rename '%s' '%s' ENOENT no '%s' from cache" % (path, new_path, path))
@@ -2306,6 +2346,11 @@ class YAS3FS(LoggingMixIn, Operations):
 
     def unlink(self, path):
         logger.debug("unlink '%s'" % (path))
+
+        if self.cache.is_deleting(path):
+            logger.debug("unlink path '%s' is deleting -- throwing ENOENT" % (path))
+            raise FuseOSError(errno.ENOENT)
+
         with self.cache.get_lock(path):
             if self.cache.is_empty(path):
                 logger.debug("unlink '%s' ENOENT" % (path))
@@ -2343,6 +2388,11 @@ class YAS3FS(LoggingMixIn, Operations):
 
     def release(self, path, flags):
         logger.debug("release '%s' '%i'" % (path, flags))
+
+        if self.cache.is_deleting(path):
+            logger.debug("release path '%s' is deleting -- throwing ENOENT" % (path))
+            raise FuseOSError(errno.ENOENT)
+
         with self.cache.get_lock(path):
             if self.cache.is_empty(path):
                 logger.debug("release '%s' '%i' ENOENT" % (path, flags))
@@ -2359,6 +2409,11 @@ class YAS3FS(LoggingMixIn, Operations):
 
     def read(self, path, length, offset, fh=None):
         logger.debug("read '%s' '%i' '%i' '%s'" % (path, length, offset, fh))
+
+        if self.cache.is_deleting(path):
+            logger.debug("read path '%s' is deleting -- throwing ENOENT" % (path))
+            raise FuseOSError(errno.ENOENT)
+
         if not self.cache.has(path) or self.cache.is_empty(path):
             logger.debug("read '%s' '%i' '%i' '%s' ENOENT" % (path, length, offset, fh))
             raise FuseOSError(errno.ENOENT)
@@ -2424,6 +2479,11 @@ class YAS3FS(LoggingMixIn, Operations):
 
     def write(self, path, new_data, offset, fh=None):
         logger.debug("write '%s' '%i' '%i' '%s'" % (path, len(new_data), offset, fh))
+
+        if self.cache.is_deleting(path):
+            logger.debug("write path '%s' is deleting -- throwing ENOENT" % (path))
+            raise FuseOSError(errno.ENOENT)
+
         if not self.cache.has(path) or self.cache.is_empty(path):
             logger.debug("write '%s' '%i' '%i' '%s' ENOENT" % (path, len(new_data), offset, fh))
             raise FuseOSError(errno.ENOENT)
@@ -2582,6 +2642,11 @@ class YAS3FS(LoggingMixIn, Operations):
             
     def chmod(self, path, mode):
         logger.debug("chmod '%s' '%i'" % (path, mode))
+
+        if self.cache.is_deleting(path):
+            logger.debug("chmod path '%s' is deleting -- throwing ENOENT" % (path))
+            raise FuseOSError(errno.ENOENT)
+
         with self.cache.get_lock(path):
             if self.cache.is_empty(path):
                 logger.debug("chmod '%s' '%i' ENOENT" % (path, mode))
@@ -2596,6 +2661,11 @@ class YAS3FS(LoggingMixIn, Operations):
 
     def chown(self, path, uid, gid):
         logger.debug("chown '%s' '%i' '%i'" % (path, uid, gid))
+
+        if self.cache.is_deleting(path):
+            logger.debug("chown path '%s' is deleting -- throwing ENOENT" % (path))
+            raise FuseOSError(errno.ENOENT)
+
         with self.cache.get_lock(path):
             if self.cache.is_empty(path):
                 logger.debug("chown '%s' '%i' '%i' ENOENT" % (path, uid, gid))
@@ -2616,6 +2686,11 @@ class YAS3FS(LoggingMixIn, Operations):
 
     def utimens(self, path, times=None):
         logger.debug("utimens '%s' '%s'" % (path, times))
+
+        if self.cache.is_deleting(path):
+            logger.debug("utimens path '%s' is deleting -- throwing ENOENT" % (path))
+            raise FuseOSError(errno.ENOENT)
+
         with self.cache.get_lock(path):
             if self.cache.is_empty(path):
                 logger.debug("utimens '%s' '%s' ENOENT" % (path, times))
@@ -2632,6 +2707,11 @@ class YAS3FS(LoggingMixIn, Operations):
 
     def getxattr(self, path, name, position=0):
         logger.debug("getxattr '%s' '%s' '%i'" % (path, name, position))
+
+        if self.cache.is_deleting(path):
+            logger.debug("getxattr path '%s' is deleting -- throwing ENOENT" % (path))
+            raise FuseOSError(errno.ENOENT)
+
         if self.cache.is_empty(path):
             logger.debug("getxattr '%s' '%s' '%i' ENOENT" % (path, name, position))
             raise FuseOSError(errno.ENOENT)
@@ -2676,6 +2756,11 @@ class YAS3FS(LoggingMixIn, Operations):
 
     def listxattr(self, path):
         logger.debug("listxattr '%s'" % (path))
+
+        if self.cache.is_deleting(path):
+            logger.debug("listxattr path '%s' is deleting -- throwing ENOENT" % (path))
+            raise FuseOSError(errno.ENOENT)
+
         if self.cache.is_empty(path):
             logger.debug("listxattr '%s' ENOENT" % (path))
             raise FuseOSError(errno.ENOENT)
@@ -2687,6 +2772,11 @@ class YAS3FS(LoggingMixIn, Operations):
 
     def removexattr(self, path, name):
         logger.debug("removexattr '%s''%s'" % (path, name))
+
+        if self.cache.is_deleting(path):
+            logger.debug("removexattr path '%s' is deleting -- throwing ENOENT" % (path))
+            raise FuseOSError(errno.ENOENT)
+
         with self.cache.get_lock(path):
             if self.cache.is_empty(path):
                 logger.debug("removexattr '%s' '%s' ENOENT" % (path, name))
@@ -2706,6 +2796,11 @@ class YAS3FS(LoggingMixIn, Operations):
 
     def setxattr(self, path, name, value, options, position=0):
         logger.debug("setxattr '%s' '%s'" % (path, name))
+
+        if self.cache.is_deleting(path):
+            logger.debug("setxattr path '%s' is deleting -- throwing ENOENT" % (path))
+            raise FuseOSError(errno.ENOENT)
+
         with self.cache.get_lock(path):
             if self.cache.is_empty(path):
                 logger.debug("setxattr '%s' '%s' ENOENT" % (path, name))
@@ -2737,7 +2832,6 @@ class YAS3FS(LoggingMixIn, Operations):
             "f_favail" : 1024 * 1024 * 1024,
             "f_ffree" : 1024 * 1024 * 1024
             }
-        return {}
 
 class TracebackLoggingThread(threading.Thread):
     def run(self):
