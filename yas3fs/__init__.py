@@ -405,7 +405,7 @@ class FSCache():
     def is_ready(self, path, proplist = None):
         return self.wait_until_cleared(path, proplist = proplist)
 
-    def wait_until_cleared(self, path, proplist = None, max_retries = 30, wait_time = 1):
+    def wait_until_cleared(self, path, proplist = None, max_retries = 10, wait_time = 1):
         default_proplist = ['deleting', 's3_busy']
         if proplist is None:
             proplist = default_proplist
@@ -430,9 +430,10 @@ class FSCache():
                 time.sleep(wait_time)
 
             if not cleared:
-                #import inspect
-                #inspect_stack = inspect.stack() 
-                #logger.critical("WAIT_UNTIL_CLEARED stack: '%s'"% pp.pformat(inspect_stack))
+#                import inspect
+#                inspect_stack = inspect.stack() 
+#                logger.critical("WAIT_UNTIL_CLEARED stack: '%s'"% pp.pformat(inspect_stack))
+
                 logger.error("wait_until_cleared %s could not clear '%s'" % (prop, path))
                 raise Exception("Path has not yet been cleared but operation wants to happen on it '%s' '%s'"%(prop, path))
         return True
@@ -2031,6 +2032,12 @@ class YAS3FS(LoggingMixIn, Operations):
                 key.copy(*args, **kargs)
 
                 path = self.remove_prefix(args[1])
+
+                if path.endswith('/'):
+                    # this is a directory, but interally stored w/o 
+                    # trailing slash
+                    path = path[:-1]
+
                 # renaming?
                 if path != key.name:
                     # del self.cache.entries[path]
