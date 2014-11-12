@@ -241,8 +241,8 @@ class FSData():
                 if self.store == 'disk':
                     self.content.close()
                     self.content = None
-    def update_etag(self, new_etag):
-        with self.get_lock():
+    def update_etag(self, new_etag, wait_until_cleared_proplist = None):
+        with self.get_lock(wait_until_cleared_proplist):
             if new_etag != self.etag:
                 self.etag = new_etag
                 if self.store == 'disk':
@@ -312,8 +312,8 @@ class FSData():
                     del self.props[prop]
             except KeyError:
                 pass # Nothing to do
-    def delete(self, prop=None):
-        with self.get_lock():
+    def delete(self, prop=None, wait_until_cleared_proplist = None):
+        with self.get_lock(wait_until_cleared_proplist):
             if prop == None:
                 if self.store == 'disk':
                     filename = self.cache.get_cache_filename(self.path)
@@ -405,7 +405,7 @@ class FSCache():
     def is_ready(self, path, proplist = None):
         return self.wait_until_cleared(path, proplist = proplist)
 
-    def wait_until_cleared(self, path, proplist = None, max_retries = 10, wait_time = 1):
+    def wait_until_cleared(self, path, proplist = None, max_retries = 30, wait_time = 1):
         default_proplist = ['deleting', 's3_busy']
         if proplist is None:
             proplist = default_proplist
@@ -430,10 +430,10 @@ class FSCache():
                 time.sleep(wait_time)
 
             if not cleared:
-#                import inspect
-#                inspect_stack = inspect.stack() 
-#                logger.critical("WAIT_UNTIL_CLEARED stack: '%s'"% pp.pformat(inspect_stack))
-                logger.error("wait_until_cleared %s could not clear '%s'" % (prop, path))
+                #import inspect
+                #inspect_stack = inspect.stack() 
+                #logger.critical("WAIT_UNTIL_CLEARED stack: '%s'"% pp.pformat(inspect_stack))
+                #logger.error("wait_until_cleared %s could not clear '%s'" % (prop, path))
                 raise Exception("Path has not yet been cleared but operation wants to happen on it '%s' '%s'"%(prop, path))
         return True
 
@@ -2042,6 +2042,8 @@ class YAS3FS(LoggingMixIn, Operations):
                 key.set_contents_from_string(*args,**kargs)
             elif action == 'set_contents_from_file':
                 data = args[0] # First argument must be data
+                if data.cache.is_deleting(data.path):
+                    return None
                 try:
                     # ignore deleting flag, though will fail w/ IOError
                     key.set_contents_from_file(data.get_content(wait_until_cleared_proplist = ['s3_busy']),**kargs)
@@ -2053,8 +2055,8 @@ class YAS3FS(LoggingMixIn, Operations):
 
                 # ignore deleting flag
                 with data.get_lock(wait_until_cleared_proplist = ['s3_busy']):
-                    data.update_etag(etag)
-                    data.delete('change')
+                    data.update_etag(etag, wait_until_cleared_proplist = ['s3_busy'])
+                    data.delete('change', wait_until_cleared_proplist = ['s3_busy'])
                 pub.append(etag)
             elif action == 'multipart_upload':
 
