@@ -1236,12 +1236,19 @@ class YAS3FS(LoggingMixIn, Operations):
         while self.sns_topic_arn:
             try:
                 message = self.publish_queue.get(True, 1) # 1 second time-out
+                message = copy.copy(message)
                 message.insert(0, self.unique_id)
                 full_message = json.dumps(message)
+
                 self.sns.publish(self.sns_topic_arn, full_message.encode('ascii'))
                 self.publish_queue.task_done()
             except Queue.Empty:
                 pass
+            except Exception as e:
+                logger.exception(e)
+                logger.error("publish exception: " + full_message.encode('ascii'))
+                raise e
+
                 
     def publish(self, message):
         if self.sns_topic_arn:
