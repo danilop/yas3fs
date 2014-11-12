@@ -1388,7 +1388,7 @@ class YAS3FS(LoggingMixIn, Operations):
         for k in iter:
             logger.debug("has_element '%s' -> '%s'" % (iter, k))
             path = k.name[len(self.s3_prefix):]
-            if not self.cache.has(path, 'deleting'):
+            if not self.cache.is_deleting(path):
                 c += 1
             if c >= num:
                 logger.debug("has_element '%s' OK" % (iter))
@@ -1664,7 +1664,7 @@ class YAS3FS(LoggingMixIn, Operations):
                         d_path = k.name[len(self.s3_prefix):]
                         if d[-1] == '/':
                             d = d[:-1]
-                        if self.cache.has(d_path, 'deleting'):
+                        if self.cache.is_deleting(d_path):
                             continue
                         dirs.append(d)
 
@@ -2025,7 +2025,6 @@ class YAS3FS(LoggingMixIn, Operations):
             if action == 'delete':
                 path = pub[1]
                 key.delete()
-                # self.cache.dec(path, 'deleting')
                 del self.cache.entries[path]
 
             elif action == 'copy':
