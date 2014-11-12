@@ -2042,8 +2042,10 @@ class YAS3FS(LoggingMixIn, Operations):
                 key.set_contents_from_string(*args,**kargs)
             elif action == 'set_contents_from_file':
                 data = args[0] # First argument must be data
+                
                 if data.cache.is_deleting(data.path):
                     return None
+                    
                 try:
                     # ignore deleting flag, though will fail w/ IOError
                     key.set_contents_from_file(data.get_content(wait_until_cleared_proplist = ['s3_busy']),**kargs)
@@ -2061,6 +2063,10 @@ class YAS3FS(LoggingMixIn, Operations):
             elif action == 'multipart_upload':
 
                 data = args[1] # Second argument must be data
+                
+                if data.cache.is_deleting(data.path):
+                    return None
+                    
                 full_size = args[2] # Third argument must be full_size
                 complete = self.multipart_upload(*args)
 
