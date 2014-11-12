@@ -433,7 +433,7 @@ class FSCache():
                 #import inspect
                 #inspect_stack = inspect.stack() 
                 #logger.critical("WAIT_UNTIL_CLEARED stack: '%s'"% pp.pformat(inspect_stack))
-                #logger.error("wait_until_cleared %s could not clear '%s'" % (prop, path))
+                logger.error("wait_until_cleared %s could not clear '%s'" % (prop, path))
                 raise Exception("Path has not yet been cleared but operation wants to happen on it '%s' '%s'"%(prop, path))
         return True
 
@@ -2078,9 +2078,11 @@ class YAS3FS(LoggingMixIn, Operations):
 
                 etag = complete.etag[1:-1]
                 self.cache.delete(data.path, 'key')
-                with data.get_lock():
-                    data.update_etag(etag)
-                    data.delete('change')
+
+                # ignore deleting flag
+                with data.get_lock(wait_until_cleared_proplist = ['s3_busy']):
+                    data.update_etag(etag, wait_until_cleared_proplist = ['s3_busy'])
+                    data.delete('change', wait_until_cleared_proplist = ['s3_busy'])
                 pub.append(etag)
             else:
                 logger.error("do_cmd_on_s3_now Unknown action '%s'" % action)
