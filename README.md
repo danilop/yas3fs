@@ -412,11 +412,13 @@ To the previous message all yas3fs instances will answer publishing a message on
 
 ### Testing
 
-You can use this took to test a YAS3FS install: [yas3fs-test](https://github.com/ewah/yas3fs-test)
+Use this tool to test a YAS3FS install: [yas3fs-test](https://github.com/ewah/yas3fs-test)
 
 It will run through a slew of common commands on one or more nodes, adjust the settings.py file to what you imagine your produciton environment to look like.
 
-This is INVALUABLE for making changes to the yas3fs code set.
+It is INVALUABLE for making changes to the yas3fs code base.
+
+More tests always being added.
 
 
 You can use this tool to test a YAS3FS cluster: [yas3fs-cluster-tester](https://github.com/bitsofinfo/yas3fs-cluster-tester)
