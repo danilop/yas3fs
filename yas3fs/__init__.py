@@ -1152,8 +1152,9 @@ class YAS3FS(LoggingMixIn, Operations):
     def process_message(self, messages):
         logger.debug("process_message '%s'" % (messages))
         c = json.loads(messages)
-        if not c[0] == self.unique_id: 
+        if c[0] == self.unique_id: 
             # discard message coming from itself
+            logger.debug("process message from self discarded '%s'"%(c))
             return
 
         if c[1] in ( 'mkdir', 'mknod', 'symlink' ) and c[2] != None:
@@ -1641,6 +1642,7 @@ class YAS3FS(LoggingMixIn, Operations):
                 raise FuseOSError(errno.ENOENT)
             self.cache.add(path)
             dirs = self.cache.get(path, 'readdir')
+
             if not dirs:
                 logger.debug("readdir '%s' '%s' no cache" % (path, fh))
                 full_path = self.join_prefix(path)
