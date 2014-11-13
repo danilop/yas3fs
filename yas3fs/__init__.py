@@ -2938,7 +2938,7 @@ def create_dirs(dirname):
 def remove_empty_dirs(dirname):
     logger.debug("remove_empty_dirs '%s'" % (dirname))
     try:
-        os.removedirs(dirname)
+        os.removedirs(dirname.encode('utf-8'))
         logger.debug("remove_empty_dirs '%s' done" % (dirname))
     except OSError as exc: # Python >2.5
         if exc.errno == errno.ENOTEMPTY:
@@ -2946,6 +2946,11 @@ def remove_empty_dirs(dirname):
             pass
         else:
             raise
+    except Exception as e:
+        logger.exception(e)
+        logger.error("remove_empty_dirs exception: " + dirname)
+        raise e
+
 
 def create_dirs_for_file(filename):
     logger.debug("create_dirs_for_file '%s'" % filename)
