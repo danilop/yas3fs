@@ -941,6 +941,7 @@ class YAS3FS(LoggingMixIn, Operations):
 
         signal.signal(signal.SIGINT, self.handler)
 
+
     # faking the funk, get a better wrapper model later
     def withplugin(fn):
         def fn_wrapper(*arg, **karg):
@@ -1047,6 +1048,7 @@ class YAS3FS(LoggingMixIn, Operations):
             self.sns.subscribe(self.sns_topic_arn, 'http', self.http_listen_url)
 
     def handler(signum, frame):
+        logger.info("interrupt_handler RECEIVED SIGINT")
         self.destroy('/')
 
     def flush_all_cache(self):
@@ -2030,6 +2032,12 @@ class YAS3FS(LoggingMixIn, Operations):
     @withplugin
     def do_cmd_on_s3_now(self, key, pub, action, args, kargs):
         logger.debug("do_cmd_on_s3_now action '%s' key '%s' args '%s' kargs '%s'" % (action, key, args, kargs))
+
+        # fuse/yas3fs is version unaware and all operation should
+        # happen to the current version
+	      # also we don't track updated key.version_id in self.cache 
+        # so it is likely that what was stored has been staled
+        key.version_id = None  
 
         try:
             if action == 'delete':
