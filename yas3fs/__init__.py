@@ -2937,8 +2937,12 @@ def create_dirs(dirname):
 
 def remove_empty_dirs(dirname):
     logger.debug("remove_empty_dirs '%s'" % (dirname))
+
     try:
-        os.removedirs(dirname.encode('utf-8'))
+        if not isinstance(dirname,str):
+            dirname = dirname.encode('utf-8')
+
+        os.removedirs(dirname)
         logger.debug("remove_empty_dirs '%s' done" % (dirname))
     except OSError as exc: # Python >2.5
         if exc.errno == errno.ENOTEMPTY:
@@ -2954,12 +2958,18 @@ def remove_empty_dirs(dirname):
 
 def create_dirs_for_file(filename):
     logger.debug("create_dirs_for_file '%s'" % filename)
-    dirname = os.path.dirname(filename.decode('utf-8'))
+    if not isinstance(filename,str):
+        filename = filename.encode('utf-8')
+
+    dirname = os.path.dirname(filename)
     create_dirs(dirname)
 
 def remove_empty_dirs_for_file(filename):
     logger.debug("remove_empty_dirs_for_file '%s'" % filename)
-    dirname = os.path.dirname(filename.decode('utf-8'))
+    if not isinstance(filename,str):
+        filename = filename.encode('utf-8')
+
+    dirname = os.path.dirname(filename)
     remove_empty_dirs(dirname)
 
 def get_current_time():
