@@ -534,11 +534,12 @@ class FSCache():
                 except KeyError:
                     pass # Nothing to do
 
-    def reset(self, path):
+    def reset(self, path, with_deleting = True):
         with self.get_lock(path):
             self.delete(path)
             self.add(path)
-            self.inc(path, 'deleting')
+            if with_deleting:
+                self.inc(path, 'deleting')
 
     def has(self, path, prop=None):
         self.lru.move_to_the_tail(path) # Move to the tail of the LRU cache
@@ -2217,7 +2218,7 @@ class YAS3FS(LoggingMixIn, Operations):
                     raise FuseOSError(errno.ENOTEMPTY)
             ###k.delete()
             ###self.publish(['rmdir', path])
-            self.cache.reset(path) # Cache invaliation
+            self.cache.reset(path, with_deleting = bool(k)) # Cache invaliation
             self.remove_from_parent_readdir(path)
             if k:
                 logger.debug("rmdir '%s' '%s' S3" % (path, k))
@@ -2392,7 +2393,7 @@ class YAS3FS(LoggingMixIn, Operations):
             if not k and not self.cache.has(path):
                 logger.debug("unlink '%s' ENOENT" % (path))
                 raise FuseOSError(errno.ENOENT)
-            self.cache.reset(path) # Cache invaliation
+            self.cache.reset(path, with_deleting = bool(k)) # Cache invaliation
             self.remove_from_parent_readdir(path)
             if k:
                 logger.debug("unlink '%s' '%s' S3" % (path, k))
