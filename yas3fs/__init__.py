@@ -704,8 +704,7 @@ class YAS3FS(LoggingMixIn, Operations):
         self.s3_retries_sleep = options.s3_retries_sleep # retry sleep in seconds
         logger.info("s3-retries-sleep: '%i' seconds" % self.s3_retries_sleep)
         
-        self.yas3fs_xattrs = [ 'yas3fs.bucket', 'yas3fs.key', 'yas3fs.URL', 'yas3fs.signedURL',
-                               'yas3fs.expiration' ]
+        self.yas3fs_xattrs = [ 'user.yas3fs.bucket', 'user.yas3fs.key', 'user.yas3fs.URL', 'user.yas3fs.signedURL', 'user.yas3fs.expiration' ]
 
         self.multipart_uploads_in_progress = 0
 
@@ -812,10 +811,16 @@ class YAS3FS(LoggingMixIn, Operations):
         self.requester_pays = options.requester_pays
         logger.info("S3 Request Payer: '%s'" % str(self.requester_pays))
         
+        self.default_headers = {}
         if self.requester_pays:
             self.default_headers = { 'x-amz-request-payer' : 'requester' }
-        else:
-            self.default_headers = {}
+
+        crypto_headers = {}
+        if self.aws_managed_encryption:
+            crypto_headers = { 'x-amz-server-side-encryption' : 'AES256' }
+
+        self.default_write_headers = copy.copy(self.default_headers)
+        self.default_write_headers.update(crypto_headers)
 
         self.darwin = options.darwin # To tailor ENOATTR for OS X
 
@@ -940,7 +945,8 @@ class YAS3FS(LoggingMixIn, Operations):
         if self.plugin:
             self.plugin.logger = logger
 
-        signal.signal(signal.SIGINT, self.handler)
+        signal.signal(signal.SIGINT, self.signal_handler)
+        signal.signal(signal.SIGHUP, self.signal_handler)
 
 
     # faking the funk, get a better wrapper model later
@@ -1048,9 +1054,16 @@ class YAS3FS(LoggingMixIn, Operations):
             self.http_listen_thread = None
             self.sns.subscribe(self.sns_topic_arn, 'http', self.http_listen_url)
 
-    def handler(signum, frame):
-        logger.info("interrupt_handler RECEIVED SIGINT")
-        self.destroy('/')
+    def signal_handler(self, signum, frame):
+        logger.info("signal_handler RECEIVED %s", signum)
+        if signum == signal.SIGINT:
+            logger.info("interrupt RECEIVED SIGINT %s", signum)
+            self.destroy('/')
+
+        elif signum == signal.SIGHUP:
+            logger.info("hangup RECEIVED SIGHUP %s", signum)
+
+        logger.info("signal_handler DONE %s", signum)
 
     def flush_all_cache(self):
         logger.debug("flush_all_cache")
@@ -1262,6 +1275,8 @@ class YAS3FS(LoggingMixIn, Operations):
         logger.debug("check_status")
 
         while self.cache_entries:
+            time.sleep(self.cache_check_interval)
+            continue
 
             num_entries, mem_size, disk_size = self.cache.get_memory_usage()
             s3q = 0 ### Remove duplicate code
@@ -1290,6 +1305,8 @@ class YAS3FS(LoggingMixIn, Operations):
         logger.debug("check_cache_size")
 
         while self.cache_entries:
+            time.sleep(self.cache_check_interval)
+            continue
 
             logger.debug("check_cache_size get_memory_usage")
             num_entries, mem_size, disk_size = self.cache.get_memory_usage()
@@ -1575,11 +1592,7 @@ class YAS3FS(LoggingMixIn, Operations):
                             logger.debug("set_metadata '%s' '%s' S3 new key" % (path, key))
                             ### key.set_contents_from_string('', headers={'Content-Type': 'application/x-directory'})
                             headers = { 'Content-Type': 'application/x-directory' }
-                            headers.update(self.default_headers)
-                            
-                            if self.aws_managed_encryption:
-            			        crypto_headers = { 'x-amz-server-side-encryption' : 'AES256' }
-            			        headers.update(crypto_headers)
+                            headers.update(self.default_write_headers)
                             
                             cmds = [ [ 'set_contents_from_string', [ '' ], { 'headers': headers } ] ]
                             self.do_on_s3(key, pub, cmds)
@@ -1734,12 +1747,7 @@ class YAS3FS(LoggingMixIn, Operations):
                 ###k.set_contents_from_string('', headers={'Content-Type': 'application/x-directory'})
                 pub = [ 'mkdir', path ]
                 headers = { 'Content-Type': 'application/x-directory'}
-                headers.update(self.default_headers)
-                
-                if self.aws_managed_encryption:
-            	    crypto_headers = { 'x-amz-server-side-encryption' : 'AES256' }
-            	    headers.update(crypto_headers)
-                
+                headers.update(self.default_write_headers)
                 cmds = [ [ 'set_contents_from_string', [ '' ], { 'headers': headers } ] ]
                 self.do_on_s3(k, pub, cmds)
             data.delete('change')
@@ -1789,12 +1797,7 @@ class YAS3FS(LoggingMixIn, Operations):
             ###k.set_contents_from_string(link, headers={'Content-Type': 'application/x-symlink'})
             pub = [ 'symlink', path ]
             headers = { 'Content-Type': 'application/x-symlink' }
-            headers.update(self.default_headers)
-            
-            if self.aws_managed_encryption:
-            	crypto_headers = { 'x-amz-server-side-encryption' : 'AES256' }
-            	headers.update(crypto_headers)
-            
+            headers.update(self.default_write_headers)
             cmds = [ [ 'set_contents_from_string', [ link ], { 'headers': headers } ] ]
             self.do_on_s3(k, pub, cmds)
             data.delete('change')
@@ -2578,12 +2581,7 @@ class YAS3FS(LoggingMixIn, Operations):
         written = False
         pub = [ 'upload', path ] # Add Etag before publish
         headers = { 'Content-Type': mimetype }
-        
-    	if self.aws_managed_encryption:
-    	    crypto_headers = { 'x-amz-server-side-encryption' : 'AES256' }
-    	    headers.update(crypto_headers)
-    	
-        headers.update(self.default_headers)
+        headers.update(self.default_write_headers)
 
         logger.debug("multipart test: key '%s' mp-num '%s' st_size '%s' mp-size '%s'" %(path, self.multipart_num, attr['st_size'], self.multipart_size))
         if self.multipart_num > 0:
@@ -2749,33 +2747,36 @@ class YAS3FS(LoggingMixIn, Operations):
         if self.cache.is_empty(path):
             logger.debug("getxattr '%s' '%s' '%i' ENOENT" % (path, name, position))
             raise FuseOSError(errno.ENOENT)
-        if name == 'yas3fs.bucket':
+        if name in ['yas3fs.bucket', 'user.yas3fs.bucket']:
             return self.s3_bucket_name
-        elif name == 'yas3fs.key':
+
+        if name in ['yas3fs.key', 'user.yas3fs.key']:
             key = self.get_key(path)
             if key:
                 return key.key
-        elif name == 'yas3fs.URL':
+        elif name in ['yas3fs.URL', 'user.yas3fs.URL']:
             key = self.get_key(path)
             if key:
                 tmp_key = copy.copy(key)
                 tmp_key.metadata = {} # To remove unnecessary metadata headers
+                tmp_key.version_id = None
                 return tmp_key.generate_url(expires_in=0, headers=self.default_headers, query_auth=False)
         xattr = self.get_metadata(path, 'xattr')
         if xattr == None:
             logger.debug("getxattr <- '%s' '%s' '%i' ENOENT" % (path, name, position))
             raise FuseOSError(errno.ENOENT)
-        if name == 'yas3fs.signedURL':
+
+        if name in ['yas3fs.signedURL', 'user.yas3fs.signedURL']:
             key = self.get_key(path)
             if key:
                 try:
-                    seconds = int(xattr['yas3fs.expiration'])
+                    seconds = int(xattr['user.yas3fs.expiration'])
                 except KeyError:
                     seconds = self.default_expiration
                 tmp_key = copy.copy(key)
                 tmp_key.metadata = {} # To remove unnecessary metadata headers
                 return tmp_key.generate_url(expires_in=seconds, headers=self.default_headers)
-        elif name == 'yas3fs.expiration':
+        elif name in ['yas3fs.expiration', 'user.yas3fs.expiration']:
             key = self.get_key(path)
             if key:
                 if name not in xattr:
@@ -2839,7 +2840,7 @@ class YAS3FS(LoggingMixIn, Operations):
             if self.cache.is_empty(path):
                 logger.debug("setxattr '%s' '%s' ENOENT" % (path, name))
                 raise FuseOSError(errno.ENOENT)
-            if name in [ 'yas3fs.bucket', 'yas3fs.key', 'yas3fs.signedURL30d' ]:
+            if name in [ 'user.yas3fs.bucket', 'user.yas3fs.key', 'user.yas3fs.URL', 'user.yas3fs.signedURL' ]:
                 return 0 # Do nothing    
             xattr = self.get_metadata(path, 'xattr')
             if xattr < 0:
