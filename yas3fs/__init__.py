@@ -2775,6 +2775,7 @@ class YAS3FS(LoggingMixIn, Operations):
                     seconds = self.default_expiration
                 tmp_key = copy.copy(key)
                 tmp_key.metadata = {} # To remove unnecessary metadata headers
+                tmp_key.version_id = None
                 return tmp_key.generate_url(expires_in=seconds, headers=self.default_headers)
         elif name in ['yas3fs.expiration', 'user.yas3fs.expiration']:
             key = self.get_key(path)
