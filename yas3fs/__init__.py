@@ -2750,38 +2750,41 @@ class YAS3FS(LoggingMixIn, Operations):
         if name in ['yas3fs.bucket', 'user.yas3fs.bucket']:
             return self.s3_bucket_name
 
+        key = self.get_key(path)
+        if not key:
+            if self.darwin:
+                raise FuseOSError(errno.ENOENT) # Should return ENOATTR
+            else:
+                return '' # Should return ENOATTR
+
         if name in ['yas3fs.key', 'user.yas3fs.key']:
-            key = self.get_key(path)
-            if key:
-                return key.key
-        elif name in ['yas3fs.URL', 'user.yas3fs.URL']:
-            key = self.get_key(path)
-            if key:
-                tmp_key = copy.copy(key)
-                tmp_key.metadata = {} # To remove unnecessary metadata headers
-                tmp_key.version_id = None
-                return tmp_key.generate_url(expires_in=0, headers=self.default_headers, query_auth=False)
+            return key.key
+
+        if name in ['yas3fs.URL', 'user.yas3fs.URL']:
+            tmp_key = copy.copy(key)
+            tmp_key.metadata = {} # To remove unnecessary metadata headers
+            tmp_key.version_id = None
+            return tmp_key.generate_url(expires_in=0, headers=self.default_headers, query_auth=False)
+
         xattr = self.get_metadata(path, 'xattr')
         if xattr == None:
             logger.debug("getxattr <- '%s' '%s' '%i' ENOENT" % (path, name, position))
             raise FuseOSError(errno.ENOENT)
 
         if name in ['yas3fs.signedURL', 'user.yas3fs.signedURL']:
-            key = self.get_key(path)
-            if key:
-                try:
-                    seconds = int(xattr['user.yas3fs.expiration'])
-                except KeyError:
-                    seconds = self.default_expiration
-                tmp_key = copy.copy(key)
-                tmp_key.metadata = {} # To remove unnecessary metadata headers
-                tmp_key.version_id = None
-                return tmp_key.generate_url(expires_in=seconds, headers=self.default_headers)
-        elif name in ['yas3fs.expiration', 'user.yas3fs.expiration']:
-            key = self.get_key(path)
-            if key:
-                if name not in xattr:
-                    return str(self.default_expiration) + ' (default)'
+            try:
+                seconds = int(xattr['user.yas3fs.expiration'])
+            except KeyError:
+                seconds = self.default_expiration
+            tmp_key = copy.copy(key)
+            tmp_key.metadata = {} # To remove unnecessary metadata headers
+            tmp_key.version_id = None
+            return tmp_key.generate_url(expires_in=seconds, headers=self.default_headers)
+
+        if name in ['yas3fs.expiration', 'user.yas3fs.expiration']:
+            if 'user.yas3fs.expiration' not in xattr:
+                return str(self.default_expiration) + ' (default)'
+
         try:
             return xattr[name]
         except KeyError:
@@ -2841,7 +2844,7 @@ class YAS3FS(LoggingMixIn, Operations):
             if self.cache.is_empty(path):
                 logger.debug("setxattr '%s' '%s' ENOENT" % (path, name))
                 raise FuseOSError(errno.ENOENT)
-            if name in [ 'user.yas3fs.bucket', 'user.yas3fs.key', 'user.yas3fs.URL', 'user.yas3fs.signedURL' ]:
+            if name in self.yas3fs_xattrs and name not in ['user.yas3fs.expiration']:
                 return 0 # Do nothing    
             xattr = self.get_metadata(path, 'xattr')
             if xattr < 0:
