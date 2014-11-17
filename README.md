@@ -416,6 +416,15 @@ Have to load a massive amount of files into an S3 bucket that you intend to fron
 
 ### Testing
 
+Use this tool to test a YAS3FS install: [yas3fs-test](https://github.com/ewah/yas3fs-test)
+
+It will run through a slew of common commands on one or more nodes, adjust the settings.py file to what you imagine your produciton environment to look like.
+
+It is INVALUABLE for making changes to the yas3fs code base.
+
+More tests always being added.
+
+
 You can use this tool to test a YAS3FS cluster: [yas3fs-cluster-tester](https://github.com/bitsofinfo/yas3fs-cluster-tester)
 
 It is a test harness suite to induce file I/O and validate YAS3FS cluster activity across N peer-nodes.
