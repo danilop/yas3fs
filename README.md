@@ -341,7 +341,7 @@ The following `action`(s) are currently implemented:
 * `rename` (rename file or directory): `[ "node_id", "rename", "old_path", "new_path" ]`
 * `upload` (new or updated file): `[ "node_id", "upload", "path", "new_md5" ]` (`path` and `new_md5` are optional)
 * `md` (updated metadata, e.g. attr/xattr): `[ "node_id", "md", "path", "metadata_name" ]`
-* `reset` (reset cache): `[ "node_id", "reset" ]`
+* `reset` (reset cache): `[ "node_id", "reset", "path" ]` (`path` is optional)
 * `cache` (change cache config): `[ "node_id", "cache" , "entries" or "mem" or "disk", new_value ]`
 * `buffer` (change buffer config): `[ "node_id", "buffer", "size" or "prefetch", new_value ]`
 * `prefetch` (change prefetch config): `[ "node_id", "prefetch", "on" or "off" ]`
