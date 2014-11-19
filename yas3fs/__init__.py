@@ -1190,9 +1190,18 @@ class YAS3FS(LoggingMixIn, Operations):
                 self.cache.delete(c[3], 'key')
                 self.cache.delete(c[3], c[2])
         elif c[1] == 'reset':
-            with self.cache.lock:
-                self.flush_all_cache()
-                self.cache.reset_all() # Completely reset the cache
+            if len(c) == 2 or ! c[2] or c[2] == '/':
+                with self.cache.lock:
+                    self.flush_all_cache()
+                    self.cache.reset_all() # Completely reset the cache
+            else: 
+                # c[2] exists and is not the root directory
+                for path in self.cache.entries.keys():
+                    # If the reset path is a directory and it matches 
+                    # the directory in the cache, it will delete the 
+                    # parent directory cache as well.
+                    if path.startswith(c[2]):
+                        self.delete_cache(path)
         elif c[1] == 'url':
             with self.cache.lock:
                 self.flush_all_cache()
