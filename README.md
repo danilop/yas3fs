@@ -302,22 +302,22 @@ Similarly on Linux you can use the 'getfattr' and 'setfattr' commands:
 
     $ getfattr -d -m yas3fs file
     # file: file
-    yas3fs.URL="http://bucket.s3.amazonaws.com/key"
-    yas3fs.bucket="S3 bucket"
-    yas3fs.expiration="2592000 (default)"
-    yas3fs.key="S3 key"
-    yas3fs.signedURL="https://bucket.s3.amazonaws.com/..." (for default expiration)
+    user.yas3fs.URL="http://bucket.s3.amazonaws.com/key"
+    user.yas3fs.bucket="S3 bucket"
+    user.yas3fs.expiration="2592000 (default)"
+    user.yas3fs.key="S3 key"
+    user.yas3fs.signedURL="https://bucket.s3.amazonaws.com/..." (for default expiration)
 
-    $ setfattr -n yas3fs.expiration -v 3600
+    $ setfattr -n user.yas3fs.expiration -v 3600
     $ getfattr -d -m yas3fs file
     # file: file
-    yas3fs.URL="http://bucket.s3.amazonaws.com/key"
-    yas3fs.bucket="S3 bucket"
-    yas3fs.expiration="3600"
-    yas3fs.key="S3 key"
-    yas3fs.signedURL="https://bucket.s3.amazonaws.com/..." (for 1h expiration)
+    user.yas3fs.URL="http://bucket.s3.amazonaws.com/key"
+    user.yas3fs.bucket="S3 bucket"
+    user.yas3fs.expiration="3600"
+    user.yas3fs.key="S3 key"
+    user.yas3fs.signedURL="https://bucket.s3.amazonaws.com/..." (for 1h expiration)
 
-    $ setfattr -x yas3fs.expiration latest.zip # File specific expiration removed, the default is used again
+    $ setfattr -x user.yas3fs.expiration latest.zip # File specific expiration removed, the default is used again
 
 ### Notification Syntax & Use
 
