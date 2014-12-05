@@ -27,7 +27,7 @@ This is a personal project. No relation whatsoever exists between this project a
 
 ### License
 
-Copyright (c) 2012-2013 Danilo Poccia, http://blog.danilopoccia.net
+Copyright (c) 2012-2014 Danilo Poccia, http://blog.danilopoccia.net
 
 This code is licensed under the The MIT License (MIT). Please see the LICENSE file that accompanies this project for the terms of use.
 
