@@ -2507,10 +2507,13 @@ class YAS3FS(LoggingMixIn, Operations):
                 logger.debug("read '%s' '%i' '%i' '%s' in range" % (path, length, offset, fh))
                 break
             else:
+                if retriesAttempted > 1:
+                    logger.debug('%d retries' % (retriesAttempted))
+                    time.sleep(self.read_retries_sleep)
+                
                 # Note added max retries as this can go on forever... for https://github.com/danilop/yas3fs/issues/46
                 logger.debug("read '%s' '%i' '%i' '%s' out of range" % (path, length, offset, fh))
                 self.enqueue_download_data(path, offset, length)
-                time.sleep(self.read_retries_sleep)
 
 
             logger.debug("read wait '%s' '%i' '%i' '%s'" % (path, length, offset, fh))
