@@ -851,7 +851,7 @@ class YAS3FS(LoggingMixIn, Operations):
         if not self.s3:
             error_and_exit("no S3 connection")
         try:
-            self.s3_bucket = self.s3.get_bucket(self.s3_bucket_name, headers=self.default_headers)
+            self.s3_bucket = self.s3.get_bucket(self.s3_bucket_name, headers=self.default_headers, validate=False)
             self.s3_bucket.key_class = UTF8DecodingKey
         except boto.exception.S3ResponseError, e:
             error_and_exit("S3 bucket not found:" + str(e))
@@ -1216,7 +1216,7 @@ class YAS3FS(LoggingMixIn, Operations):
                 self.s3_prefix = s3url.path.strip('/')
                 logger.info("S3 prefix: '%s'" % self.s3_prefix)
                 try:
-                    self.s3_bucket = self.s3.get_bucket(self.s3_bucket_name, headers=self.default_headers)
+                    self.s3_bucket = self.s3.get_bucket(self.s3_bucket_name, headers=self.default_headers, validate=False)
                     self.s3_bucket.key_class = UTF8DecodingKey
                 except boto.exception.S3ResponseError, e:
                     error_and_exit("S3 bucket not found:" + str(e))
