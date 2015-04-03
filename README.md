@@ -139,14 +139,14 @@ To unmount the file system on a Mac you can use `umount`.
 
     usage: yas3fs [-h] [--region REGION] [--topic ARN] [--new-queue]
                   [--new-queue-with-hostname] [--queue NAME] 
-                  [--queue-wait N] [--queue-polling N]
+                  [--queue-wait N] [--queue-polling N] [--nonempty]
                   [--hostname HOSTNAME] [--use-ec2-hostname] [--port N]
                   [--cache-entries N] [--cache-mem-size N] [--cache-disk-size N]
                   [--cache-path PATH] [--recheck-s3] [--cache-on-disk N] [--cache-check N]
                   [--s3-num N] [--download-num N] [--prefetch-num N] [--st-blksize N]
                   [--buffer-size N] [--buffer-prefetch N] [--no-metadata]
                   [--prefetch] [--mp-size N] [--mp-num N] [--mp-retries N]
-                  [--s3-retries N] [--s3-retries-sleep N]
+                  [--s3-retries N] [--s3-retries-sleep N] 
                   [--aws-managed-encryption] 
                   [--download-retries-num N] [--download-retries-sleep N]
                   [--read-retries-num N] [--read-retries-sleep N]
@@ -228,6 +228,7 @@ To unmount the file system on a Mac you can use `umount`.
       --read-retries-sleep N how long to sleep in seconds between read() retries (default is 1)
       --prefetch-num N     number of parallel prefetching downloads (default is 2)
       --st-blksize N       st_blksize to return to getattr() callers in bytes, optional
+      --nonempty           allows mounts over a non-empty file or directory
       --buffer-size N      download buffer size in KB (0 to disable buffering,
                            default is 10240 KB)
       --buffer-prefetch N  number of buffers to prefetch (default is 0)
