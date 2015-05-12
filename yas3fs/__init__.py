@@ -3150,7 +3150,7 @@ AWS_DEFAULT_REGION environment variable can be used to set the default AWS regio
                         help='default expiration for signed URL via xattrs (in seconds, default is 30 days)')
     parser.add_argument('--requester-pays', action='store_true',
                         help='requester pays for S3 interactions, the bucket must have Requester Pays enabled')
-    parser.add_argument('--no_allow_other', action='store_true',
+    parser.add_argument('--no-allow-other', action='store_true',
                         help='Do not allow other users to access mounted directory')
     parser.add_argument('--with-plugin-file', metavar='FILE',
                         help="YAS3FSPlugin file")
