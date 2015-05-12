@@ -3150,7 +3150,8 @@ AWS_DEFAULT_REGION environment variable can be used to set the default AWS regio
                         help='default expiration for signed URL via xattrs (in seconds, default is 30 days)')
     parser.add_argument('--requester-pays', action='store_true',
                         help='requester pays for S3 interactions, the bucket must have Requester Pays enabled')
-
+    parser.add_argument('--no_allow_other', action='store_true',
+                        help='Do not allow other users to access mounted directory')
     parser.add_argument('--with-plugin-file', metavar='FILE',
                         help="YAS3FSPlugin file")
     parser.add_argument('--with-plugin-class', metavar='CLASS',
@@ -3165,7 +3166,6 @@ AWS_DEFAULT_REGION environment variable can be used to set the default AWS regio
                         help='number of backups log files')
     parser.add_argument('--log-backup-gzip', action='store_true',
                         help='flag to gzip backup files')
-
     parser.add_argument('-f', '--foreground', action='store_true',
                         help='run in foreground')
     parser.add_argument('-d', '--debug', action='store_true',
@@ -3218,7 +3218,8 @@ AWS_DEFAULT_REGION environment variable can be used to set the default AWS regio
         'max_readahead':131072,
         'direct_io':True
         }
-
+    if options.no_allow_other:
+        mount_options["allow_other"] = False
     if options.uid:
         mount_options['uid'] = options.uid
     if options.gid:
