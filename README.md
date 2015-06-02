@@ -27,7 +27,7 @@ This is a personal project. No relation whatsoever exists between this project a
 
 ### License
 
-Copyright (c) 2012-2014 Danilo Poccia, http://blog.danilopoccia.net
+Copyright (c) 2012-2014 Danilo Poccia, http://danilop.net
 
 This code is licensed under the The MIT License (MIT). Please see the LICENSE file that accompanies this project for the terms of use.
 
@@ -35,7 +35,7 @@ This code is licensed under the The MIT License (MIT). Please see the LICENSE fi
 
 This is the logical architecture of yas3fs:
 
-![yas3fs Logical Architecture](http://blog.danilopoccia.net/wp-content/uploads/sites/2/2012/11/yas3fs.png.scaled500.png)
+![yas3fs Logical Architecture](http://danilopoccia.s3.amazonaws.com/YAS3FS/yas3fs.png)
 
 I strongly suggest to start yas3fs for the first time with the `-df` (debug + foreground) options, to see if there is any error.
 When everything works it can be interrupted (with `^C`) and restarted to run in background
