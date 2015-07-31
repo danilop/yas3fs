@@ -845,7 +845,11 @@ class YAS3FS(LoggingMixIn, Operations):
         if not self.aws_region in (r.name for r in boto.s3.regions()):
             error_and_exit("wrong AWS region '%s' for S3" % self.aws_region)
         try:
-            self.s3 = boto.connect_s3()
+            if options.s3_use_sigv4:
+                os.environ['S3_USE_SIGV4'] = 'True'
+                self.s3 = boto.connect_s3(host=options.s3_endpoint)
+            else:
+                self.s3 = boto.connect_s3()
         except boto.exception.NoAuthHandlerFound:
             error_and_exit("no AWS credentials found")
         if not self.s3:
@@ -3091,14 +3095,14 @@ AWS_DEFAULT_REGION environment variable can be used to set the default AWS regio
                         help='interval between cache size checks in seconds (default is %(default)s seconds)')
     parser.add_argument('--s3-num', metavar='N', type=int, default=32,
                         help='number of parallel S3 calls (0 to disable writeback, default is %(default)s)')
-
     parser.add_argument('--s3-retries', metavar='N', type=int, default=3,
                         help='number of of times to retry any s3 write operation (default is %(default)s)')
-
     parser.add_argument('--s3-retries-sleep', metavar='N', type=int, default=1,
                         help='retry sleep in seconds between s3 write operations (default is %(default)s)')
-
-
+    parser.add_argument('--s3-use-sigv4', action='store_true',
+                        help='use AWS signature version 4 for authentication (required for some regions)')
+    parser.add_argument('--s3-endpoint',
+                        help='endpoint of the s3 bucket, required with --s3-use-sigv4')
     parser.add_argument('--download-num', metavar='N', type=int, default=4,
                         help='number of parallel downloads (default is %(default)s)')
     parser.add_argument('--download-retries-num', metavar='N', type=int, default=60,
