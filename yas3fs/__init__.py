@@ -2064,6 +2064,8 @@ class YAS3FS(LoggingMixIn, Operations):
                 del self.cache.entries[path]
 
             elif action == 'copy':
+                # Otherwise we loose the Content-Type with S3 Copy
+                key.metadata['Content-Type'] = key.content_type
                 key.copy(*args, **kargs)
 
                 path = self.remove_prefix(args[1])
