@@ -1,5 +1,7 @@
 ### Yet Another S3-backed File System: yas3fs
 
+[![Join the chat at https://gitter.im/danilop/yas3fs](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/danilop/yas3fs?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
+
 YAS3FS (Yet Another S3-backed File System) is a [Filesystem in Userspace (FUSE)](http://fuse.sourceforge.net)
 interface to [Amazon S3](http://aws.amazon.com/s3/).
 It was inspired by [s3fs](http://code.google.com/p/s3fs/) but rewritten from scratch to implement
