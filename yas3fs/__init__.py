@@ -54,6 +54,9 @@ from YAS3FSPlugin import YAS3FSPlugin
 
 from _version import __version__
 
+mimetypes.add_type("image/svg+xml", ".svg", True)
+mimetypes.add_type("image/svg+xml", ".svgz", True)
+
 class UTF8DecodingKey(boto.s3.key.Key):
     BufferSize = 131072
 
