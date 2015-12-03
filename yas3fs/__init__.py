@@ -2878,7 +2878,7 @@ class YAS3FS(LoggingMixIn, Operations):
             return 0
 
     def statfs(self, path):
-        logger.debug("statfs a '%s'" % (path))
+        logger.debug("statfs '%s'" % (path))
         """Returns a dictionary with keys identical to the statvfs C
            structure of statvfs(3).
            The 'f_frsize', 'f_favail', 'f_fsid' and 'f_flag' fields are ignored
