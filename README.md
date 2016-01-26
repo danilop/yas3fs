@@ -149,6 +149,7 @@ To unmount the file system on a Mac you can use `umount`.
                   [--buffer-size N] [--buffer-prefetch N] [--no-metadata]
                   [--prefetch] [--mp-size N] [--mp-num N] [--mp-retries N]
                   [--s3-retries N] [--s3-retries-sleep N] 
+                  [--s3-use-sigv4] [--s3-endpoint URI]
                   [--aws-managed-encryption] 
                   [--no-allow-other]
                   [--download-retries-num N] [--download-retries-sleep N]
@@ -220,10 +221,13 @@ To unmount the file system on a Mac you can use `umount`.
                            than the given size in bytes (default is 0 bytes)
       --cache-check N      interval between cache size checks in seconds (default
                            is 5 seconds)
+      --s3-endpoint        the S3 endpoint URI, only required if using --s3-use-sigv4
       --s3-num N           number of parallel S3 calls (0 to disable writeback,
                            default is 32)
       --s3-retries N       number of retries for s3 write operations (default 3)
       --s3-retries-sleep N  number of seconds between retries for s3 write operations (default 1)
+      --s3-use-sigv4       use signature version 4 signing process, required to connect
+                           to some newer AWS regions. --s3-endpoint must also be set
       --download-num N     number of parallel downloads (default is 4)
       --download-retries-num N max number of retries when downloading (default is 60)
       --download-retries-sleep N how long to sleep in seconds between download retries (default is 1)
