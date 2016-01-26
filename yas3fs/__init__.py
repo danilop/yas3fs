@@ -54,6 +54,9 @@ from YAS3FSPlugin import YAS3FSPlugin
 
 from _version import __version__
 
+mimetypes.add_type("image/svg+xml", ".svg", True)
+mimetypes.add_type("image/svg+xml", ".svgz", True)
+
 class UTF8DecodingKey(boto.s3.key.Key):
     BufferSize = 131072
 
@@ -2064,6 +2067,8 @@ class YAS3FS(LoggingMixIn, Operations):
                 del self.cache.entries[path]
 
             elif action == 'copy':
+                # Otherwise we loose the Content-Type with S3 Copy
+                key.metadata['Content-Type'] = key.content_type
                 key.copy(*args, **kargs)
 
                 path = self.remove_prefix(args[1])
