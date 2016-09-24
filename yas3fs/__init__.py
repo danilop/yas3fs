@@ -613,7 +613,8 @@ class SNS_HTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         string_to_sign = '\n'.join(list(itertools.chain.from_iterable(
                     [ (k, message_content[k]) for k in sorted(message_content.iterkeys()) ]
                     ))) + '\n'
-
+        
+        import M2Crypto # Required to check integrity of SNS HTTP notifications
         cert = M2Crypto.X509.load_cert_string(self.certificate)
         pub_key = cert.get_pubkey().get_rsa()
         verify_evp = M2Crypto.EVP.PKey()
@@ -774,7 +775,6 @@ class YAS3FS(LoggingMixIn, Operations):
             logger.info("Public hostname to listen to SNS HTTP notifications: '%s'" % self.hostname)
         self.sns_http_port = int(options.port or '0')
         if options.port:
-            import M2Crypto # Required to check integrity of SNS HTTP notifications
             logger.info("TCP port to listen to SNS HTTP notifications: '%i'" % self.sns_http_port)
         self.s3_num = options.s3_num
         logger.info("Number of parallel S3 threads (0 to disable writeback): '%i'" % self.s3_num)
