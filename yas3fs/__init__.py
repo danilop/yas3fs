@@ -2886,15 +2886,19 @@ class YAS3FS(LoggingMixIn, Operations):
            On Mac OS X f_bsize and f_frsize must be a power of 2
            (minimum 512)."""
         return {
-            "f_namemax" : 512,
             "f_bsize" : 1024 * 1024,
+            "f_frsize": 1024 * 1024 * 1024,
             "f_blocks" : 1024 * 1024 * 1024,
             "f_bfree" : 1024 * 1024 * 1024,
             "f_bavail" : 1024 * 1024 * 1024,
             "f_files" : 1024 * 1024 * 1024,
+            "f_ffree" : 1024 * 1024 * 1024,
             "f_favail" : 1024 * 1024 * 1024,
-            "f_ffree" : 1024 * 1024 * 1024
+            # "f_fsid": 512,
+            # "f_flag" : 4096,
+            "f_namemax" : 512
             }
+
 
 class TracebackLoggingThread(threading.Thread):
     def run(self):
