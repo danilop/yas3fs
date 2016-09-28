@@ -445,6 +445,16 @@ class FSCache():
         if not skip_is_ready:
             self.is_ready(path, proplist = wait_until_cleared_proplist)
 
+        # Work around a deadlock when operations such as flush_all_caches lock the global cache
+        # and do operations that perform path-based locks while a worker holding onto a path-based
+        # lock tries to re-lock it. The global operation will block waiting for the worker to give
+        # the path-based lock, while the worker blocks waiting for the global lock, completely
+        # locking up the FS
+        entry = self.entries.get(path) or {}
+        existing_lock = entry.get('lock')
+        if existing_lock and existing_lock._RLock__owner == threading.current_thread().ident:
+            return existing_lock
+
         with self.lock: # Global cache lock, used only for giving file-level locks
             try:
                 return self.entries[path]['lock']
