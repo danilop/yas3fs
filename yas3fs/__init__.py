@@ -1199,7 +1199,7 @@ class YAS3FS(LoggingMixIn, Operations):
                 self.cache.delete(c[3], 'key')
                 self.cache.delete(c[3], c[2])
         elif c[1] == 'reset':
-            if len(c) >= 2 or not c[2] or c[2] == '/':
+            if len(c) <= 2 or not c[2] or c[2] == '/':
                 with self.cache.lock:
                     self.flush_all_cache()
                     self.cache.reset_all() # Completely reset the cache
