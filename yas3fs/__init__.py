@@ -43,6 +43,7 @@ from fuse import FUSE, FuseOSError, Operations, LoggingMixIn, fuse_get_context
 
 import boto
 import boto.s3
+import boto.s3.connection
 import boto.sns
 import boto.sqs
 import boto.utils
@@ -848,11 +849,12 @@ class YAS3FS(LoggingMixIn, Operations):
         if not self.aws_region in (r.name for r in boto.s3.regions()):
             error_and_exit("wrong AWS region '%s' for S3" % self.aws_region)
         try:
+            calling_format = boto.s3.connection.OrdinaryCallingFormat()
             if options.s3_use_sigv4:
                 os.environ['S3_USE_SIGV4'] = 'True'
-                self.s3 = boto.connect_s3(host=options.s3_endpoint)
+                self.s3 = boto.connect_s3(host=options.s3_endpoint, calling_format=calling_format)
             else:
-                self.s3 = boto.connect_s3()
+                self.s3 = boto.connect_s3(calling_format=calling_format)
         except boto.exception.NoAuthHandlerFound:
             error_and_exit("no AWS credentials found")
         if not self.s3:
