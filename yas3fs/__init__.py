@@ -849,18 +849,46 @@ class YAS3FS(LoggingMixIn, Operations):
         if not self.aws_region in (r.name for r in boto.s3.regions()):
             error_and_exit("wrong AWS region '%s' for S3" % self.aws_region)
         try:
-            calling_format = boto.s3.connection.OrdinaryCallingFormat()
+            s3kw = {
+                'calling_format': boto.s3.connection.OrdinaryCallingFormat(),
+            }
+
             if options.s3_use_sigv4:
                 os.environ['S3_USE_SIGV4'] = 'True'
-                self.s3 = boto.connect_s3(host=options.s3_endpoint, calling_format=calling_format)
-            else:
-                self.s3 = boto.connect_s3(calling_format=calling_format)
+
+            if options.s3_endpoint:
+                s3kw['host'] = options.s3_endpoint
+
+            self.s3 = boto.connect_s3(**s3kw)
         except boto.exception.NoAuthHandlerFound:
             error_and_exit("no AWS credentials found")
         if not self.s3:
             error_and_exit("no S3 connection")
         try:
             self.s3_bucket = self.s3.get_bucket(self.s3_bucket_name, headers=self.default_headers, validate=False)
+
+            # If an endpoint was not specified, make sure we're talking to S3 in the correct region.
+            if not options.s3_endpoint:
+                region_name = self.s3_bucket.get_location()
+                if not region_name:
+                    region_name = "us-east-1"
+                logger.debug("Bucket is in region %s", region_name)
+
+                # Look for the region's endpoint via Boto.
+                for region in boto.s3.regions():
+                    if region.name == region_name:
+                        s3kw['host'] = region.endpoint
+                        break
+                else:
+                    # Assume s3.${region_name}.amazonaws.com.
+                    # This is a hack, but should support new regions that
+                    # aren't known to this version of Boto.
+                    s3kw['host'] = "s3.%s.amazonaws.com" % region_name
+
+                # Reconnect to s3.
+                self.s3 = boto.connect_s3(**s3kw)
+                self.s3_bucket = self.s3.get_bucket(self.s3_bucket_name, headers=self.default_headers, validate=False)
+
             self.s3_bucket.key_class = UTF8DecodingKey
         except boto.exception.S3ResponseError, e:
             error_and_exit("S3 bucket not found:" + str(e))
