@@ -1888,6 +1888,8 @@ class YAS3FS(LoggingMixIn, Operations):
                         data.set('range', FSRange())
                     logger.debug("check_data '%s' created empty data object" % (path))
                 else: # Download at once
+                    if data.content is None:
+                        data.open()
                     k.get_contents_to_file(data.content, headers = self.default_headers)
                     data.update_size()
                     data.update_etag(k.etag[1:-1])
