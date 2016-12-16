@@ -86,9 +86,6 @@ class UTF8DecodingKey(boto.s3.key.Key):
         self.size = data_size
         return (hex_digest, b64_digest)
 
-
-
-
 class Interval():
     """ Simple integer interval arthmetic."""
     def __init__(self):
@@ -118,6 +115,14 @@ class Interval():
             if (i[0] <= t[0] and t[0] <= i[1]) or (i[0] <= t[1] and t[1]<= i[1]) or (t[0] <= i[0] and i[1] <= t[1]):
                 return True
         return False
+
+class ISO8601Formatter(logging.Formatter):
+    def formatTime(self, record, datefmt=None):
+        if datefmt:
+            return super(ISO8601Formatter, self).formatTime(record, datefmt)
+
+        ct = self.converter(record.created)
+        return "%s.%03d" % (time.strftime("%Y-%m-%dT%H:%M:%S", ct), record.msecs)
 
 class LinkedListElement():
     """ The element of a linked list."""
@@ -1012,52 +1017,53 @@ class YAS3FS(LoggingMixIn, Operations):
         for i in range(self.s3_num):
             if thread_is_not_alive(self.s3_threads[i]):
                 logger.debug("%s S3 thread #%i" % (display, i))
-                self.s3_threads[i] = TracebackLoggingThread(target=self.get_to_do_on_s3, args=(i,))
+                self.s3_threads[i] = TracebackLoggingThread(target=self.get_to_do_on_s3, args=(i,), name=("S3Thread-%04d" % i))
                 self.s3_threads[i].deamon = False
                 self.s3_threads[i].start()
 
         for i in range(self.download_num):
             if thread_is_not_alive(self.download_threads[i]):
                 logger.debug("%s download thread #%i" % (display, i))
-                self.download_threads[i] = TracebackLoggingThread(target=self.download)
+                self.download_threads[i] = TracebackLoggingThread(target=self.download, name=("Download-%04d" % i))
                 self.download_threads[i].deamon = True
                 self.download_threads[i].start()
 
         for i in range(self.prefetch_num):
             if thread_is_not_alive(self.prefetch_threads[i]):
                 logger.debug("%s prefetch thread #%i" % (display, i))
-                self.prefetch_threads[i] = TracebackLoggingThread(target=self.download, args=(True,))
+                self.prefetch_threads[i] = TracebackLoggingThread(target=self.download, args=(True,), name=("Prefetch-%04d" % i))
                 self.prefetch_threads[i].deamon = True
                 self.prefetch_threads[i].start()
 
         if self.sns_topic_arn:
             if thread_is_not_alive(self.publish_thread):
                 logger.debug("%s publish thread" % display)
-                self.publish_thread = TracebackLoggingThread(target=self.publish_messages)
+                self.publish_thread = TracebackLoggingThread(target=self.publish_messages, name="SNSPublisher")
                 self.publish_thread.daemon = True
                 self.publish_thread.start()
 
         if self.sqs_queue_name:
             if thread_is_not_alive(self.queue_listen_thread):
                 logger.debug("%s queue listen thread" % display)
-                self.queue_listen_thread = TracebackLoggingThread(target=self.listen_for_messages_over_sqs)
+                self.queue_listen_thread = TracebackLoggingThread(target=self.listen_for_messages_over_sqs, name="SQSListener")
                 self.queue_listen_thread.daemon = True
                 self.queue_listen_thread.start()
 
         if self.sns_http_port:
             if thread_is_not_alive(self.http_listen_thread):
                 logger.debug("%s HTTP listen thread" % display)
-                self.http_listen_thread = TracebackLoggingThread(target=self.listen_for_messages_over_http)
+                self.http_listen_thread = TracebackLoggingThread(target=self.listen_for_messages_over_http, name="HTTPListener")
                 self.http_listen_thread.daemon = True
                 self.http_listen_thread.start()
 
         if thread_is_not_alive(self.check_cache_thread):
             logger.debug("%s check cache thread" % display)
-            self.check_cache_thread = TracebackLoggingThread(target=self.check_cache_size)
+            self.check_cache_thread = TracebackLoggingThread(target=self.check_cache_size, name="CacheChecker")
             self.check_cache_thread.daemon = True
             self.check_cache_thread.start()
 
     def init(self, path):
+        threading.current_thread().name = "FUSE"
         logger.debug("init '%s'" % (path))
 
         self.s3_threads = {}
@@ -1078,7 +1084,7 @@ class YAS3FS(LoggingMixIn, Operations):
 
         self.check_threads(first=True)
 
-        self.check_status_thread = TracebackLoggingThread(target=self.check_status)
+        self.check_status_thread = TracebackLoggingThread(target=self.check_status, name="StatusChecker")
         self.check_status_thread.daemon = True
         self.check_status_thread.start()
 
@@ -1350,9 +1356,8 @@ class YAS3FS(LoggingMixIn, Operations):
         logger.debug("check_cache_size")
 
         while self.cache_entries:
-
-            logger.debug("check_cache_size get_memory_usage")
             num_entries, mem_size, disk_size = self.cache.get_memory_usage()
+            logger.debug("check_cache_size get_memory_usage() -> num_entries=%r mem_size=%r disk_size=%r", num_entries, mem_size, disk_size)
 
             purge = False
             if num_entries > self.cache_entries:
@@ -2674,7 +2679,7 @@ class YAS3FS(LoggingMixIn, Operations):
         self.multipart_uploads_in_progress += 1
 
         for i in range(num_threads):
-            t = TracebackLoggingThread(target=self.part_upload, args=(mpu, part_queue))
+            t = TracebackLoggingThread(target=self.part_upload, args=(mpu, part_queue), name=("PartUpload-%04d" % i))
             t.demon = True
             t.start()
             logger.debug("multipart_upload thread '%i' started" % i)
@@ -3218,7 +3223,7 @@ AWS_DEFAULT_REGION environment variable can be used to set the default AWS regio
 
     global logger
     logger = logging.getLogger('yas3fs')
-    formatter = logging.Formatter('%(asctime)s %(levelname)s %(message)s')
+    formatter = ISO8601Formatter('%(threadName)s %(asctime)s %(levelname)s %(message)s')
     if options.log: # Rotate log files at 100MB size
         log_size =  options.log_mb_size *1024*1024
         if options.log_backup_gzip:
