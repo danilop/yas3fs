@@ -1512,7 +1512,7 @@ class YAS3FS(LoggingMixIn, Operations):
                     key = self.get_key(path)
                 if not key:
                     if path == '/': # First time mount of a new file system
-                        self.mkdir(path, 0755)
+                        self.mkdir(path, 0o0755)
                         logger.debug("get_metadata -> '%s' '%s' First time mount"
                                      % (path, metadata_name))
                         return self.cache.get(path, metadata_name)
@@ -1553,11 +1553,11 @@ class YAS3FS(LoggingMixIn, Operations):
                         metadata_values['st_gid'] = gid
                         if key == None:
                             ### # no key, default to dir
-                            metadata_values['st_mode'] = (stat.S_IFDIR | 0755)
+                            metadata_values['st_mode'] = (stat.S_IFDIR | 0o0755)
                         elif key and key.name != '' and key.name[-1] != '/':
-                            metadata_values['st_mode'] = (stat.S_IFREG | 0755)
+                            metadata_values['st_mode'] = (stat.S_IFREG | 0o0755)
                         else:
-                            metadata_values['st_mode'] = (stat.S_IFDIR | 0755)
+                            metadata_values['st_mode'] = (stat.S_IFDIR | 0o0755)
                         if key and key.last_modified:
                             now = time.mktime(time.strptime(key.last_modified, "%a, %d %b %Y %H:%M:%S %Z"))
                         else:
@@ -1795,7 +1795,7 @@ class YAS3FS(LoggingMixIn, Operations):
             attr['st_mtime'] = now
             attr['st_ctime'] = now
             attr['st_size'] = 0
-            attr['st_mode'] = (stat.S_IFLNK | 0755)
+            attr['st_mode'] = (stat.S_IFLNK | 0o0755)
             self.cache.delete(path)
             self.cache.add(path)
             if self.cache_on_disk > 0:
