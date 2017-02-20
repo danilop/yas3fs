@@ -59,7 +59,7 @@ from boto.s3.key import Key
 
 from .YAS3FSPlugin import YAS3FSPlugin
 
-from _version import __version__
+from ._version import __version__
 
 mimetypes.add_type("image/svg+xml", ".svg", True)
 mimetypes.add_type("image/svg+xml", ".svgz", True)
