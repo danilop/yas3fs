@@ -17,12 +17,8 @@ import os.path
 import mimetypes
 import sys
 import json
-import urlparse
 import threading
-import Queue
 import socket
-import BaseHTTPServer
-import urllib2
 import itertools
 import base64
 import logging
@@ -36,10 +32,21 @@ import datetime as dt
 import gc # For debug only
 import pprint # For debug only
 
+try:  # python2
+    import urlparse
+    from Queue import Queue
+    from BaseHTTPServer import BaseHTTPRequestHandler, HTTPServer
+    from urllib2 import urlopen
+except ImportError:  # python3
+    from urllib.parse import urlparse
+    from queue import Queue
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+    from urllib.request import urlopen
+
 from sys import exit
 from functools import wraps
 
-from fuse import FUSE, FuseOSError, Operations, LoggingMixIn, fuse_get_context
+from .fuse import FUSE, FuseOSError, Operations, LoggingMixIn, fuse_get_context
 
 import boto
 import boto.s3
@@ -50,7 +57,7 @@ import boto.utils
 from boto.utils import compute_md5, compute_hash
 from boto.s3.key import Key
 
-from YAS3FSPlugin import YAS3FSPlugin
+from .YAS3FSPlugin import YAS3FSPlugin
 
 from _version import __version__
 
@@ -571,12 +578,12 @@ class FSCache():
         ###except TypeError: # if get returns None
         ###    return False
 
-class SNS_HTTPServer(BaseHTTPServer.HTTPServer):
+class SNS_HTTPServer(HTTPServer):
     """ HTTP Server to receive SNS notifications via HTTP """
     def set_fs(self, fs):
         self.fs = fs
 
-class SNS_HTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
+class SNS_HTTPRequestHandler(BaseHTTPRequestHandler):
     """ HTTP Request Handler to receive SNS notifications via HTTP """
     def do_POST(self):
         if self.path != self.server.fs.http_listen_path:
@@ -595,7 +602,7 @@ class SNS_HTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         if not hasattr(self, 'certificate_url') or self.certificate_url != url:
             logger.debug('downloading certificate')
             self.certificate_url = url
-            self.certificate = urllib2.urlopen(url).read()
+            self.certificate = urlopen(url).read()
 
         signature_version = message_content['SignatureVersion']
         if signature_version != '1':
@@ -837,12 +844,12 @@ class YAS3FS(LoggingMixIn, Operations):
                 cache_path += '/' + self.s3_prefix
         logger.info("Cache path (on disk): '%s'" % cache_path)
         self.cache = FSCache(cache_path)
-        self.publish_queue = Queue.Queue()
-        self.s3_queue = {} # Of Queue.Queue()
+        self.publish_queue = Queue()
+        self.s3_queue = {} # Of Queue()
         for i in range(self.s3_num):
-            self.s3_queue[i] = Queue.Queue()
-        self.download_queue = Queue.Queue()
-        self.prefetch_queue = Queue.Queue()
+            self.s3_queue[i] = Queue()
+        self.download_queue = Queue()
+        self.prefetch_queue = Queue()
 
         # AWS Initialization
         if not self.aws_region in (r.name for r in boto.s3.regions()):
@@ -2621,7 +2628,7 @@ class YAS3FS(LoggingMixIn, Operations):
         logger.debug("multipart_upload '%s' '%s' '%s' '%s'" % (key_path, data, full_size, headers))
         part_num = 0
         part_pos = 0
-        part_queue = Queue.Queue()
+        part_queue = Queue()
         multipart_size = max(self.multipart_size, full_size / 100) # No more than 100 parts...
         logger.debug("multipart_upload '%s' multipart_size '%s'" % (key_path, multipart_size))
         while part_pos < full_size:
