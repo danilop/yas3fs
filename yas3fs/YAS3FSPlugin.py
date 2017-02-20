@@ -49,7 +49,7 @@ class YAS3FSPlugin (object):
 			class_inst = klass(yas3fs)
 			return class_inst
 		except Exception as e:
-			print str(e)
+			print(str(e))
 			raise Exception("cannot load plugin class " + expected_class + " " + str(e))
 
 	def __init__(self, yas3fs, logger=None):
