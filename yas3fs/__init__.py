@@ -867,7 +867,7 @@ class YAS3FS(LoggingMixIn, Operations):
         try:
             self.s3_bucket = self.s3.get_bucket(self.s3_bucket_name, headers=self.default_headers, validate=False)
             self.s3_bucket.key_class = UTF8DecodingKey
-        except boto.exception.S3ResponseError, e:
+        except boto.exception.S3ResponseError as e:
             error_and_exit("S3 bucket not found:" + str(e))
 
         pattern = re.compile('[\W_]+') # Alphanumeric characters only, to be used for pattern.sub('', s)
@@ -929,7 +929,7 @@ class YAS3FS(LoggingMixIn, Operations):
             if not self.queue:
                 try:
                     self.queue = self.sqs.create_queue(self.sqs_queue_name)
-                except boto.exception.SQSError, sqsErr:
+                except boto.exception.SQSError as sqsErr:
                     error_and_exit("Unexpected error creating SQS queue:" + str(sqsErr))
             logger.info("SQS queue name (new): '%s'" % self.sqs_queue_name)
             self.queue.set_message_class(boto.sqs.message.RawMessage) # There is a bug with the default Message class in boto
@@ -1232,7 +1232,7 @@ class YAS3FS(LoggingMixIn, Operations):
                 try:
                     self.s3_bucket = self.s3.get_bucket(self.s3_bucket_name, headers=self.default_headers, validate=False)
                     self.s3_bucket.key_class = UTF8DecodingKey
-                except boto.exception.S3ResponseError, e:
+                except boto.exception.S3ResponseError as e:
                     error_and_exit("S3 bucket not found:" + str(e))
         elif c[1] == 'cache':
             if c[2] == 'entries' and c[3] > 0:
@@ -2138,7 +2138,7 @@ class YAS3FS(LoggingMixIn, Operations):
                 logger.error("do_cmd_on_s3_now Unknown action '%s'" % action)
                 # SHOULD THROW EXCEPTION...
 
-        except Exception, e:
+        except Exception as e:
             logger.exception(e)
             raise e
 
@@ -2155,7 +2155,7 @@ class YAS3FS(LoggingMixIn, Operations):
             try:
                 logger.debug("do_cmd_on_s3_now_w_retries try %s action '%s' key '%s' args '%s' kargs '%s'" % (tries, action, key, args, kargs))
                 return self.do_cmd_on_s3_now(key, pub, action, args, kargs)
-            except Exception, e:
+            except Exception as e:
                 last_exception = e
 
         logger.error("do_cmd_on_s3_now_w_retries FAILED '%s' key '%s' args '%s' kargs '%s'" % (action, key, args, kargs))
