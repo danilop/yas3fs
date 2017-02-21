@@ -33,7 +33,7 @@ import gc # For debug only
 import pprint # For debug only
 
 try:  # python2
-    import urlparse
+    from urlparse import urlparse
     from Queue import Queue
     from BaseHTTPServer import BaseHTTPRequestHandler, HTTPServer
     from urllib2 import urlopen
@@ -724,7 +724,7 @@ class YAS3FS(LoggingMixIn, Operations):
 
         # Parameters and options handling
         self.aws_region = options.region
-        s3url = urlparse.urlparse(options.s3path.lower())
+        s3url = urlparse(options.s3path.lower())
         if s3url.scheme != 's3':
             error_and_exit("The S3 path to mount must be in URL format: s3://BUCKET/PATH")
         self.s3_bucket_name = s3url.netloc
@@ -1222,7 +1222,7 @@ class YAS3FS(LoggingMixIn, Operations):
             with self.cache.lock:
                 self.flush_all_cache()
                 self.cache.reset_all() # Completely reset the cache
-                s3url = urlparse.urlparse(c[2])
+                s3url = urlparse(c[2])
                 if s3url.scheme != 's3':
                     error_and_exit("The S3 path to mount must be in URL format: s3://BUCKET/PATH")
                 self.s3_bucket_name = s3url.netloc
