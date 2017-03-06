@@ -927,6 +927,14 @@ class YAS3FS(LoggingMixIn, Operations):
             logger.info("SQS queue name (new): '%s'" % self.sqs_queue_name)
             self.queue.set_message_class(boto.sqs.message.RawMessage) # There is a bug with the default Message class in boto
 
+            self.current_user_aws_principalId = None
+            try:
+                iam = boto.connect_iam()
+                self.current_user_principalId = u'AWS:'+iam.get_user()['get_user_response']['get_user_result']['user']['user_id']
+                logger.info("Current user principalId: "+self.current_user_principalId)
+            except Exception as e:
+                logger.warn("Failed to get current user principalId: "+str(e))
+
         if self.hostname or self.sns_http_port:
             if not self.sns_topic_arn:
                 error_and_exit("The SNS topic must be provided when the hostname/port to listen to SNS HTTP notifications is given")
@@ -1267,6 +1275,13 @@ class YAS3FS(LoggingMixIn, Operations):
     def process_native_s3_event(self, event):
         event_kind = event['eventName']
         prefix = event['s3']['object']['key']
+        user_id = event['userIdentity']['principalId']
+        logger.debug("Native S3 event %s on %s by %s" % (event_kind, prefix, user_id))
+
+        if user_id == self.current_user_principalId:
+            logger.debug("Native S3 event from current yas3fs user discarded")
+            return
+
         if event_kind.startswith('ObjectCreated'):
             self.invalidate_cache(prefix)
         elif event_kind.startswith('ObjectRemoved'):
