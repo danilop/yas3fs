@@ -1143,9 +1143,19 @@ class YAS3FS(LoggingMixIn, Operations):
             if messages:
                 for m in messages:
                     content = json.loads(m.get_body())
-                    message = content['Message'].encode('ascii')
-                    self.process_message(message)
-                    m.delete()
+                    if content.has_key('Message'):
+                        message = content['Message'].encode('ascii')
+                        self.process_message(message)
+                        m.delete()
+                    elif content.has_key('Records'):
+                        # Support S3 native bucket events
+                        for event in content['Records']:
+                            self.process_native_s3_event(event)
+                    else:
+                        # eg: "Service":"Amazon S3","Event":"s3:TestEvent"...
+                        logger.warn("Unknown SQS message: "+repr(content))
+
+
             else:
                 if self.queue_polling_interval > 0:
                     time.sleep(self.queue_polling_interval)
@@ -1253,6 +1263,14 @@ class YAS3FS(LoggingMixIn, Operations):
                 self.multipart_retries = c[3]
         elif c[1] == 'ping':
             self.publish_status()
+
+    def process_native_s3_event(self, event):
+        event_kind = event['eventName']
+        prefix = event['s3']['object']['key']
+        if event_kind.startswith('ObjectCreated'):
+            self.invalidate_cache(prefix)
+        elif event_kind.startswith('ObjectRemoved'):
+            self.delete_cache(prefix)
 
     def publish_status(self):
         hostname = socket.getfqdn()
