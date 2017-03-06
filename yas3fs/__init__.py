@@ -1283,7 +1283,7 @@ class YAS3FS(LoggingMixIn, Operations):
             return
 
         if event_kind.startswith('ObjectCreated'):
-            self.invalidate_cache(prefix)
+            self.delete_cache(prefix)
         elif event_kind.startswith('ObjectRemoved'):
             self.delete_cache(prefix)
 
