@@ -1154,7 +1154,6 @@ class YAS3FS(LoggingMixIn, Operations):
                     if content.has_key('Message'):
                         message = content['Message'].encode('ascii')
                         self.process_message(message)
-                        m.delete()
                     elif content.has_key('Records'):
                         # Support S3 native bucket events
                         for event in content['Records']:
@@ -1162,6 +1161,7 @@ class YAS3FS(LoggingMixIn, Operations):
                     else:
                         # eg: "Service":"Amazon S3","Event":"s3:TestEvent"...
                         logger.warn("Unknown SQS message: "+repr(content))
+                    m.delete()
 
 
             else:
