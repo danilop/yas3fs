@@ -1274,18 +1274,18 @@ class YAS3FS(LoggingMixIn, Operations):
 
     def process_native_s3_event(self, event):
         event_kind = event['eventName']
-        prefix = event['s3']['object']['key']
+        path = '/'+event['s3']['object']['key']
         user_id = event['userIdentity']['principalId']
-        logger.debug("Native S3 event %s on %s by %s" % (event_kind, prefix, user_id))
+        logger.debug("Native S3 event %s on %s by %s" % (event_kind, path, user_id))
 
         if user_id == self.current_user_principalId:
             logger.debug("Native S3 event from current yas3fs user discarded")
             return
 
         if event_kind.startswith('ObjectCreated'):
-            self.delete_cache(prefix)
+            self.delete_cache(path)
         elif event_kind.startswith('ObjectRemoved'):
-            self.delete_cache(prefix)
+            self.delete_cache(path)
 
     def publish_status(self):
         hostname = socket.getfqdn()
