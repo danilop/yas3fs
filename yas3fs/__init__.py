@@ -1274,7 +1274,7 @@ class YAS3FS(LoggingMixIn, Operations):
 
     def process_native_s3_event(self, event):
         event_kind = event['eventName']
-        path = '/'+event['s3']['object']['key']
+        path = '/'+event['s3']['object']['key'].strip('/')  # want '/abc/folder' while on s3 it's 'abc/folder/'
         user_id = event['userIdentity']['principalId']
 
         if user_id == self.current_user_principalId:
