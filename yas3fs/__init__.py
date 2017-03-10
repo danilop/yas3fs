@@ -1211,7 +1211,13 @@ class YAS3FS(LoggingMixIn, Operations):
 
     def process_message(self, messages):
         logger.debug("process_message '%s'" % (messages))
-        c = json.loads(messages)
+        # Discard malformed JSON https://github.com/danilop/yas3fs/issues/141
+        try:
+            c = json.loads(messages)
+        except Exception as e:
+            logger.debug("process_message discarding malformed message")
+            return
+
         if c[0] == self.unique_id:
             # discard message coming from itself
             logger.debug("process message from self discarded '%s'"%(c))
