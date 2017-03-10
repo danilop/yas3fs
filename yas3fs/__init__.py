@@ -1215,7 +1215,8 @@ class YAS3FS(LoggingMixIn, Operations):
         try:
             c = json.loads(messages)
         except Exception as e:
-            logger.debug("process_message discarding malformed message")
+            logger.debug("parsing error: %s" % (e))
+            logger.warn("process_message discarding malformed message")
             return
 
         if c[0] == self.unique_id:
