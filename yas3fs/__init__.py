@@ -962,6 +962,14 @@ class YAS3FS(LoggingMixIn, Operations):
             logger.info("SQS queue name (new): '%s'" % self.sqs_queue_name)
             self.queue.set_message_class(boto.sqs.message.RawMessage) # There is a bug with the default Message class in boto
 
+            self.current_user_aws_principalId = None
+            try:
+                iam = boto.connect_iam()
+                self.current_user_principalId = u'AWS:'+iam.get_user()['get_user_response']['get_user_result']['user']['user_id']
+                logger.info("Current user principalId: "+self.current_user_principalId)
+            except Exception as e:
+                logger.warn("Failed to get current user principalId: "+str(e))
+
         if self.hostname or self.sns_http_port:
             if not self.sns_topic_arn:
                 error_and_exit("The SNS topic must be provided when the hostname/port to listen to SNS HTTP notifications is given")
@@ -1179,9 +1187,19 @@ class YAS3FS(LoggingMixIn, Operations):
             if messages:
                 for m in messages:
                     content = json.loads(m.get_body())
-                    message = content['Message'].encode('ascii')
-                    self.process_message(message)
+                    if content.has_key('Message'):
+                        message = content['Message'].encode('ascii')
+                        self.process_message(message)
+                    elif content.has_key('Records'):
+                        # Support S3 native bucket events
+                        for event in content['Records']:
+                            self.process_native_s3_event(event)
+                    else:
+                        # eg: "Service":"Amazon S3","Event":"s3:TestEvent"...
+                        logger.warn("Unknown SQS message: "+repr(content))
                     m.delete()
+
+
             else:
                 if self.queue_polling_interval > 0:
                     time.sleep(self.queue_polling_interval)
@@ -1296,6 +1314,19 @@ class YAS3FS(LoggingMixIn, Operations):
                 self.multipart_retries = c[3]
         elif c[1] == 'ping':
             self.publish_status()
+
+    def process_native_s3_event(self, event):
+        event_kind = event['eventName']
+        path = '/'+event['s3']['object']['key'].strip('/')  # want '/abc/folder' while on s3 it's 'abc/folder/'
+        user_id = event['userIdentity']['principalId']
+
+        if user_id == self.current_user_principalId:
+            logger.debug("Native S3 event %s on %s from current yas3fs user %s discarded" % (event_kind, path, user_id))
+            return
+
+        logger.info("Native S3 event %s on %s by %s. Deleting cache for %s" % (event_kind, path, user_id, path))
+
+        self.delete_cache(path)
 
     def publish_status(self):
         hostname = socket.getfqdn()
