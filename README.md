@@ -478,6 +478,7 @@ This may be useful to anyone who wants to validate/test YAS3FS to see how it beh
 {
   "Effect": "Allow",
   "Action": [
+  	  "sqs:CreateQueue",
       "sqs:DeleteMessage",
       "sqs:GetQueueAttributes",
       "sqs:GetQueueUrl",
