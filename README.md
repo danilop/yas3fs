@@ -448,6 +448,7 @@ This may be useful to anyone who wants to validate/test YAS3FS to see how it beh
   "Action": [
       "s3:DeleteObject",
       "s3:GetObject",
+      "s3:GetObjectVersion",
       "s3:ListBucket",
       "s3:PutObject"
   ],
