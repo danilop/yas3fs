@@ -17,12 +17,8 @@ import os.path
 import mimetypes
 import sys
 import json
-import urlparse
 import threading
-import Queue
 import socket
-import BaseHTTPServer
-import urllib2
 import itertools
 import base64
 import logging
@@ -36,10 +32,21 @@ import datetime as dt
 import gc # For debug only
 import pprint # For debug only
 
+try:  # python2
+    from urlparse import urlparse
+    from Queue import Queue
+    from BaseHTTPServer import BaseHTTPRequestHandler, HTTPServer
+    from urllib2 import urlopen
+except ImportError:  # python3
+    from urllib.parse import urlparse
+    from queue import Queue
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+    from urllib.request import urlopen
+
 from sys import exit
 from functools import wraps
 
-from fuse import FUSE, FuseOSError, Operations, LoggingMixIn, fuse_get_context
+from .fuse import FUSE, FuseOSError, Operations, LoggingMixIn, fuse_get_context
 
 import boto
 import boto.s3
@@ -51,9 +58,9 @@ import boto.utils
 from boto.utils import compute_md5, compute_hash
 from boto.s3.key import Key
 
-from YAS3FSPlugin import YAS3FSPlugin
+from .YAS3FSPlugin import YAS3FSPlugin
 
-from _version import __version__
+from ._version import __version__
 
 mimetypes.add_type("image/svg+xml", ".svg", True)
 mimetypes.add_type("image/svg+xml", ".svgz", True)
@@ -577,12 +584,12 @@ class FSCache():
         ###except TypeError: # if get returns None
         ###    return False
 
-class SNS_HTTPServer(BaseHTTPServer.HTTPServer):
+class SNS_HTTPServer(HTTPServer):
     """ HTTP Server to receive SNS notifications via HTTP """
     def set_fs(self, fs):
         self.fs = fs
 
-class SNS_HTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
+class SNS_HTTPRequestHandler(BaseHTTPRequestHandler):
     """ HTTP Request Handler to receive SNS notifications via HTTP """
     def do_POST(self):
         if self.path != self.server.fs.http_listen_path:
@@ -601,7 +608,7 @@ class SNS_HTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         if not hasattr(self, 'certificate_url') or self.certificate_url != url:
             logger.debug('downloading certificate')
             self.certificate_url = url
-            self.certificate = urllib2.urlopen(url).read()
+            self.certificate = urlopen(url).read()
 
         signature_version = message_content['SignatureVersion']
         if signature_version != '1':
@@ -723,7 +730,7 @@ class YAS3FS(LoggingMixIn, Operations):
 
         # Parameters and options handling
         self.aws_region = options.region
-        s3url = urlparse.urlparse(options.s3path.lower())
+        s3url = urlparse(options.s3path.lower())
         if s3url.scheme != 's3':
             error_and_exit("The S3 path to mount must be in URL format: s3://BUCKET/PATH")
         self.s3_bucket_name = s3url.netloc
@@ -843,12 +850,12 @@ class YAS3FS(LoggingMixIn, Operations):
                 cache_path += '/' + self.s3_prefix
         logger.info("Cache path (on disk): '%s'" % cache_path)
         self.cache = FSCache(cache_path)
-        self.publish_queue = Queue.Queue()
-        self.s3_queue = {} # Of Queue.Queue()
+        self.publish_queue = Queue()
+        self.s3_queue = {} # Of Queue()
         for i in range(self.s3_num):
-            self.s3_queue[i] = Queue.Queue()
-        self.download_queue = Queue.Queue()
-        self.prefetch_queue = Queue.Queue()
+            self.s3_queue[i] = Queue()
+        self.download_queue = Queue()
+        self.prefetch_queue = Queue()
 
         # AWS Initialization
         if not self.aws_region in (r.name for r in boto.s3.regions()):
@@ -895,7 +902,7 @@ class YAS3FS(LoggingMixIn, Operations):
                 self.s3_bucket = self.s3.get_bucket(self.s3_bucket_name, headers=self.default_headers, validate=False)
 
             self.s3_bucket.key_class = UTF8DecodingKey
-        except boto.exception.S3ResponseError, e:
+        except boto.exception.S3ResponseError as e:
             error_and_exit("S3 bucket not found:" + str(e))
 
         pattern = re.compile('[\W_]+') # Alphanumeric characters only, to be used for pattern.sub('', s)
@@ -957,7 +964,7 @@ class YAS3FS(LoggingMixIn, Operations):
             if not self.queue:
                 try:
                     self.queue = self.sqs.create_queue(self.sqs_queue_name)
-                except boto.exception.SQSError, sqsErr:
+                except boto.exception.SQSError as sqsErr:
                     error_and_exit("Unexpected error creating SQS queue:" + str(sqsErr))
             logger.info("SQS queue name (new): '%s'" % self.sqs_queue_name)
             self.queue.set_message_class(boto.sqs.message.RawMessage) # There is a bug with the default Message class in boto
@@ -1276,7 +1283,7 @@ class YAS3FS(LoggingMixIn, Operations):
             with self.cache.lock:
                 self.flush_all_cache()
                 self.cache.reset_all() # Completely reset the cache
-                s3url = urlparse.urlparse(c[2])
+                s3url = urlparse(c[2])
                 if s3url.scheme != 's3':
                     error_and_exit("The S3 path to mount must be in URL format: s3://BUCKET/PATH")
                 self.s3_bucket_name = s3url.netloc
@@ -1286,7 +1293,7 @@ class YAS3FS(LoggingMixIn, Operations):
                 try:
                     self.s3_bucket = self.s3.get_bucket(self.s3_bucket_name, headers=self.default_headers, validate=False)
                     self.s3_bucket.key_class = UTF8DecodingKey
-                except boto.exception.S3ResponseError, e:
+                except boto.exception.S3ResponseError as e:
                     error_and_exit("S3 bucket not found:" + str(e))
         elif c[1] == 'cache':
             if c[2] == 'entries' and c[3] > 0:
@@ -1578,7 +1585,7 @@ class YAS3FS(LoggingMixIn, Operations):
                     key = self.get_key(path)
                 if not key:
                     if path == '/': # First time mount of a new file system
-                        self.mkdir(path, 0755)
+                        self.mkdir(path, 0o0755)
                         logger.debug("get_metadata -> '%s' '%s' First time mount"
                                      % (path, metadata_name))
                         return self.cache.get(path, metadata_name)
@@ -1619,11 +1626,11 @@ class YAS3FS(LoggingMixIn, Operations):
                         metadata_values['st_gid'] = gid
                         if key == None:
                             ### # no key, default to dir
-                            metadata_values['st_mode'] = (stat.S_IFDIR | 0755)
+                            metadata_values['st_mode'] = (stat.S_IFDIR | 0o0755)
                         elif key and key.name != '' and key.name[-1] != '/':
-                            metadata_values['st_mode'] = (stat.S_IFREG | 0755)
+                            metadata_values['st_mode'] = (stat.S_IFREG | 0o0755)
                         else:
-                            metadata_values['st_mode'] = (stat.S_IFDIR | 0755)
+                            metadata_values['st_mode'] = (stat.S_IFDIR | 0o0755)
                         if key and key.last_modified:
                             now = time.mktime(time.strptime(key.last_modified, "%a, %d %b %Y %H:%M:%S %Z"))
                         else:
@@ -1861,7 +1868,7 @@ class YAS3FS(LoggingMixIn, Operations):
             attr['st_mtime'] = now
             attr['st_ctime'] = now
             attr['st_size'] = 0
-            attr['st_mode'] = (stat.S_IFLNK | 0755)
+            attr['st_mode'] = (stat.S_IFLNK | 0o0755)
             self.cache.delete(path)
             self.cache.add(path)
             if self.cache_on_disk > 0:
@@ -2206,7 +2213,7 @@ class YAS3FS(LoggingMixIn, Operations):
                 logger.error("do_cmd_on_s3_now Unknown action '%s'" % action)
                 # SHOULD THROW EXCEPTION...
 
-        except Exception, e:
+        except Exception as e:
             logger.exception(e)
             raise e
 
@@ -2223,7 +2230,7 @@ class YAS3FS(LoggingMixIn, Operations):
             try:
                 logger.debug("do_cmd_on_s3_now_w_retries try %s action '%s' key '%s' args '%s' kargs '%s'" % (tries, action, key, args, kargs))
                 return self.do_cmd_on_s3_now(key, pub, action, args, kargs)
-            except Exception, e:
+            except Exception as e:
                 last_exception = e
 
         logger.error("do_cmd_on_s3_now_w_retries FAILED '%s' key '%s' args '%s' kargs '%s'" % (action, key, args, kargs))
@@ -2696,7 +2703,7 @@ class YAS3FS(LoggingMixIn, Operations):
         logger.debug("multipart_upload '%s' '%s' '%s' '%s'" % (key_path, data, full_size, headers))
         part_num = 0
         part_pos = 0
-        part_queue = Queue.Queue()
+        part_queue = Queue()
         multipart_size = max(self.multipart_size, full_size / 100) # No more than 100 parts...
         logger.debug("multipart_upload '%s' multipart_size '%s'" % (key_path, multipart_size))
         while part_pos < full_size:

@@ -30,7 +30,7 @@ class YAS3FSPlugin (object):
 				if expected_class == None or expected_class == klass[0]:
 					class_inst = klass[1](yas3fs)
 					break
-		except Exception, e:
+		except Exception as e:
 			raise Exception("cannot load plugin file " + filepath + " " + e)
 
 		if not class_inst:
@@ -48,8 +48,8 @@ class YAS3FSPlugin (object):
 			klass = getattr(module.__dict__[expected_class], expected_class)
 			class_inst = klass(yas3fs)
 			return class_inst
-		except Exception, e:
-			print str(e)
+		except Exception as e:
+			print(str(e))
 			raise Exception("cannot load plugin class " + expected_class + " " + str(e))
 
 	def __init__(self, yas3fs, logger=None):

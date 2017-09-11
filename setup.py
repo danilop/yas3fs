@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 import sys
 
-execfile('yas3fs/_version.py')
+exec(open('yas3fs/_version.py').read())
 
 requires = ['setuptools>=2.2', 'boto>=2.25.0']
 
