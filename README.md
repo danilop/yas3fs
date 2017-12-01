@@ -282,7 +282,7 @@ To unmount the file system on a Mac you can use `umount`.
 
 ### Signed URLs
 
-You can dinamically generate singed URLs for any file on yas3fs using Extended File attributes.
+You can dynamically generate signed URLs for any file on yas3fs using Extended File attributes.
 
 The default expiration is used (30 days or the value, in seconds, of the '--expiration' option).
 
@@ -331,7 +331,7 @@ Similarly on Linux you can use the 'getfattr' and 'setfattr' commands:
 ### Notification Syntax & Use
 
 You can use the SNS topic for other purposes than keeping the cache of the nodes in sync.
-Those are some sample use cases:
+These are some sample use cases:
 
 * You can listen to the SNS topic to be updated on changes on S3 (if done through yas3fs).
 * You can publish on the SNS topic to manage the overall "cluster" of yas3fs nodes.
@@ -421,13 +421,13 @@ To the previous message all yas3fs instances will answer publishing a message on
       
 ### Loading files into S3
 
-Have to load a massive amount of files into an S3 bucket that you intend to front though yas3fs? Check out [s3-bucket-loader](https://github.com/bitsofinfo/s3-bucket-loader) for massively parrallel imports to S3.
+Have to load a massive amount of files into an S3 bucket that you intend to front though yas3fs? Check out [s3-bucket-loader](https://github.com/bitsofinfo/s3-bucket-loader) for massively parallel imports to S3.
 
 ### Testing
 
 Use this tool to test a YAS3FS install: [yas3fs-test](https://github.com/ewah/yas3fs-test)
 
-It will run through a slew of common commands on one or more nodes, adjust the settings.py file to what you imagine your produciton environment to look like.
+It will run through a slew of common commands on one or more nodes, adjust the settings.py file to what you imagine your production environment to look like.
 
 It is INVALUABLE for making changes to the yas3fs code base.
 
@@ -438,7 +438,7 @@ You can use this tool to test a YAS3FS cluster: [yas3fs-cluster-tester](https://
 
 It is a test harness suite to induce file I/O and validate YAS3FS cluster activity across N peer-nodes.
 
-This may be useful to anyone who wants to validate/test YAS3FS to see how it behaves under load and with N peer's all managing files in the same S3 bucket. This has been used to test YAS3FS against a several node "cluster" with each node generating hundreds of files.
+This may be useful to anyone who wants to validate/test YAS3FS to see how it behaves under load and with N peers all managing files in the same S3 bucket. This has been used to test YAS3FS against a several node "cluster" with each node generating hundreds of files.
 
 ### IAM Policy Permissions
 ##### S3
