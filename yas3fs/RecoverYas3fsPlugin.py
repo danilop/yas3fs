@@ -150,14 +150,14 @@ class RecoverYas3fsPlugin(YAS3FSPlugin):
 							"etag_filename": etag_filename,
 							"etag": etag,
 							"exception": str(e),
-							"s3key" : dict(filter(self.s3key_json_filter, key.__dict__.iteritems()))
+							"s3key" : dict(filter(self.s3key_json_filter, iter(key.__dict__.items())))
 						}
 
 						self.logger.error("RecoverYAS3FS PLUGIN UPLOAD FAILED "  + json.dumps(json_recover))
 
 						self.make_recovery_copy(cache_file)
 
-					except Exception, e:
+					except Exception as e:
 						self.logger.exception(e)
 
 			return args[2] #????

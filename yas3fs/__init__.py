@@ -32,14 +32,18 @@ import datetime as dt
 import gc # For debug only
 import pprint # For debug only
 
-try:  # python2
+if sys.version_info < (3, ):  # python2
+    from urllib import unquote_plus
     from urlparse import urlparse
     from Queue import Queue
+    from Queue import Empty as QueueEmpty
     from BaseHTTPServer import BaseHTTPRequestHandler, HTTPServer
     from urllib2 import urlopen
-except ImportError:  # python3
+else:  # python3
     from urllib.parse import urlparse
+    from urllib.parse import unquote_plus
     from queue import Queue
+    from queue import Empty as QueueEmpty
     from http.server import BaseHTTPRequestHandler, HTTPServer
     from urllib.request import urlopen
 
@@ -82,7 +86,7 @@ class UTF8DecodingKey(boto.s3.key.Key):
     def __str__(self):
         if self.name is None:
             return 'None'
-        if isinstance(self.name, str):
+        if isinstance(self.name, bytes):
             return self.name.decode('utf8', 'replace')
 
         return self.name
@@ -330,7 +334,7 @@ class FSData():
                 pass # Nothing to do
     def delete(self, prop=None, wait_until_cleared_proplist = None):
         with self.get_lock(wait_until_cleared_proplist):
-            if prop == None:
+            if prop is None:
                 if self.store == 'disk':
                     filename = self.cache.get_cache_filename(self.path)
                     with self.cache.disk_lock:
@@ -346,7 +350,7 @@ class FSData():
                             remove_empty_dirs_for_file(etag_filename)
                 self.content = None # If not
                 self.update_size(True)
-                for p in self.props.keys():
+                for p in list(self.props.keys()):
                     self.delete(p)
             elif prop in self.props:
                 if prop == 'range':
@@ -407,9 +411,13 @@ class FSCache():
     def get_memory_usage(self):
         return [ len(self.entries) ] + [ self.size[store] for store in FSData.stores ]
     def get_cache_filename(self, path):
-        return self.cache_path + '/files' + path.encode('utf-8') # path begins with '/'
+        if isinstance(path, bytes):
+            path = path.decode('utf-8')
+        return self.cache_path + '/files' + path  # path begins with '/'
     def get_cache_etags_filename(self, path):
-        return self.cache_path + '/etags' + path.encode('utf-8') # path begins with '/'
+        if isinstance(path, bytes):
+            path = path.decode('utf-8')
+        return self.cache_path + '/etags' + path  # path begins with '/'
 
     def is_deleting(self, path, prop = 'deleting'):
         if not self.has(path, prop):
@@ -459,8 +467,10 @@ class FSCache():
             self.is_ready(path, proplist = wait_until_cleared_proplist)
 
         with self.lock: # Global cache lock, used only for giving file-level locks
+
             try:
-                return self.entries[path]['lock']
+                lock = self.entries[path]['lock']
+                return lock
             except KeyError:
                 try:
                     return self.new_locks[path]
@@ -478,8 +488,8 @@ class FSCache():
     def delete(self, path, prop=None):
         with self.get_lock(path):
             if path in self.entries:
-                if prop == None:
-                    for p in self.entries[path].keys():
+                if prop is None:
+                    for p in list(self.entries[path].keys()):
                         self.delete(path, p)
                     del self.entries[path]
                     self.lru.delete(path)
@@ -492,6 +502,7 @@ class FSCache():
                             # Preserve lock, let the unused locks check remove it later
                             self.new_locks[path] = self.entries[path][prop]
                         del self.entries[path][prop]
+
     def rename(self, path, new_path):
         with self.get_lock(path) and self.get_lock(new_path):
             if path in self.entries:
@@ -514,7 +525,7 @@ class FSCache():
     def get(self, path, prop=None):
         self.lru.move_to_the_tail(path) # Move to the tail of the LRU cache
         try:
-            if prop == None:
+            if prop is None:
                 return self.entries[path]
             else:
                 return self.entries[path][prop]
@@ -558,7 +569,7 @@ class FSCache():
 
     def has(self, path, prop=None):
         self.lru.move_to_the_tail(path) # Move to the tail of the LRU cache
-        if prop == None:
+        if prop is None:
             return path in self.entries
         else:
             try:
@@ -624,7 +635,7 @@ class SNS_HTTPRequestHandler(BaseHTTPRequestHandler):
         if 'UnsubscribeURL' in message_content:
             del message_content['UnsubscribeURL']
         string_to_sign = '\n'.join(list(itertools.chain.from_iterable(
-                    [ (k, message_content[k]) for k in sorted(message_content.iterkeys()) ]
+                    [ (k, message_content[k]) for k in sorted(message_content.keys()) ]
                     ))) + '\n'
         
         import M2Crypto # Required to check integrity of SNS HTTP notifications
@@ -972,7 +983,7 @@ class YAS3FS(LoggingMixIn, Operations):
             self.current_user_aws_principalId = None
             try:
                 iam = boto.connect_iam()
-                self.current_user_principalId = u'AWS:'+iam.get_user()['get_user_response']['get_user_result']['user']['user_id']
+                self.current_user_principalId = 'AWS:'+iam.get_user()['get_user_response']['get_user_result']['user']['user_id']
                 logger.info("Current user principalId: "+self.current_user_principalId)
             except Exception as e:
                 logger.warn("Failed to get current user principalId: "+str(e))
@@ -1011,7 +1022,7 @@ class YAS3FS(LoggingMixIn, Operations):
     def withplugin(fn):
         def fn_wrapper(*arg, **karg):
             self = arg[0]
-            if self.plugin == None:
+            if self.plugin is None:
                 return fn(*arg, **karg)
 
             try:
@@ -1194,10 +1205,10 @@ class YAS3FS(LoggingMixIn, Operations):
             if messages:
                 for m in messages:
                     content = json.loads(m.get_body())
-                    if content.has_key('Message'):
+                    if 'Message' in content:
                         message = content['Message'].encode('ascii')
                         self.process_message(message)
-                    elif content.has_key('Records'):
+                    elif 'Records' in content:
                         # Support S3 native bucket events
                         for event in content['Records']:
                             self.process_native_s3_event(event)
@@ -1356,7 +1367,7 @@ class YAS3FS(LoggingMixIn, Operations):
 
                 self.sns.publish(self.sns_topic_arn, full_message.encode('ascii'))
                 self.publish_queue.task_done()
-            except Queue.Empty:
+            except QueueEmpty:
                 pass
             except Exception as e:
                 logger.exception(e)
@@ -1441,7 +1452,7 @@ class YAS3FS(LoggingMixIn, Operations):
                             self.cache.lru.append(path)
             else:
                 # Check for unused locks to be removed
-                for path in self.cache.unused_locks.keys():
+                for path in list(self.cache.unused_locks.keys()):
                     logger.debug("check_cache_size purge unused lock: '%s'" % (path))
                     try:
                         with self.cache.lock and self.cache.new_locks[path]:
@@ -1508,7 +1519,7 @@ class YAS3FS(LoggingMixIn, Operations):
         logger.debug("has_element '%s' %i" % (iter, num))
         c = 0
         for k in iter:
-            logger.debug("has_element '%s' -> '%s'" % (iter, k))
+            logger.debug("has_element '%s' -> '%r'" % (iter, k))
             path = k.name[len(self.s3_prefix):]
             if not self.cache.is_deleting(path):
                 c += 1
@@ -1524,7 +1535,6 @@ class YAS3FS(LoggingMixIn, Operations):
         # encoding for https://github.com/danilop/yas3fs/issues/56
         key_list = self.s3_bucket.list(full_path.encode('utf-8'), '/', headers = self.default_headers)
         return self.has_elements(key_list, num)
-
 
     def get_key(self, path, cache=True):
         if self.cache.is_deleting(path):
@@ -1551,6 +1561,7 @@ class YAS3FS(LoggingMixIn, Operations):
             logger.debug("get_key from S3 #1 '%s'" % (path))
             # encoding for https://github.com/danilop/yas3fs/issues/56
             key = self.s3_bucket.get_key(self.join_prefix(path).encode('utf-8'), headers=self.default_headers)
+
             if not key and path != '/':
                 full_path = path + '/'
                 logger.debug("get_key from S3 #2 '%s' '%s'" % (path, full_path))
@@ -1573,13 +1584,12 @@ class YAS3FS(LoggingMixIn, Operations):
         return key
 
     def get_metadata(self, path, metadata_name, key=None):
-        logger.debug("get_metadata -> '%s' '%s' '%s'" % (path, metadata_name, key))
+        logger.debug("get_metadata -> '%s' '%s' '%r'" % (path, metadata_name, key))
         with self.cache.get_lock(path): # To avoid consistency issues, e.g. with a concurrent purge
             metadata_values = None
             if self.cache.has(path, metadata_name):
                 metadata_values = self.cache.get(path, metadata_name)
-
-            if metadata_values == None:
+            if metadata_values is None:
                 metadata_values = {}
                 if not key:
                     key = self.get_key(path)
@@ -1596,7 +1606,7 @@ class YAS3FS(LoggingMixIn, Operations):
                                          % (path, metadata_name))
                             return None
                 else:
-                    logger.debug("get_metadata '%s' '%s' '%s' S3 found"
+                    logger.debug("get_metadata '%s' '%s' '%r' S3 found"
                                          % (path, metadata_name, key))
 
                 if key:
@@ -1624,7 +1634,7 @@ class YAS3FS(LoggingMixIn, Operations):
                         uid, gid = get_uid_gid()
                         metadata_values['st_uid'] = uid
                         metadata_values['st_gid'] = gid
-                        if key == None:
+                        if key is None:
                             ### # no key, default to dir
                             metadata_values['st_mode'] = (stat.S_IFDIR | 0o0755)
                         elif key and key.name != '' and key.name[-1] != '/':
@@ -1640,20 +1650,20 @@ class YAS3FS(LoggingMixIn, Operations):
                         metadata_values['st_ctime'] = now
                 self.cache.add(path)
                 self.cache.set(path, metadata_name, metadata_values)
-            logger.debug("get_metadata <- '%s' '%s' '%s' '%s'" % (path, metadata_name, key, metadata_values))
+            logger.debug("get_metadata <- '%s' '%s' '%r' '%s'" % (path, metadata_name, key, metadata_values))
             return metadata_values
 
     def set_metadata(self, path, metadata_name=None, metadata_values=None, key=None):
-        logger.debug("set_metadata '%s' '%s' '%s'" % (path, metadata_name, key))
+        logger.debug("set_metadata '%s' '%s' '%r'" % (path, metadata_name, key))
         with self.cache.get_lock(path):
-            if not metadata_values == None:
+            if not metadata_values is None:
                 self.cache.set(path, metadata_name, metadata_values)
             data = self.cache.get(path, 'data')
             if self.write_metadata and (key or (not data) or (data and not data.has('change'))):
                 # No change in progress, I should write now
                 if not key:
                     key = self.get_key(path)
-                    logger.debug("set_metadata '%s' '%s' '%s' Key" % (path, metadata_name, key))
+                    logger.debug("set_metadata '%s' '%s' '%r' Key" % (path, metadata_name, key))
                 new_key = False
                 if not key and self.folder_has_contents(path):
                     if path != '/' or self.write_metadata:
@@ -1664,9 +1674,9 @@ class YAS3FS(LoggingMixIn, Operations):
                 if key:
                     if metadata_name:
                         values = metadata_values
-                        if values == None:
+                        if values is None:
                             values = self.cache.get(path, metadata_name)
-                        if values == None or not any(values):
+                        if values is None or not any(values):
                             try:
                                 del key.metadata[metadata_name]
                             except KeyError:
@@ -1675,14 +1685,14 @@ class YAS3FS(LoggingMixIn, Operations):
                             try:
                                 key.metadata[metadata_name] = json.dumps(values)
                             except UnicodeDecodeError:
-                                logger.info("set_metadata '%s' '%s' '%s' cannot decode unicode, not written on S3"
+                                logger.info("set_metadata '%s' '%s' '%r' cannot decode unicode, not written on S3"
                                             % (path, metadata_name, key))
                                 pass # Ignore the binary values - something better TODO ???
                     if (not data) or (data and (not data.has('change'))):
-                        logger.debug("set_metadata '%s' '%s' S3" % (path, key))
+                        logger.debug("set_metadata '%s' '%r' S3" % (path, key))
                         pub = [ 'md', metadata_name, path ]
                         if new_key:
-                            logger.debug("set_metadata '%s' '%s' S3 new key" % (path, key))
+                            logger.debug("set_metadata '%s' '%r' S3 new key" % (path, key))
                             ### key.set_contents_from_string('', headers={'Content-Type': 'application/x-directory'})
                             headers = { 'Content-Type': 'application/x-directory' }
                             headers.update(self.default_write_headers)
@@ -1691,7 +1701,7 @@ class YAS3FS(LoggingMixIn, Operations):
                             self.do_on_s3(key, pub, cmds)
                         else:
                             ### key.copy(key.bucket.name, key.name, key.metadata, preserve_acl=False)
-                            if isinstance(key.name,str):
+                            if isinstance(key.name, bytes):
                                  key_name = key.name.decode('utf-8')
                             else:
                                  key_name = key.name
@@ -1704,7 +1714,7 @@ class YAS3FS(LoggingMixIn, Operations):
             # handle a request to set metadata, but we can't right now because the node is currently
             # in the middle of a 'change' https://github.com/danilop/yas3fs/issues/52
             elif self.write_metadata and data and data.has('change'):
-                if metadata_name == 'attr' and metadata_values == None:
+                if metadata_name == 'attr' and metadata_values is None:
                     logger.debug("set_metadata: 'change' already in progress, setting FSData.props[invoke_after_change] lambda for self.set_metadata("+path+",attr)")
                     data.set('invoke_after_change',(lambda path: self.set_metadata(path,'attr')))
 
@@ -1713,11 +1723,10 @@ class YAS3FS(LoggingMixIn, Operations):
         if self.cache.is_deleting(path):
             logger.debug("getattr path '%s' is deleting -- throwing ENOENT" % (path))
             raise FuseOSError(errno.ENOENT)
-
         with self.cache.get_lock(path): # To avoid consistency issues, e.g. with a concurrent purge
-            cache = True
             recheck_s3 = False
             if self.cache.is_empty(path):
+                cache = True
                 logger.debug("getattr <- '%s' '%s' cache ENOENT" % (path, fh))
                 if self.recheck_s3:
                     cache = False
@@ -1725,9 +1734,8 @@ class YAS3FS(LoggingMixIn, Operations):
                     logger.debug("getattr rechecking on s3 <- '%s' '%s' cache ENOENT" % (path, fh))
                 else:
                     raise FuseOSError(errno.ENOENT)
-
             attr = self.get_metadata(path, 'attr')
-            if attr == None:
+            if attr is None:
                 logger.debug("getattr <- '%s' '%s' ENOENT" % (path, fh))
                 raise FuseOSError(errno.ENOENT)
             if attr['st_size'] == 0 and stat.S_ISDIR(attr['st_mode']):
@@ -1769,13 +1777,17 @@ class YAS3FS(LoggingMixIn, Operations):
                 logger.debug("readdir '%s' '%s' S3 list '%s'" % (path, fh, full_path))
                 # encoding for https://github.com/danilop/yas3fs/issues/56
                 key_list = self.s3_bucket.list(full_path.encode('utf-8'), '/', headers = self.default_headers, encoding_type='url')
+
                 dirs = ['.', '..']
+                logger.debug('key names %s' % (', '.join([k.name for k in key_list])))
                 for k in key_list:
-
                     # 'unquoting' for https://github.com/danilop/yas3fs/issues/56
-                    k.name = urllib.unquote_plus(str(k.name)).decode('utf-8')
+                    if sys.version_info < (3,):
+                        k.name = unquote_plus(str(k.name)).decode('utf-8')
+                    else:
+                        k.name = unquote_plus(k.name)
 
-                    logger.debug("readdir '%s' '%s' S3 list key '%s'" % (path, fh, k))
+                    logger.debug("readdir '%s' '%s' S3 list key '%r'" % (path, fh, k))
                     d = k.name[len(full_path):]
                     if len(d) > 0:
                         if d == '.':
@@ -1788,13 +1800,13 @@ class YAS3FS(LoggingMixIn, Operations):
                         dirs.append(d)
 
                 # for https://github.com/danilop/yas3fs/issues/56
-                convertedDirs = []
-                for dir in dirs:
-                    convertedDirs.append(unicode(dir))
-                dirs = convertedDirs
+                if sys.version_info < (3,):
+                    convertedDirs = []
+                    for dir in dirs:
+                        convertedDirs.append(unicode(dir))
+                    dirs = convertedDirs
 
                 self.cache.set(path, 'readdir', dirs)
-
             logger.debug("readdir '%s' '%s' '%s'" % (path, fh, dirs))
             return dirs
 
@@ -1836,7 +1848,7 @@ class YAS3FS(LoggingMixIn, Operations):
 
             if path != '/' or self.write_metadata:
                 k.key = self.join_prefix(full_path)
-                logger.debug("mkdir '%s' '%s' '%s' S3" % (path, mode, k))
+                logger.debug("mkdir '%s' '%s' '%r' S3" % (path, mode, k))
                 ###k.set_contents_from_string('', headers={'Content-Type': 'application/x-directory'})
                 pub = [ 'mkdir', path ]
                 headers = { 'Content-Type': 'application/x-directory'}
@@ -1886,7 +1898,7 @@ class YAS3FS(LoggingMixIn, Operations):
             k.key = self.join_prefix(path)
             self.cache.set(path, 'key', k)
             self.add_to_parent_readdir(path)
-            logger.debug("symlink '%s' '%s' '%s' S3" % (path, link, k))
+            logger.debug("symlink '%s' '%s' '%r' S3" % (path, link, k))
             ###k.set_contents_from_string(link, headers={'Content-Type': 'application/x-symlink'})
             pub = [ 'symlink', path ]
             headers = { 'Content-Type': 'application/x-symlink' }
@@ -1974,7 +1986,7 @@ class YAS3FS(LoggingMixIn, Operations):
                    self.prefetch_queue.task_done()
                else:
                    self.download_queue.task_done()
-           except Queue.Empty:
+           except QueueEmpty:
                pass
 
     def download_data(self, path, start, end):
@@ -1982,13 +1994,13 @@ class YAS3FS(LoggingMixIn, Operations):
         logger.debug("download_data '%s' %i-%i [thread '%s']" % (path, start, end, thread_name))
 
         original_key = self.get_key(path)
-        if original_key == None:
+        if original_key is None:
             logger.debug("download_data no key (before) '%s' [thread '%s']"
                              % (path, thread_name))
             return
-        logger.debug("type k = '%s'" % type(original_key))
-        logger.debug(" dir k = '%s'" % dir(original_key))
-        logger.debug("     k = '%s'" % original_key)
+        logger.debug("type k = '%r'" % type(original_key))
+        logger.debug(" dir k = '%r'" % dir(original_key))
+        logger.debug("     k = '%r'" % original_key)
         key = copy.copy(original_key)
 
         if start > (key.size - 1):
@@ -2011,7 +2023,7 @@ class YAS3FS(LoggingMixIn, Operations):
                              % (path, start, end, thread_name))
                 return
             else:
-                for i in data_range.ongoing_intervals.itervalues():
+                for i in data_range.ongoing_intervals.values():
                     if i[0] <= new_interval[0] and i[1] >= new_interval[1]:
                         logger.debug("download_data '%s' %i-%i [thread '%s'] already downloading"
                                      % (path, start, end, thread_name))
@@ -2117,7 +2129,7 @@ class YAS3FS(LoggingMixIn, Operations):
 
                self.do_on_s3_now(key, pub, cmds)
                self.s3_queue[i].task_done()
-           except Queue.Empty:
+           except QueueEmpty:
                pass
 
     @withplugin
@@ -2130,7 +2142,7 @@ class YAS3FS(LoggingMixIn, Operations):
 
     @withplugin
     def do_cmd_on_s3_now(self, key, pub, action, args, kargs):
-        logger.debug("do_cmd_on_s3_now action '%s' key '%s' args '%s' kargs '%s'" % (action, key, args, kargs))
+        logger.debug("do_cmd_on_s3_now action '%s' key '%r' args '%s' kargs '%s'" % (action, key, args, kargs))
 
         # fuse/yas3fs is version unaware and all operation should
         # happen to the current version
@@ -2196,9 +2208,9 @@ class YAS3FS(LoggingMixIn, Operations):
 
                 uploaded_key = self.s3_bucket.get_key(key.name.encode('utf-8'), headers=self.default_headers)
 
-                logger.debug("Multipart-upload Key Sizes '%s' local: %i remote: %i" %(key, full_size, uploaded_key.size))
+                logger.debug("Multipart-upload Key Sizes '%r' local: %i remote: %i" %(key, full_size, uploaded_key.size))
                 if full_size != uploaded_key.size:
-                     logger.error("Multipart-upload Key Sizes do not match for '%s' local: %i remote: %i" %(key, full_size, uploaded_key.size))
+                     logger.error("Multipart-upload Key Sizes do not match for '%r' local: %i remote: %i" %(key, full_size, uploaded_key.size))
                      raise Exception("Multipart-upload KEY SIZES DO NOT MATCH")
 
                 etag = complete.etag[1:-1]
@@ -2217,7 +2229,7 @@ class YAS3FS(LoggingMixIn, Operations):
             logger.exception(e)
             raise e
 
-        logger.debug("do_cmd_on_s3_now action '%s' key '%s' args '%s' kargs '%s' done" % (action, key, args, kargs))
+        logger.debug("do_cmd_on_s3_now action '%s' key '%r' args '%s' kargs '%s' done" % (action, key, args, kargs))
         return pub
 
 
@@ -2228,12 +2240,12 @@ class YAS3FS(LoggingMixIn, Operations):
             if tries > 1:
                 time.sleep(self.s3_retries_sleep) # Better wait N seconds before retrying
             try:
-                logger.debug("do_cmd_on_s3_now_w_retries try %s action '%s' key '%s' args '%s' kargs '%s'" % (tries, action, key, args, kargs))
+                logger.debug("do_cmd_on_s3_now_w_retries try %s action '%s' key '%r' args '%s' kargs '%s'" % (tries, action, key, args, kargs))
                 return self.do_cmd_on_s3_now(key, pub, action, args, kargs)
             except Exception as e:
                 last_exception = e
 
-        logger.error("do_cmd_on_s3_now_w_retries FAILED '%s' key '%s' args '%s' kargs '%s'" % (action, key, args, kargs))
+        logger.error("do_cmd_on_s3_now_w_retries FAILED '%s' key '%r' args '%s' kargs '%s'" % (action, key, args, kargs))
 
         raise last_exception
 
@@ -2271,7 +2283,7 @@ class YAS3FS(LoggingMixIn, Operations):
                     raise FuseOSError(errno.ENOENT)
 
             data = self.cache.get(path, 'data')
-            if data == None:
+            if data is None:
                 logger.error("readlink '%s' no data ENOENT" % (path))
                 raise FuseOSError(errno.ENOENT) # ??? That should not happen
 
@@ -2308,7 +2320,7 @@ class YAS3FS(LoggingMixIn, Operations):
                 logger.debug("rmdir '%s' S3 ENOENT" % (path))
                 raise FuseOSError(errno.ENOENT)
             dirs = self.cache.get(path, 'readdir')
-            if dirs == None:
+            if dirs is None:
                 if self.folder_has_contents(path, 2): # There is something inside the folder
                     logger.debug("rmdir '%s' S3 ENOTEMPTY" % (path))
                     raise FuseOSError(errno.ENOTEMPTY)
@@ -2433,7 +2445,7 @@ class YAS3FS(LoggingMixIn, Operations):
             target += '/'
         pub = [ 'rename', source_path, target_path ]
 
-        if isinstance(target,str):
+        if isinstance(target, bytes):
             target_for_cmd = target.decode('utf-8')
         else:
             target_for_cmd = target
@@ -2448,7 +2460,7 @@ class YAS3FS(LoggingMixIn, Operations):
     def mknod(self, path, mode, dev=None):
         logger.debug("mknod '%s' '%i' '%s'" % (path, mode, dev))
         with self.cache.get_lock(path):
-            if self.cache.is_not_empty(file):
+            if self.cache.is_not_empty(path):
                 logger.debug("mknod '%s' '%i' '%s' cache EEXIST" % (path, mode, dev))
                 raise FuseOSError(errno.EEXIST)
             k = self.get_key(path)
@@ -2570,10 +2582,9 @@ class YAS3FS(LoggingMixIn, Operations):
                 logger.debug("read '%s' '%i' '%i' '%s' no data" % (path, length, offset, fh))
                 return '' # Something better ???
             data_range = data.get('range')
-            if data_range == None:
+            if data_range is None:
                 logger.debug("read '%s' '%i' '%i' '%s' no range" % (path, length, offset, fh))
                 break
-
             attr = self.get_metadata(path, 'attr')
             file_size = attr['st_size']
             end_interval = min(offset + length, file_size) - 1
@@ -2624,9 +2635,14 @@ class YAS3FS(LoggingMixIn, Operations):
         if not self.cache.has(path) or self.cache.is_empty(path):
             logger.debug("write '%s' '%i' '%i' '%s' ENOENT" % (path, len(new_data), offset, fh))
             raise FuseOSError(errno.ENOENT)
-        if isinstance(new_data, unicode): # Fix for unicode
-            logger.debug("write '%s' '%i' '%i' '%s' unicode fix" % (path, len(new_data), offset, fh))
-            new_data = str(new_data.encode('utf-8'))
+
+        if sys.version_info < (3, ):
+            if isinstance(new_data, unicode): # Fix for unicode
+                logger.debug("write '%s' '%i' '%i' '%s' unicode fix" % (path, len(new_data), offset, fh))
+                new_data = str(new_data.encode('utf-8'))
+        else:
+            if not isinstance(new_data, bytes):
+               new_data = new_data.encode('utf-8')
         length = len(new_data)
 
         data = self.cache.get(path, 'data')
@@ -2644,9 +2660,15 @@ class YAS3FS(LoggingMixIn, Operations):
             if not data.content:
                 logger.info("write awake '%s' '%i' '%i' '%s' no content" % (path, len(new_data), offset, fh))
                 return 0
-            logger.debug("write '%s' '%i' '%i' '%s' '%s' content" % (path, len(new_data), offset, fh, data.content.name.decode('utf-8')))
+            if isinstance(data.content.name, bytes):
+                contentname = data.content.name.decode('utf-8')
+            else:
+                contentname = data.content.name
+            logger.debug("write '%s' '%i' '%i' '%s' '%s' content" % (path, len(new_data), offset, fh, contentname))
             data.content.seek(offset)
+
             data.content.write(new_data)
+
             data.set('change', True)
             now = get_current_time()
             attr = self.get_metadata(path, 'attr')
@@ -2673,7 +2695,7 @@ class YAS3FS(LoggingMixIn, Operations):
         self.set_metadata(path, 'attr', None, k) # To update key metadata before upload to S3
         self.set_metadata(path, 'xattr', None, k) # To update key metadata before upload to S3
         mimetype = mimetypes.guess_type(path)[0] or 'application/octet-stream'
-        if k.size == None:
+        if k.size is None:
             old_size = 0
         else:
             old_size = k.size
@@ -2769,7 +2791,7 @@ class YAS3FS(LoggingMixIn, Operations):
                         time.sleep(self.s3_retries_sleep) # Better wait N seconds before retrying
                 logger.debug("end upload of part %i retry %i part__ %s" % (num, retry, str(part.__dict__)))
                 part_queue.task_done()
-        except Queue.Empty:
+        except QueueEmpty:
             logger.debug("the queue is empty")
 
     def chmod(self, path, mode):
@@ -2784,7 +2806,7 @@ class YAS3FS(LoggingMixIn, Operations):
                 logger.debug("chmod '%s' '%i' ENOENT" % (path, mode))
                 raise FuseOSError(errno.ENOENT)
             attr = self.get_metadata(path, 'attr')
-            if attr < 0:
+            if not attr:
                 return attr
             if attr['st_mode'] != mode:
                 attr['st_mode'] = mode
@@ -2803,7 +2825,7 @@ class YAS3FS(LoggingMixIn, Operations):
                 logger.debug("chown '%s' '%i' '%i' ENOENT" % (path, uid, gid))
                 raise FuseOSError(errno.ENOENT)
             attr = self.get_metadata(path, 'attr')
-            if attr < 0:
+            if not attr:
                 return attr
             changed = False
             if uid != -1 and attr['st_uid'] != uid:
@@ -2830,7 +2852,8 @@ class YAS3FS(LoggingMixIn, Operations):
             now = get_current_time()
             atime, mtime = times if times else (now, now)
             attr = self.get_metadata(path, 'attr')
-            if attr < 0:
+            logger.debug('utimens attr %s' % attr)
+            if not attr:
                 return attr
             attr['st_atime'] = atime
             attr['st_mtime'] = mtime
@@ -2868,7 +2891,7 @@ class YAS3FS(LoggingMixIn, Operations):
             return tmp_key.generate_url(expires_in=0, headers=self.default_headers, query_auth=False)
 
         xattr = self.get_metadata(path, 'xattr')
-        if xattr == None:
+        if xattr is None:
             logger.debug("getxattr <- '%s' '%s' '%i' ENOENT" % (path, name, position))
             raise FuseOSError(errno.ENOENT)
 
@@ -2905,10 +2928,10 @@ class YAS3FS(LoggingMixIn, Operations):
             logger.debug("listxattr '%s' ENOENT" % (path))
             raise FuseOSError(errno.ENOENT)
         xattr = self.get_metadata(path, 'xattr')
-        if xattr == None:
+        if xattr is None:
             logger.debug("listxattr <- '%s' '%s' '%i' ENOENT" % (path))
             raise FuseOSError(errno.ENOENT)
-        return set(self.yas3fs_xattrs + xattr.keys())
+        return set(self.yas3fs_xattrs + list(xattr.keys()))
 
     def removexattr(self, path, name):
         logger.debug("removexattr '%s''%s'" % (path, name))
@@ -2953,7 +2976,7 @@ class YAS3FS(LoggingMixIn, Operations):
             if name in self.yas3fs_xattrs and name not in ['user.yas3fs.expiration']:
                 return 0 # Do nothing
             xattr = self.get_metadata(path, 'xattr')
-            if xattr < 0:
+            if not xattr:
                 return xattr
             if name not in xattr or xattr[name] != value:
                 xattr[name] = value
@@ -3043,7 +3066,7 @@ def error_and_exit(error, exitCode=1):
 def create_dirs(dirname):
     logger.debug("create_dirs '%s'" % dirname)
     try:
-        if not isinstance(dirname,str):
+        if not isinstance(dirname, bytes):
             dirname = dirname.encode('utf-8')
 
         os.makedirs(dirname)
@@ -3063,7 +3086,7 @@ def remove_empty_dirs(dirname):
     logger.debug("remove_empty_dirs '%s'" % (dirname))
 
     try:
-        if not isinstance(dirname,str):
+        if not isinstance(dirname, bytes):
             dirname = dirname.encode('utf-8')
 
         os.removedirs(dirname)
@@ -3082,7 +3105,7 @@ def remove_empty_dirs(dirname):
 
 def create_dirs_for_file(filename):
     logger.debug("create_dirs_for_file '%s'" % filename)
-    if not isinstance(filename,str):
+    if not isinstance(filename, bytes):
         filename = filename.encode('utf-8')
 
     dirname = os.path.dirname(filename)
@@ -3090,7 +3113,7 @@ def create_dirs_for_file(filename):
 
 def remove_empty_dirs_for_file(filename):
     logger.debug("remove_empty_dirs_for_file '%s'" % filename)
-    if not isinstance(filename,str):
+    if not isinstance(filename, bytes):
         filename = filename.encode('utf-8')
 
     dirname = os.path.dirname(filename)
@@ -3104,7 +3127,7 @@ def get_uid_gid():
     return int(uid), int(gid)
 
 def thread_is_not_alive(t):
-    return t == None or not t.is_alive()
+    return t is None or not t.is_alive()
 
 def custom_sys_excepthook(type, value, tb):
     logger.exception("Uncaught Exception: " + str(type) + " " + str(value) + " " + str(tb))
