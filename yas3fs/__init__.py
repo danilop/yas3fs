@@ -1962,7 +1962,7 @@ class YAS3FS(LoggingMixIn, Operations):
             key = self.get_key(path)
             number_of_buffers = 1 + int((key.size - 1 - starting_from) / self.buffer_size)
         else:
-            end_buffer = int(starting_from + length - 1) / self.buffer_size
+            end_buffer = int((starting_from + length - 1) / self.buffer_size)
             number_of_buffers = 1 + (end_buffer - start_buffer)
         for i in range(number_of_buffers):
             start = (start_buffer + i) * self.buffer_size
