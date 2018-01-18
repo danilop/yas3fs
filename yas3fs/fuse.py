@@ -438,6 +438,8 @@ class FUSE(object):
 
         # copies a string into the given buffer
         # (null terminated and truncated if necessary)
+        if not isinstance(ret, bytes):
+            ret = ret.encode('utf-8')
         data = create_string_buffer(ret[:bufsize - 1])
         memmove(buf, data, len(data))
         return 0
@@ -510,6 +512,8 @@ class FUSE(object):
         assert retsize <= size, \
             'actual amount read %d greater than expected %d' % (retsize, size)
 
+        if not isinstance(ret, bytes):
+            ret = ret.encode('utf-8')
         data = create_string_buffer(ret, retsize)
         memmove(buf, ret, retsize)
         return retsize
@@ -574,7 +578,8 @@ class FUSE(object):
 
         # do not truncate
         if retsize > size: return -ERANGE
-
+        if not isinstance(ret, bytes):
+            ret = ret.encode('utf-8')
         buf = create_string_buffer(ret, retsize)    # Does not add trailing 0
         memmove(value, buf, retsize)
 
@@ -590,7 +595,8 @@ class FUSE(object):
 
         # do not truncate
         if retsize > size: return -ERANGE
-
+        if not isinstance(ret, bytes):
+            ret = ret.encode('utf-8')
         buf = create_string_buffer(ret, retsize)
         memmove(namebuf, buf, retsize)
 
