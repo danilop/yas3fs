@@ -140,6 +140,7 @@ Install FUSE for OS X from <http://osxfuse.github.com>.
 **/etc/fstab support**
 
     # Put contrib/mount.yas3fs to /usr/local/sbin and make the symlink
+    chmod +x /usr/local/sbin/mount.yas3fs
     cd /sbin; sudo ln -s /usr/local/sbin/mount.yas3fs
     # Add the contents of contrib/fstab.snippet to /etc/fstab and modify accordingly
     # Try to mount
