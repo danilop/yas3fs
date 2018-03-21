@@ -3336,7 +3336,8 @@ AWS_DEFAULT_REGION environment variable can be used to set the default AWS regio
         'max_read':131072,
         'max_write':131072,
         'max_readahead':131072,
-        'direct_io':True
+        'direct_io':True,
+        'default_permissions':True
         }
     if options.no_allow_other:
         mount_options["allow_other"] = False
