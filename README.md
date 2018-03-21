@@ -465,6 +465,7 @@ This may be useful to anyone who wants to validate/test YAS3FS to see how it beh
 {
   "Effect": "Allow",
   "Action": [
+      "s3:GetBucketLocation",
       "s3:DeleteObject",
       "s3:GetObject",
       "s3:GetObjectVersion",
@@ -511,5 +512,14 @@ This may be useful to anyone who wants to validate/test YAS3FS to see how it beh
   ]
 }
 ```
-
+##### IAM
+```JSON
+{
+  "Effect": "Allow",
+  "Action": "iam:GetUser",
+  "Resource": [
+      "*"
+  ]
+}
+```
 Happy File Sharing!
