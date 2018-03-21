@@ -991,6 +991,7 @@ class YAS3FS(LoggingMixIn, Operations):
                try:
                    sts = boto3.client('sts')
                    self.current_user_principalId = 'AWS:'+sts.get_caller_identity()['UserId']
+                   logger.info("Current user principalId: "+self.current_user_principalId)
                except Exception as e:
                    logger.warn("Failed to get current user principalId: "+str(e))
 
