@@ -137,6 +137,14 @@ Install FUSE for OS X from <http://osxfuse.github.com>.
     # For multiple hosts mount
     yas3fs s3://BUCKET/PATH LOCAL-PATH --topic TOPIC-ARN --new-queue
 
+**/etc/fstab support**
+
+    # Put contrib/mount.yas3fs to /usr/local/sbin and make the symlink
+    cd /sbin; sudo ln -s /usr/local/sbin/mount.yas3fs
+    # Add the contents of contrib/fstab.snippet to /etc/fstab and modify accordingly
+    # Try to mount
+    mount /mnt/mybucket
+
 To listen to SNS HTTP notifications (I usually suggest to use SQS instead) with a Mac
 you need to install the Python [M2Crypto](http://chandlerproject.org/Projects/MeTooCrypto) module,
 download the most suitable "egg" from
