@@ -3272,6 +3272,8 @@ AWS_DEFAULT_REGION environment variable can be used to set the default AWS regio
                         help='requester pays for S3 interactions, the bucket must have Requester Pays enabled')
     parser.add_argument('--no-allow-other', action='store_true',
                         help='Do not allow other users to access mounted directory')
+    parser.add_argument('--no-default-permissions', action='store_true',
+                        help='honor file system permissions for non-root users')
     parser.add_argument('--with-plugin-file', metavar='FILE',
                         help="YAS3FSPlugin file")
     parser.add_argument('--with-plugin-class', metavar='CLASS',
@@ -3349,6 +3351,8 @@ AWS_DEFAULT_REGION environment variable can be used to set the default AWS regio
         mount_options['umask'] = options.umask
     if options.read_only:
         mount_options['ro'] = True
+    if options.no_default_permissions:
+        mount_options["default_permissions"] = False
 
     if options.nonempty:
         mount_options['nonempty'] = True
