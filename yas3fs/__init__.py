@@ -3273,7 +3273,7 @@ AWS_DEFAULT_REGION environment variable can be used to set the default AWS regio
     parser.add_argument('--no-allow-other', action='store_true',
                         help='Do not allow other users to access mounted directory')
     parser.add_argument('--no-default-permissions', action='store_true',
-                        help='honor file system permissions for non-root users')
+                        help='do NOT honor file system permissions for non-root users')
     parser.add_argument('--with-plugin-file', metavar='FILE',
                         help="YAS3FSPlugin file")
     parser.add_argument('--with-plugin-class', metavar='CLASS',
