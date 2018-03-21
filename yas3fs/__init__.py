@@ -62,6 +62,8 @@ import boto.utils
 from boto.utils import compute_md5, compute_hash
 from boto.s3.key import Key
 
+import boto3
+
 from .YAS3FSPlugin import YAS3FSPlugin
 
 from ._version import __version__
@@ -980,13 +982,17 @@ class YAS3FS(LoggingMixIn, Operations):
             logger.info("SQS queue name (new): '%s'" % self.sqs_queue_name)
             self.queue.set_message_class(boto.sqs.message.RawMessage) # There is a bug with the default Message class in boto
 
-            self.current_user_aws_principalId = None
+            self.current_user_principalId = None
             try:
                 iam = boto.connect_iam()
                 self.current_user_principalId = 'AWS:'+iam.get_user()['get_user_response']['get_user_result']['user']['user_id']
                 logger.info("Current user principalId: "+self.current_user_principalId)
             except Exception as e:
-                logger.warn("Failed to get current user principalId: "+str(e))
+               try:
+                   sts = boto3.client('sts')
+                   self.current_user_principalId = 'AWS:'+sts.get_caller_identity()['UserId']
+               except Exception as e:
+                   logger.warn("Failed to get current user principalId: "+str(e))
 
         if self.hostname or self.sns_http_port:
             if not self.sns_topic_arn:
