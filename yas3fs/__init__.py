@@ -637,7 +637,7 @@ class SNS_HTTPRequestHandler(BaseHTTPRequestHandler):
         string_to_sign = '\n'.join(list(itertools.chain.from_iterable(
                     [ (k, message_content[k]) for k in sorted(message_content.keys()) ]
                     ))) + '\n'
-        
+
         import M2Crypto # Required to check integrity of SNS HTTP notifications
         cert = M2Crypto.X509.load_cert_string(self.certificate)
         pub_key = cert.get_pubkey().get_rsa()
@@ -1282,11 +1282,11 @@ class YAS3FS(LoggingMixIn, Operations):
                 with self.cache.lock:
                     self.flush_all_cache()
                     self.cache.reset_all() # Completely reset the cache
-            else: 
+            else:
                 # c[2] exists and is not the root directory
                 for path in self.cache.entries.keys():
-                    # If the reset path is a directory and it matches 
-                    # the directory in the cache, it will delete the 
+                    # If the reset path is a directory and it matches
+                    # the directory in the cache, it will delete the
                     # parent directory cache as well.
                     if path.startswith(c[2]):
                         self.delete_cache(path)
@@ -2608,7 +2608,7 @@ class YAS3FS(LoggingMixIn, Operations):
                 if retriesAttempted > 1:
                     logger.debug('%d retries' % (retriesAttempted))
                     time.sleep(self.read_retries_sleep)
-                
+
                 # Note added max retries as this can go on forever... for https://github.com/danilop/yas3fs/issues/46
                 logger.debug("read '%s' '%i' '%i' '%s' out of range" % (path, length, offset, fh))
                 self.enqueue_download_data(path, offset, length)
@@ -3132,10 +3132,8 @@ def thread_is_not_alive(t):
 def custom_sys_excepthook(type, value, tb):
     logger.exception("Uncaught Exception: " + str(type) + " " + str(value) + " " + str(tb))
 
-### Main
-
-def main():
-
+### CLI Parser
+def cli_parser(cli):
     try:
         default_aws_region = os.environ['AWS_DEFAULT_REGION']
     except KeyError:
@@ -3286,7 +3284,12 @@ AWS_DEFAULT_REGION environment variable can be used to set the default AWS regio
                         help='show debug info')
     parser.add_argument('-V', '--version', action='version', version='%(prog)s {version}'.format(version=__version__))
 
-    options = parser.parse_args()
+    return parser.parse_args(cli)
+
+
+### Main
+def main():
+    options = cli_parser(sys.argv[1:])
 
     global pp
     pp = pprint.PrettyPrinter(indent=1)
