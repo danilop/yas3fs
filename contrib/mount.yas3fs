@@ -1,0 +1,7 @@
+#!/bin/bash
+
+s3bucket=${1##*#}       # extract the last part after '#' in 'yas3fs#mybucket' string
+localpath=$2
+topic=$(echo $4 | /bin/grep -o 'topic=[^,]*' | /bin/cut -f2 -d=)
+queue=$(echo $4 | /bin/grep -o 'queue=[^,]*' | /bin/cut -f2 -d=)
+scl enable python27 -- yas3fs -d --download-retries-num 10 --log "/tmp/.yas3fs-${s3bucket}" --log-mb-size 1 --log-backup-count 3 --log-backup-gzip "s3://${s3bucket}" "${localpath}" --topic "${topic}" --queue "${queue}"
