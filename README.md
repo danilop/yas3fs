@@ -72,7 +72,7 @@ Install using [pip](http://www.pip-installer.org/en/latest/).
 
     pip install yas3fs
 
-If it fails, check the CentOS 6 installation below.
+If it fails, check the CentOS 6 installation steps below.
 
 If you want to do a quick test here's the installation procedure depending on the OS flavor (Linux or Mac):
 
