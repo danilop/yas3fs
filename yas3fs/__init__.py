@@ -865,7 +865,7 @@ class YAS3FS(LoggingMixIn, Operations):
                 cache_path_prefix += self.s3_prefix + '-'
         self.cache_path = tempfile.mkdtemp(prefix = cache_path_prefix)
         logger.info("Cache path (on disk): '%s'" % self.cache_path)
-        self.cache = FSCache(cache_path)
+        self.cache = FSCache(self.cache_path)
         self.publish_queue = Queue()
         self.s3_queue = {} # Of Queue()
         for i in range(self.s3_num):
