@@ -160,8 +160,16 @@ If something does not work as expected you can use the `-df` options to run in f
 To unmount the file system on Linux:
 
     fusermount -u LOCAL-PATH
+    or
+    umount LOCAL-PATH
+
+The latter works if /etc/fstab support steps (see above) were completed
 
 To unmount the file system on a Mac you can use `umount`.
+
+**rsync usage**
+
+rsync's option *--inplace* has to be used to avoid S3 busy events
 
 ### Full Usage
 
