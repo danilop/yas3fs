@@ -32,7 +32,7 @@ import datetime as dt
 import gc # For debug only
 import pprint # For debug only
 import tempfile
-import shutil
+from shutil import rmtree
 
 if sys.version_info < (3, ):  # python2
     from urllib import unquote_plus
@@ -1193,7 +1193,7 @@ class YAS3FS(LoggingMixIn, Operations):
             logger.info("waiting for check cache thread to shutdown...")
             self.check_cache_thread.join(self.cache_check_interval + 1.0)
             logger.info("deleting cache_path %s ..." % self.cache_path)
-            shutil.rmtree(self.cache_path)
+            rmtree(self.cache_path)
         logger.info('File system unmounted.')
 
     def listen_for_messages_over_http(self):
@@ -3101,6 +3101,16 @@ def remove_empty_dirs(dirname):
         if not isinstance(dirname, bytes):
             dirname = dirname.encode('utf-8')
 
+        # fix for https://github.com/danilop/yas3fs/issues/150
+        # probably not the best way to find the cache_path value
+        safely delete all empty dirs
+        for obj in gc.get_objects():
+            if isinstance(obj, YAS3FS):
+                cache_path = obj.cache_path
+                # remove cache_path part from dirname to avoid accidental removal of /tmp (if empty)
+                os.chdir(cache_path)
+                dirname = dirname.replace(cache_path + '/', '')
+
         os.removedirs(dirname)
         logger.debug("remove_empty_dirs '%s' done" % (dirname))
     except OSError as exc: # Python >2.5
@@ -3207,7 +3217,7 @@ AWS_DEFAULT_REGION environment variable can be used to set the default AWS regio
     parser.add_argument('--cache-disk-size', metavar='N', type=int, default=1024,
                         help='max size of the disk cache in MB (default is %(default)s MB)')
     parser.add_argument('--cache-path', metavar='PATH', default='',
-                        help='local path to use for disk cache (default is /tmp/yas3fs/BUCKET/PATH)')
+                        help='local path to use for disk cache (default is /tmp/yas3fs-BUCKET-PATH-random)')
     parser.add_argument('--recheck-s3', action='store_true',
                         help='Cached ENOENT (error no entry) rechecks S3 for new file/directory')
     parser.add_argument('--cache-on-disk', metavar='N', type=int, default=0,
