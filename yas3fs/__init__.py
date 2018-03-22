@@ -31,6 +31,8 @@ import traceback
 import datetime as dt
 import gc # For debug only
 import pprint # For debug only
+import tempfile
+import shutil
 
 if sys.version_info < (3, ):  # python2
     from urllib import unquote_plus
@@ -856,12 +858,13 @@ class YAS3FS(LoggingMixIn, Operations):
 
         # Internal Initialization
         if options.cache_path:
-            cache_path = options.cache_path
+            cache_path_prefix = options.cache_path
         else:
-            cache_path = '/tmp/yas3fs/' + self.s3_bucket_name
+            cache_path_prefix = 'yas3fs-' + self.s3_bucket_name + '-'
             if not self.s3_prefix == '':
-                cache_path += '/' + self.s3_prefix
-        logger.info("Cache path (on disk): '%s'" % cache_path)
+                cache_path_prefix += self.s3_prefix + '-'
+        self.cache_path = tempfile.mkdtemp(prefix = cache_path_prefix)
+        logger.info("Cache path (on disk): '%s'" % self.cache_path)
         self.cache = FSCache(cache_path)
         self.publish_queue = Queue()
         self.s3_queue = {} # Of Queue()
@@ -1189,6 +1192,8 @@ class YAS3FS(LoggingMixIn, Operations):
             self.cache_entries = 0 # To stop memory thread
             logger.info("waiting for check cache thread to shutdown...")
             self.check_cache_thread.join(self.cache_check_interval + 1.0)
+            logger.info("deleting cache_path %s ..." % self.cache_path)
+            shutil.rmtree(self.cache_path)
         logger.info('File system unmounted.')
 
     def listen_for_messages_over_http(self):
