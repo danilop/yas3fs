@@ -3103,7 +3103,6 @@ def remove_empty_dirs(dirname):
 
         # fix for https://github.com/danilop/yas3fs/issues/150
         # probably not the best way to find the cache_path value
-        safely delete all empty dirs
         for obj in gc.get_objects():
             if isinstance(obj, YAS3FS):
                 cache_path = obj.cache_path
