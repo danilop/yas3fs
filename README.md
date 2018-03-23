@@ -130,12 +130,12 @@ Install FUSE for OS X from <http://osxfuse.github.com>.
     git clone https://github.com/danilop/yas3fs.git
     cd yas3fs
     scl enable python27 -- python setup.py install
-    yas3fs -h # See the usage
+    scl enable python27 -- yas3fs -h # See the usage
     mkdir LOCAL-PATH
     # For single host mount
-    yas3fs s3://BUCKET/PATH LOCAL-PATH
+    scl enable python27 -- yas3fs s3://BUCKET/PATH LOCAL-PATH
     # For multiple hosts mount
-    yas3fs s3://BUCKET/PATH LOCAL-PATH --topic TOPIC-ARN --new-queue
+    scl enable python27 -- yas3fs s3://BUCKET/PATH LOCAL-PATH --topic TOPIC-ARN --new-queue
 
 **/etc/fstab support**
 
