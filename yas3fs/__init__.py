@@ -1024,6 +1024,10 @@ class YAS3FS(LoggingMixIn, Operations):
         if self.plugin:
             self.plugin.logger = logger
 
+        # save this object for later use in remove_empty_dirs()
+        global yas3fsobj
+        yas3fsobj = self
+
         signal.signal(signal.SIGINT, self.signal_handler)
         signal.signal(signal.SIGHUP, self.signal_handler)
 
@@ -3102,13 +3106,9 @@ def remove_empty_dirs(dirname):
             dirname = dirname.encode('utf-8')
 
         # fix for https://github.com/danilop/yas3fs/issues/150
-        # probably not the best way to find the cache_path value
-        for obj in gc.get_objects():
-            if isinstance(obj, YAS3FS):
-                cache_path = obj.cache_path
-                # remove cache_path part from dirname to avoid accidental removal of /tmp (if empty)
-                os.chdir(cache_path)
-                dirname = dirname.replace(cache_path + '/', '')
+        # remove cache_path part from dirname to avoid accidental removal of /tmp (if empty)
+        os.chdir(yas3fsobj.cache_path)
+        dirname = dirname.replace(yas3fsobj.cache_path + '/', '')
 
         os.removedirs(dirname)
         logger.debug("remove_empty_dirs '%s' done" % (dirname))
