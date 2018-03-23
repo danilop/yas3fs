@@ -31,7 +31,7 @@ import traceback
 import datetime as dt
 import gc # For debug only
 import pprint # For debug only
-import tempfile
+from tempfile import mkdtemp
 from shutil import rmtree
 
 if sys.version_info < (3, ):  # python2
@@ -863,7 +863,7 @@ class YAS3FS(LoggingMixIn, Operations):
             cache_path_prefix = 'yas3fs-' + self.s3_bucket_name + '-'
             if not self.s3_prefix == '':
                 cache_path_prefix += self.s3_prefix + '-'
-        self.cache_path = tempfile.mkdtemp(prefix = cache_path_prefix)
+        self.cache_path = mkdtemp(prefix = cache_path_prefix)
         logger.info("Cache path (on disk): '%s'" % self.cache_path)
         self.cache = FSCache(self.cache_path)
         self.publish_queue = Queue()
