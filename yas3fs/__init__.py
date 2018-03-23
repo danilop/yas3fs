@@ -31,6 +31,8 @@ import traceback
 import datetime as dt
 import gc # For debug only
 import pprint # For debug only
+import tempfile
+from shutil import rmtree
 
 if sys.version_info < (3, ):  # python2
     from urllib import unquote_plus
@@ -61,6 +63,8 @@ import boto.utils
 
 from boto.utils import compute_md5, compute_hash
 from boto.s3.key import Key
+
+import boto3
 
 from .YAS3FSPlugin import YAS3FSPlugin
 
@@ -854,13 +858,14 @@ class YAS3FS(LoggingMixIn, Operations):
 
         # Internal Initialization
         if options.cache_path:
-            cache_path = options.cache_path
+            cache_path_prefix = options.cache_path
         else:
-            cache_path = '/tmp/yas3fs/' + self.s3_bucket_name
+            cache_path_prefix = 'yas3fs-' + self.s3_bucket_name + '-'
             if not self.s3_prefix == '':
-                cache_path += '/' + self.s3_prefix
-        logger.info("Cache path (on disk): '%s'" % cache_path)
-        self.cache = FSCache(cache_path)
+                cache_path_prefix += self.s3_prefix + '-'
+        self.cache_path = tempfile.mkdtemp(prefix = cache_path_prefix)
+        logger.info("Cache path (on disk): '%s'" % self.cache_path)
+        self.cache = FSCache(self.cache_path)
         self.publish_queue = Queue()
         self.s3_queue = {} # Of Queue()
         for i in range(self.s3_num):
@@ -980,13 +985,18 @@ class YAS3FS(LoggingMixIn, Operations):
             logger.info("SQS queue name (new): '%s'" % self.sqs_queue_name)
             self.queue.set_message_class(boto.sqs.message.RawMessage) # There is a bug with the default Message class in boto
 
-            self.current_user_aws_principalId = None
+            self.current_user_principalId = None
             try:
                 iam = boto.connect_iam()
                 self.current_user_principalId = 'AWS:'+iam.get_user()['get_user_response']['get_user_result']['user']['user_id']
                 logger.info("Current user principalId: "+self.current_user_principalId)
             except Exception as e:
-                logger.warn("Failed to get current user principalId: "+str(e))
+               try:
+                   sts = boto3.client('sts')
+                   self.current_user_principalId = 'AWS:'+sts.get_caller_identity()['UserId']
+                   logger.info("Current user principalId: "+self.current_user_principalId)
+               except Exception as e:
+                   logger.warn("Failed to get current user principalId: "+str(e))
 
         if self.hostname or self.sns_http_port:
             if not self.sns_topic_arn:
@@ -1182,6 +1192,8 @@ class YAS3FS(LoggingMixIn, Operations):
             self.cache_entries = 0 # To stop memory thread
             logger.info("waiting for check cache thread to shutdown...")
             self.check_cache_thread.join(self.cache_check_interval + 1.0)
+            logger.info("deleting cache_path %s ..." % self.cache_path)
+            rmtree(self.cache_path)
         logger.info('File system unmounted.')
 
     def listen_for_messages_over_http(self):
@@ -3089,6 +3101,15 @@ def remove_empty_dirs(dirname):
         if not isinstance(dirname, bytes):
             dirname = dirname.encode('utf-8')
 
+        # fix for https://github.com/danilop/yas3fs/issues/150
+        # probably not the best way to find the cache_path value
+        for obj in gc.get_objects():
+            if isinstance(obj, YAS3FS):
+                cache_path = obj.cache_path
+                # remove cache_path part from dirname to avoid accidental removal of /tmp (if empty)
+                os.chdir(cache_path)
+                dirname = dirname.replace(cache_path + '/', '')
+
         os.removedirs(dirname)
         logger.debug("remove_empty_dirs '%s' done" % (dirname))
     except OSError as exc: # Python >2.5
@@ -3195,7 +3216,7 @@ AWS_DEFAULT_REGION environment variable can be used to set the default AWS regio
     parser.add_argument('--cache-disk-size', metavar='N', type=int, default=1024,
                         help='max size of the disk cache in MB (default is %(default)s MB)')
     parser.add_argument('--cache-path', metavar='PATH', default='',
-                        help='local path to use for disk cache (default is /tmp/yas3fs/BUCKET/PATH)')
+                        help='local path to use for disk cache (default is /tmp/yas3fs-BUCKET-PATH-random)')
     parser.add_argument('--recheck-s3', action='store_true',
                         help='Cached ENOENT (error no entry) rechecks S3 for new file/directory')
     parser.add_argument('--cache-on-disk', metavar='N', type=int, default=0,
@@ -3266,6 +3287,8 @@ AWS_DEFAULT_REGION environment variable can be used to set the default AWS regio
                         help='requester pays for S3 interactions, the bucket must have Requester Pays enabled')
     parser.add_argument('--no-allow-other', action='store_true',
                         help='Do not allow other users to access mounted directory')
+    parser.add_argument('--no-default-permissions', action='store_true',
+                        help='do NOT honor file system permissions for non-root users')
     parser.add_argument('--with-plugin-file', metavar='FILE',
                         help="YAS3FSPlugin file")
     parser.add_argument('--with-plugin-class', metavar='CLASS',
@@ -3330,7 +3353,8 @@ AWS_DEFAULT_REGION environment variable can be used to set the default AWS regio
         'max_read':131072,
         'max_write':131072,
         'max_readahead':131072,
-        'direct_io':True
+        'direct_io':True,
+        'default_permissions':True
         }
     if options.no_allow_other:
         mount_options["allow_other"] = False
@@ -3342,6 +3366,8 @@ AWS_DEFAULT_REGION environment variable can be used to set the default AWS regio
         mount_options['umask'] = options.umask
     if options.read_only:
         mount_options['ro'] = True
+    if options.no_default_permissions:
+        mount_options["default_permissions"] = False
 
     if options.nonempty:
         mount_options['nonempty'] = True
