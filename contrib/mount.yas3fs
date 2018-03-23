@@ -10,7 +10,7 @@ logline=""
 
 if [ "x$log" = "xyas3fslog" ]; then
     logline="--log \"/tmp/.yas3fs-${s3bucket}\" --log-mb-size 1 --log-backup-count 3 --log-backup-gzip"
-    [ "x$debug" = "xyas3fsdebug" ] && log="-d $log"
+    [ "x$debug" = "xyas3fsdebug" ] && logline="-d $logline"
 fi
 
 scl enable python27 -- yas3fs --download-retries-num 10 ${logline} "s3://${s3bucket}" "${localpath}" --topic "${topic}" --queue "${queue}"
