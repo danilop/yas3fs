@@ -1,3 +1,6 @@
+import signal
+
+
 def makeArgs(args):
     assert args['mountpoint'], "You must specify a mountpoint"
     assert args['s3path'], "You must specify a s3path"
@@ -18,7 +21,7 @@ def makeArgs(args):
         download_retries_num=60,
         download_retries_sleep=1,
         expiration=30*24*60*60,
-        foreground=True,  # not default but it might be useful
+        foreground=False,
         log_backup_count=10,
         log_backup_gzip=False,
         log_mb_size=100,
@@ -65,3 +68,30 @@ def makeArgs(args):
         defaults[key] = value
 
     return defaults
+
+
+class ShimTimeoutError(Exception):
+    def __init__(self, message, errors):
+        super(ShimTimeoutError, self).__init__(message)
+        self.errors = errors
+
+
+class timeout:
+    try:
+        TimeoutError = TimeoutError
+    except NameError:
+        TimeoutError = ShimTimeoutError
+
+    def __init__(self, seconds=1, error_message='Timeout'):
+        self.seconds = seconds
+        self.error_message = error_message
+
+    def handle_timeout(self, signum, frame):
+        raise self.TimeoutError(self.error_message)
+
+    def __enter__(self):
+        signal.signal(signal.SIGALRM, self.handle_timeout)
+        signal.alarm(self.seconds)
+
+    def __exit__(self, type, value, traceback):
+        signal.alarm(0)
