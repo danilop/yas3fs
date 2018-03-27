@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+from __future__ import print_function
 
 """
 Yet Another S3-backed File System, or yas3fs
@@ -31,6 +32,7 @@ import traceback
 import datetime as dt
 import gc # For debug only
 import pprint # For debug only
+import pdb  # For debug only
 
 if sys.version_info < (3, ):  # python2
     from urllib import unquote_plus
@@ -65,6 +67,9 @@ from boto.s3.key import Key
 from .YAS3FSPlugin import YAS3FSPlugin
 
 from ._version import __version__
+
+# from .FSData import FSData
+# from .FSCache import FSCache
 
 mimetypes.add_type("image/svg+xml", ".svg", True)
 mimetypes.add_type("image/svg+xml", ".svgz", True)
@@ -466,8 +471,18 @@ class FSCache():
         if not skip_is_ready:
             self.is_ready(path, proplist = wait_until_cleared_proplist)
 
-        with self.lock: # Global cache lock, used only for giving file-level locks
+        # Work around a deadlock when operations such as flush_all_caches lock the global cache
+        # and do operations that perform path-based locks while a worker holding onto a path-based
+        # lock tries to re-lock it. The global operation will block waiting for the worker to give
+        # the path-based lock, while the worker blocks waiting for the global lock, completely
+        # locking up the FS
+        entry = self.entries.get(path) or {}
+        existing_lock = entry.get('lock')
+        if existing_lock and existing_lock._RLock__owner == threading.current_thread().ident:
+            return existing_lock
 
+
+        with self.lock: # Global cache lock, used only for giving file-level locks
             try:
                 lock = self.entries[path]['lock']
                 return lock
