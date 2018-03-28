@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+from __future__ import print_function
 
 """
 Yet Another S3-backed File System, or yas3fs
@@ -75,9 +76,8 @@ class CompressedRotatingFileHandler(logging.handlers.RotatingFileHandler):
         self.stream = self._open()
 
 
-# Main
-def main():
-
+# CLI Parser
+def cli_parser(cli):
     try:
         default_aws_region = os.environ['AWS_DEFAULT_REGION']
     except KeyError:
@@ -227,7 +227,12 @@ AWS_DEFAULT_REGION environment variable can be used to set the default AWS regio
                         help='show debug info')
     parser.add_argument('-V', '--version', action='version', version='%(prog)s {version}'.format(version=__version__))
 
-    options = parser.parse_args()
+    return parser.parse_args(cli)
+
+
+# Main
+def main():
+    options = cli_parser(sys.argv[1:])
 
     global pp
     pp = pprint.PrettyPrinter(indent=1)
