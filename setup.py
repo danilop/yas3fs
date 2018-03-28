@@ -20,5 +20,5 @@ setup(
     author_email='dpoccia@gmail.com',
     url='https://github.com/danilop/yas3fs',
     install_requires=requires,
-    entry_points = { 'console_scripts': ['yas3fs = yas3fs:main'] },
+    entry_points={'console_scripts': ['yas3fs = yas3fs:main']},
     )
