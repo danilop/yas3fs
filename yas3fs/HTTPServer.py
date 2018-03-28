@@ -2,7 +2,11 @@ import sys
 import itertools
 import json
 import logging
-import M2Crypto  # Required to check integrity of SNS HTTP notifications
+try:
+    import M2Crypto  # Required to check integrity of SNS HTTP notifications
+except ImportError as error:
+    M2Crypto = error
+
 if sys.version_info < (3, ):
     # python2
     from BaseHTTPServer import BaseHTTPRequestHandler, HTTPServer
@@ -16,6 +20,9 @@ else:
 class SNS_HTTPServer(HTTPServer):
     """ HTTP Server to receive SNS notifications via HTTP """
     def set_fs(self, fs):
+        # Throw if some one attempts to use the http mode without M2Crypto
+        if isinstance(M2Crypto, Exception):
+            raise M2Crypto
         self.fs = fs
 
 

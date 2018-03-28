@@ -3,7 +3,7 @@ from tempfile import mkdtemp
 from threading import Thread
 from time import sleep
 from unittest import TestCase
-from yas3fs import FSCache
+from yas3fs.FSCache import FSCache
 
 
 class testPR133(TestCase):
