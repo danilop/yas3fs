@@ -1,28 +1,28 @@
-from shutil import rmtree
-from tempfile import mkdtemp
-from threading import Thread
-from time import sleep
-from unittest import TestCase
+import shutil
+import tempfile
+import threading
+import time
+import unittest
 from yas3fs.FSCache import FSCache
 
 
-class testPR133(TestCase):
+class testPR133(unittest.TestCase):
     """Per https://github.com/danilop/yas3fs/pull/133 \
 Fix deadlock when a path is re-locked while the cache is locked globally"""
 
     def setUp(self):
-        self.tempdir = mkdtemp(prefix='yas3fs-pr133-test-')
+        self.tempdir = tempfile.mkdtemp(prefix='yas3fs-pr133-test-')
         self.cache = FSCache(self.tempdir)
 
     def tearDown(self):
-        rmtree(self.tempdir)
+        shutil.rmtree(self.tempdir)
 
     def test_deadlock(self):
         def getGlobalLock():
             with self.cache.lock:
                 print('locked global')
                 while(True):
-                    sleep(10)
+                    time.sleep(10)
 
         def getPathLock():
             with self.cache.get_lock('pr133'):
@@ -30,18 +30,18 @@ Fix deadlock when a path is re-locked while the cache is locked globally"""
                 self.cache.entries['pr133'] = {}
                 self.cache.entries['pr133']['lock'] = self.cache.new_locks['pr133']
                 del self.cache.new_locks['pr133']
-                sleep(2)
+                time.sleep(2)
                 print('attempting to relock local')
                 with self.cache.get_lock('pr133'):
                     print('relocked local')
 
         # lock a path
-        llock = Thread(target=getPathLock)
+        llock = threading.Thread(target=getPathLock)
         llock.start()
-        sleep(1)
+        time.sleep(1)
 
         # lock the world
-        glock = Thread(target=getGlobalLock)
+        glock = threading.Thread(target=getGlobalLock)
         glock.setDaemon(True)
         glock.start()
 
