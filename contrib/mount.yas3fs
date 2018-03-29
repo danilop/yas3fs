@@ -13,4 +13,10 @@ if [ "x$log" = "xyas3fslog" ]; then
     [ "x$debug" = "xyas3fsdebug" ] && logline="-d $logline"
 fi
 
-scl enable python27 -- yas3fs --download-retries-num 10 ${logline} "s3://${s3bucket}" "${localpath}" --topic "${topic}" --queue "${queue}"
+if [ "x$queue" = "x" ]; then
+    queueline="--new-queue"
+else
+    queueline="--queue ${queue}"
+fi
+
+scl enable python27 -- yas3fs --download-retries-num 10 ${logline} "s3://${s3bucket}" "${localpath}" --topic "${topic}" ${queueline}
