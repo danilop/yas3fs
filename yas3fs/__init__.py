@@ -1291,8 +1291,8 @@ class YAS3FS(LoggingMixIn, Operations):
                     self.invalidate_cache(path)
         elif c[1] == 'md':
             if c[2]:
-                self.cache.delete(c[3], 'key')
-                self.cache.delete(c[3], c[2])
+        	self.delete_cache(c[2])
+        	self.delete_cache(c[3])
         elif c[1] == 'reset':
             if len(c) <= 2 or not c[2] or c[2] == '/':
                 with self.cache.lock:
