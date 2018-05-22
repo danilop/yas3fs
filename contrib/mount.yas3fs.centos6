@@ -9,7 +9,7 @@ debug=$(echo $4 | /bin/grep -o 'yas3fsdebug')
 logline=""
 
 if [ "x$log" = "xyas3fslog" ]; then
-    logline="--log \"/tmp/.yas3fs-${s3bucket}\" --log-mb-size 1 --log-backup-count 3 --log-backup-gzip"
+    logline="--log /tmp/.yas3fs-${s3bucket} --log-mb-size 1 --log-backup-count 3 --log-backup-gzip"
     [ "x$debug" = "xyas3fsdebug" ] && logline="-d $logline"
 fi
 
