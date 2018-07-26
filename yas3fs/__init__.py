@@ -1930,9 +1930,9 @@ class YAS3FS(LoggingMixIn, Operations):
         logger.debug("check_data '%s'" % (path))
         with self.cache.get_lock(path):
             #-- jazzl0ver: had to add path checking due to untracable /by me/ cache leaking (workaround for issue #174)
-            if not os.path.exists(path):
+            if not os.path.exists(self.cache.get_cache_filename(path)):
         	self.cache.delete(path)
-            data = self.cache.get(path, 'data')
+    	    data = self.cache.get(path, 'data')
             if not data or data.has('new'):
                 k = self.get_key(path)
                 if not k:
