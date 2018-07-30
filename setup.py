@@ -4,7 +4,7 @@ import sys
 
 exec(open('yas3fs/_version.py').read())
 
-requires = ['setuptools>=2.2', 'boto>=2.25.0']
+requires = ['setuptools>=2.2', 'boto>=2.25.0', 'boto3>=1.6.12']
 
 # Versions of Python pre-2.7 require argparse separately. 2.7+ and 3+ all
 # include this as the replacement for optparse.

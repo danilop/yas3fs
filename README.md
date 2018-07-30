@@ -72,6 +72,8 @@ Install using [pip](http://www.pip-installer.org/en/latest/).
 
     pip install yas3fs
 
+If it fails, check the CentOS 6 installation steps below.
+
 If you want to do a quick test here's the installation procedure depending on the OS flavor (Linux or Mac):
 
 * Create an S3 bucket in the AWS region you prefer.
@@ -118,6 +120,32 @@ Install FUSE for OS X from <http://osxfuse.github.com>.
     # For multiple hosts mount
     yas3fs s3://BUCKET/PATH LOCAL-PATH --topic TOPIC-ARN --new-queue
 
+**On CentOS 6**
+
+    sudo yum -y install fuse fuse-libs centos-release-scl
+    sudo yum -y install python27
+    # upgrade setuptools
+    scl enable python27 -- pip install setuptools --upgrade
+    # grab the latest sources
+    git clone https://github.com/danilop/yas3fs.git
+    cd yas3fs
+    scl enable python27 -- python setup.py install
+    scl enable python27 -- yas3fs -h # See the usage
+    mkdir LOCAL-PATH
+    # For single host mount
+    scl enable python27 -- yas3fs s3://BUCKET/PATH LOCAL-PATH
+    # For multiple hosts mount
+    scl enable python27 -- yas3fs s3://BUCKET/PATH LOCAL-PATH --topic TOPIC-ARN --new-queue
+
+**/etc/fstab support**
+
+    # Put contrib/mount.yas3fs to /usr/local/sbin and make the symlink
+    chmod +x /usr/local/sbin/mount.yas3fs
+    cd /sbin; sudo ln -s /usr/local/sbin/mount.yas3fs
+    # Add the contents of contrib/fstab.snippet to /etc/fstab and modify accordingly
+    # Try to mount
+    mount /mnt/mybucket
+
 To listen to SNS HTTP notifications (I usually suggest to use SQS instead) with a Mac
 you need to install the Python [M2Crypto](http://chandlerproject.org/Projects/MeTooCrypto) module,
 download the most suitable "egg" from
@@ -132,8 +160,16 @@ If something does not work as expected you can use the `-df` options to run in f
 To unmount the file system on Linux:
 
     fusermount -u LOCAL-PATH
+    or
+    umount LOCAL-PATH
+
+The latter works if /etc/fstab support steps (see above) were completed
 
 To unmount the file system on a Mac you can use `umount`.
+
+**rsync usage**
+
+rsync's option *--inplace* has to be used to avoid S3 busy events
 
 ### Full Usage
 
@@ -446,6 +482,7 @@ This may be useful to anyone who wants to validate/test YAS3FS to see how it beh
 {
   "Effect": "Allow",
   "Action": [
+      "s3:GetBucketLocation",
       "s3:DeleteObject",
       "s3:GetObject",
       "s3:GetObjectVersion",
@@ -492,5 +529,14 @@ This may be useful to anyone who wants to validate/test YAS3FS to see how it beh
   ]
 }
 ```
-
+##### IAM
+```JSON
+{
+  "Effect": "Allow",
+  "Action": "iam:GetUser",
+  "Resource": [
+      "*"
+  ]
+}
+```
 Happy File Sharing!
