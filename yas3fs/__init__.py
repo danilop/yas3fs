@@ -1932,7 +1932,11 @@ class YAS3FS(LoggingMixIn, Operations):
             #-- jazzl0ver: had to add path checking due to untracable /by me/ cache leaking (workaround for issue #174)
     	    data = self.cache.get(path, 'data')
             if data and not os.path.exists(self.cache.get_cache_filename(path)):
+        	logger.debug("Cache leak found for '%s', cleaning up..." % (path))
         	self.cache.delete(path)
+                with self.cache.lock and self.cache.new_locks[path]:
+                    del self.cache.new_locks[path]
+        	del self.cache.unused_locks[path]
     		data = self.cache.get(path, 'data')
             if not data or data.has('new'):
                 k = self.get_key(path)
