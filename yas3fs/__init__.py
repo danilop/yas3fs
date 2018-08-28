@@ -862,8 +862,9 @@ class YAS3FS(LoggingMixIn, Operations):
         else:
             cache_path_prefix = 'yas3fs-' + self.s3_bucket_name + '-'
             if not self.s3_prefix == '':
-                cache_path_prefix += self.s3_prefix + '-'
+                cache_path_prefix += self.s3_prefix.replace('/', '-') + '-'
         self.cache_path = mkdtemp(prefix = cache_path_prefix)
+
         logger.info("Cache path (on disk): '%s'" % self.cache_path)
         self.cache = FSCache(self.cache_path)
         self.publish_queue = Queue()
