@@ -248,7 +248,7 @@ class FSData():
                 logger.debug("created new cache file '%s'" % filename)
             self.content = None # Not open, yet
         else:
-            raise FSData.unknown_store
+            raise Exception(FSData.unknown_store)
     def get_lock(self, wait_until_cleared_proplist = None):
         return self.cache.get_lock(self.path, wait_until_cleared_proplist)
     def open(self):
@@ -308,7 +308,7 @@ class FSData():
                 self.content.seek(0) # Go to the beginning
                 return self.content.read()
         else:
-            raise FSData.unknown_store
+            raise Exception(FSData.unknown_store)
     def has(self, prop):
         with self.get_lock():
             return prop in self.props
