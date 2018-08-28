@@ -1287,7 +1287,7 @@ class YAS3FS(LoggingMixIn, Operations):
             if c[2] != None and len(c) == 4: # fix for https://github.com/danilop/yas3fs/issues/42
                 self.invalidate_cache(c[2], c[3])
             else: # Invalidate all the cached data
-                for path in self.cache.entries.keys():
+                for path in list(self.cache.entries.keys()):
                     self.invalidate_cache(path)
         elif c[1] == 'md':
             if c[2]:
@@ -1300,7 +1300,7 @@ class YAS3FS(LoggingMixIn, Operations):
                     self.cache.reset_all() # Completely reset the cache
             else: 
                 # c[2] exists and is not the root directory
-                for path in self.cache.entries.keys():
+                for path in list(self.cache.entries.keys()):
                     # If the reset path is a directory and it matches 
                     # the directory in the cache, it will delete the 
                     # parent directory cache as well.
