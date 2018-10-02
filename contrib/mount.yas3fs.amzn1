@@ -1,0 +1,27 @@
+#!/bin/bash
+
+s3bucket=${1##*#}       # extract the last part after '#' in 'yas3fs#bucket' string
+localpath=$2
+topic=$(echo $4 | /bin/grep -o 'topic=[^,]*' | /bin/cut -f2 -d=)
+queue=$(echo $4 | /bin/grep -o 'queue=[^,]*' | /bin/cut -f2 -d=)
+log=$(echo $4 | /bin/grep -o 'yas3fslog')
+debug=$(echo $4 | /bin/grep -o 'yas3fsdebug')
+logline=""
+
+if [ "x$log" = "xyas3fslog" ]; then
+    logline="--log /tmp/.yas3fs-${s3bucket} --log-mb-size 10 --log-backup-count 10 --log-backup-gzip"
+    [ "x$debug" = "xyas3fsdebug" ] && logline="-d $logline"
+fi
+
+topicline=""
+queueline=""
+if [ ! "x$topic" = "x" ]; then
+    topicline="--topic ${topic}"
+    if [ "x$queue" = "x" ]; then
+        queueline="--new-queue-with-hostname"
+    else
+        queueline="--queue ${queue}"
+    fi
+fi
+
+yas3fs --download-retries-num 10 --recheck-s3 ${logline} "s3://${s3bucket}" "${localpath}" ${topicline} ${queueline}

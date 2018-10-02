@@ -31,7 +31,7 @@ import traceback
 import datetime as dt
 import gc # For debug only
 import pprint # For debug only
-import tempfile
+from tempfile import mkdtemp
 from shutil import rmtree
 
 if sys.version_info < (3, ):  # python2
@@ -863,7 +863,7 @@ class YAS3FS(LoggingMixIn, Operations):
             cache_path_prefix = 'yas3fs-' + self.s3_bucket_name + '-'
             if not self.s3_prefix == '':
                 cache_path_prefix += self.s3_prefix + '-'
-        self.cache_path = tempfile.mkdtemp(prefix = cache_path_prefix)
+        self.cache_path = mkdtemp(prefix = cache_path_prefix)
         logger.info("Cache path (on disk): '%s'" % self.cache_path)
         self.cache = FSCache(self.cache_path)
         self.publish_queue = Queue()
@@ -1023,6 +1023,10 @@ class YAS3FS(LoggingMixIn, Operations):
 
         if self.plugin:
             self.plugin.logger = logger
+
+        # save this object for later use in remove_empty_dirs()
+        global yas3fsobj
+        yas3fsobj = self
 
         signal.signal(signal.SIGINT, self.signal_handler)
         signal.signal(signal.SIGHUP, self.signal_handler)
@@ -1287,8 +1291,8 @@ class YAS3FS(LoggingMixIn, Operations):
                     self.invalidate_cache(path)
         elif c[1] == 'md':
             if c[2]:
-                self.cache.delete(c[3], 'key')
-                self.cache.delete(c[3], c[2])
+        	self.delete_cache(c[2])
+        	self.delete_cache(c[3])
         elif c[1] == 'reset':
             if len(c) <= 2 or not c[2] or c[2] == '/':
                 with self.cache.lock:
@@ -1925,7 +1929,15 @@ class YAS3FS(LoggingMixIn, Operations):
     def check_data(self, path):
         logger.debug("check_data '%s'" % (path))
         with self.cache.get_lock(path):
-            data = self.cache.get(path, 'data')
+            #-- jazzl0ver: had to add path checking due to untracable /by me/ cache leaking (workaround for issue #174)
+    	    data = self.cache.get(path, 'data')
+            if data and not os.path.exists(self.cache.get_cache_filename(path)):
+        	logger.debug("Cache leak found for '%s', cleaning up..." % (path))
+        	self.cache.delete(path)
+                with self.cache.lock and self.cache.new_locks[path]:
+                    del self.cache.new_locks[path]
+        	del self.cache.unused_locks[path]
+    		data = self.cache.get(path, 'data')
             if not data or data.has('new'):
                 k = self.get_key(path)
                 if not k:
@@ -3102,13 +3114,9 @@ def remove_empty_dirs(dirname):
             dirname = dirname.encode('utf-8')
 
         # fix for https://github.com/danilop/yas3fs/issues/150
-        # probably not the best way to find the cache_path value
-        for obj in gc.get_objects():
-            if isinstance(obj, YAS3FS):
-                cache_path = obj.cache_path
-                # remove cache_path part from dirname to avoid accidental removal of /tmp (if empty)
-                os.chdir(cache_path)
-                dirname = dirname.replace(cache_path + '/', '')
+        # remove cache_path part from dirname to avoid accidental removal of /tmp (if empty)
+        os.chdir(yas3fsobj.cache_path)
+        dirname = dirname.replace(yas3fsobj.cache_path + '/', '')
 
         os.removedirs(dirname)
         logger.debug("remove_empty_dirs '%s' done" % (dirname))

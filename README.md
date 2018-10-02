@@ -141,7 +141,7 @@ Install FUSE for OS X from <http://osxfuse.github.com>.
 
     # Put contrib/mount.yas3fs to /usr/local/sbin and make the symlink
     chmod +x /usr/local/sbin/mount.yas3fs
-    cd /sbin; sudo ln -s /usr/local/sbin/mount.yas3fs
+    cd /sbin; sudo ln -s /usr/local/sbin/mount.yas3fs.centos6 # replace centos6 to amzn1 for Amazon Linux installation
     # Add the contents of contrib/fstab.snippet to /etc/fstab and modify accordingly
     # Try to mount
     mount /mnt/mybucket
