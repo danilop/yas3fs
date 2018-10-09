@@ -146,6 +146,14 @@ Install FUSE for OS X from <http://osxfuse.github.com>.
     # Try to mount
     mount /mnt/mybucket
 
+**Workaround to unmount yas3fs correctly during host shutdown or reboot**
+
+    sudo cp contrib/unmount-yas3fs.init.d /etc/init.d/unmount-yas3fs
+    sudo chmod +x /etc/init.d/unmount-yas3fs
+    sudo chkconfig --add unmount-yas3fs
+    sudo chkconfig unmount-yas3fs on
+    sudo /etc/init.d/unmount-yas3fs start
+
 To listen to SNS HTTP notifications (I usually suggest to use SQS instead) with a Mac
 you need to install the Python [M2Crypto](http://chandlerproject.org/Projects/MeTooCrypto) module,
 download the most suitable "egg" from
