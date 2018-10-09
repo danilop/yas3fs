@@ -259,7 +259,7 @@ rsync's option *--inplace* has to be used to avoid S3 busy events
       --cache-mem-size N   max size of the memory cache in MB (default is 128 MB)
       --cache-disk-size N  max size of the disk cache in MB (default is 1024 MB)
       --cache-path PATH    local path to use for disk cache (default is
-                           /tmp/yas3fs/BUCKET/PATH)
+                           /tmp/yas3fs-BUCKET-PATH-random)
       --recheck-s3         Cache ENOENT results in forced recheck of S3 for new file/directory
       --cache-on-disk N    use disk (instead of memory) cache for files greater
                            than the given size in bytes (default is 0 bytes)

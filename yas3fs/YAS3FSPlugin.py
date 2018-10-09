@@ -34,8 +34,7 @@ class YAS3FSPlugin (object):
 			raise Exception("cannot load plugin file " + filepath + " " + e)
 
 		if not class_inst:
-			raise Exception("cannot load plugin class " + expected_class + " " + e)
-
+			raise Exception("cannot load plugin class " + expected_class)
 
 		return class_inst
 

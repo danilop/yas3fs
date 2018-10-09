@@ -248,7 +248,7 @@ class FSData():
                 logger.debug("created new cache file '%s'" % filename)
             self.content = None # Not open, yet
         else:
-            raise FSData.unknown_store
+            raise Exception(FSData.unknown_store)
     def get_lock(self, wait_until_cleared_proplist = None):
         return self.cache.get_lock(self.path, wait_until_cleared_proplist)
     def open(self):
@@ -308,7 +308,7 @@ class FSData():
                 self.content.seek(0) # Go to the beginning
                 return self.content.read()
         else:
-            raise FSData.unknown_store
+            raise Exception(FSData.unknown_store)
     def has(self, prop):
         with self.get_lock():
             return prop in self.props
@@ -862,8 +862,9 @@ class YAS3FS(LoggingMixIn, Operations):
         else:
             cache_path_prefix = 'yas3fs-' + self.s3_bucket_name + '-'
             if not self.s3_prefix == '':
-                cache_path_prefix += self.s3_prefix + '-'
+                cache_path_prefix += self.s3_prefix.replace('/', '-') + '-'
         self.cache_path = mkdtemp(prefix = cache_path_prefix)
+
         logger.info("Cache path (on disk): '%s'" % self.cache_path)
         self.cache = FSCache(self.cache_path)
         self.publish_queue = Queue()
@@ -1287,12 +1288,12 @@ class YAS3FS(LoggingMixIn, Operations):
             if c[2] != None and len(c) == 4: # fix for https://github.com/danilop/yas3fs/issues/42
                 self.invalidate_cache(c[2], c[3])
             else: # Invalidate all the cached data
-                for path in self.cache.entries.keys():
+                for path in list(self.cache.entries.keys()):
                     self.invalidate_cache(path)
         elif c[1] == 'md':
             if c[2]:
-        	self.delete_cache(c[2])
-        	self.delete_cache(c[3])
+                self.delete_cache(c[2])
+                self.delete_cache(c[3])
         elif c[1] == 'reset':
             if len(c) <= 2 or not c[2] or c[2] == '/':
                 with self.cache.lock:
@@ -1300,7 +1301,7 @@ class YAS3FS(LoggingMixIn, Operations):
                     self.cache.reset_all() # Completely reset the cache
             else: 
                 # c[2] exists and is not the root directory
-                for path in self.cache.entries.keys():
+                for path in list(self.cache.entries.keys()):
                     # If the reset path is a directory and it matches 
                     # the directory in the cache, it will delete the 
                     # parent directory cache as well.
@@ -1930,14 +1931,14 @@ class YAS3FS(LoggingMixIn, Operations):
         logger.debug("check_data '%s'" % (path))
         with self.cache.get_lock(path):
             #-- jazzl0ver: had to add path checking due to untracable /by me/ cache leaking (workaround for issue #174)
-    	    data = self.cache.get(path, 'data')
+            data = self.cache.get(path, 'data')
             if data and not os.path.exists(self.cache.get_cache_filename(path)):
-        	logger.debug("Cache leak found for '%s', cleaning up..." % (path))
-        	self.cache.delete(path)
+                logger.debug("Cache leak found for '%s', cleaning up..." % (path))
+                self.cache.delete(path)
                 with self.cache.lock and self.cache.new_locks[path]:
                     del self.cache.new_locks[path]
-        	del self.cache.unused_locks[path]
-    		data = self.cache.get(path, 'data')
+                del self.cache.unused_locks[path]
+                data = self.cache.get(path, 'data')
             if not data or data.has('new'):
                 k = self.get_key(path)
                 if not k:
@@ -3110,25 +3111,27 @@ def remove_empty_dirs(dirname):
     logger.debug("remove_empty_dirs '%s'" % (dirname))
 
     try:
-        if not isinstance(dirname, bytes):
-            dirname = dirname.encode('utf-8')
+        if not isinstance(dirname, str):
+            # dirname must be a string for replace
+            dirname = dirname.decode('utf-8')
 
         # fix for https://github.com/danilop/yas3fs/issues/150
         # remove cache_path part from dirname to avoid accidental removal of /tmp (if empty)
         os.chdir(yas3fsobj.cache_path)
         dirname = dirname.replace(yas3fsobj.cache_path + '/', '')
 
+        dirname = dirname.encode('utf-8')
         os.removedirs(dirname)
-        logger.debug("remove_empty_dirs '%s' done" % (dirname))
+        logger.debug("remove_empty_dirs '%s' done", dirname)
     except OSError as exc: # Python >2.5
         if exc.errno == errno.ENOTEMPTY:
-            logger.debug("remove_empty_dirs '%s' not empty" % (dirname))
+            logger.debug("remove_empty_dirs '%s' not empty", dirname)
             pass
         else:
             raise
     except Exception as e:
         logger.exception(e)
-        logger.error("remove_empty_dirs exception: " + dirname)
+        logger.error("remove_empty_dirs exception: %s", dirname)
         raise e
 
 
