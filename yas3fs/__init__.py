@@ -1292,8 +1292,8 @@ class YAS3FS(LoggingMixIn, Operations):
                     self.invalidate_cache(path)
         elif c[1] == 'md':
             if c[2]:
-        	self.delete_cache(c[2])
-        	self.delete_cache(c[3])
+                self.delete_cache(c[2])
+                self.delete_cache(c[3])
         elif c[1] == 'reset':
             if len(c) <= 2 or not c[2] or c[2] == '/':
                 with self.cache.lock:
@@ -1931,14 +1931,14 @@ class YAS3FS(LoggingMixIn, Operations):
         logger.debug("check_data '%s'" % (path))
         with self.cache.get_lock(path):
             #-- jazzl0ver: had to add path checking due to untracable /by me/ cache leaking (workaround for issue #174)
-    	    data = self.cache.get(path, 'data')
+            data = self.cache.get(path, 'data')
             if data and not os.path.exists(self.cache.get_cache_filename(path)):
-        	logger.debug("Cache leak found for '%s', cleaning up..." % (path))
-        	self.cache.delete(path)
+                logger.debug("Cache leak found for '%s', cleaning up..." % (path))
+                self.cache.delete(path)
                 with self.cache.lock and self.cache.new_locks[path]:
                     del self.cache.new_locks[path]
-        	del self.cache.unused_locks[path]
-    		data = self.cache.get(path, 'data')
+                del self.cache.unused_locks[path]
+                data = self.cache.get(path, 'data')
             if not data or data.has('new'):
                 k = self.get_key(path)
                 if not k:
