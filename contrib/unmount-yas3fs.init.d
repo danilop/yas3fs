@@ -1,6 +1,6 @@
 #! /usr/bin/env bash
 #
-# chkconfig: - 99 99
+# chkconfig: - 99 87
 #
 # description: Correctly unmount yas3fs mounts before going reboot or halt (a workaround for https://github.com/libfuse/libfuse/issues/1)
 #
