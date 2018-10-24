@@ -1937,8 +1937,8 @@ class YAS3FS(LoggingMixIn, Operations):
                 self.cache.delete(path)
                 with self.cache.lock and self.cache.new_locks[path]:
                     del self.cache.new_locks[path]
-                del self.cache.unused_locks[path]
-                data = self.cache.get(path, 'data')
+                data = None
+                self.getattr(path)
             if not data or data.has('new'):
                 k = self.get_key(path)
                 if not k:
