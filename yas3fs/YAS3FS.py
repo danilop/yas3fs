@@ -1,4 +1,5 @@
 import boto
+import boto3
 import boto.s3
 import boto.s3.connection
 import boto.sns
@@ -20,6 +21,8 @@ import sys
 import threading
 import time
 import uuid
+
+from shutil import rmtree
 
 from .FSCache import FSCache
 from .FSData import FSData
@@ -89,7 +92,6 @@ class TracebackLoggingThread(threading.Thread):
 
 class YAS3FS(LoggingMixIn, Operations):
     """ Main FUSE Operations class for fusepy """
-
     def __init__(self, options):
         logger.info("Version: %s" % __version__)
         # Some constants
@@ -240,11 +242,11 @@ class YAS3FS(LoggingMixIn, Operations):
 
         self.default_headers = {}
         if self.requester_pays:
-            self.default_headers = {'x-amz-request-payer':  'requester'}
+            self.default_headers = {'x-amz-request-payer': 'requester'}
 
         crypto_headers = {}
         if self.aws_managed_encryption:
-            crypto_headers = {'x-amz-server-side-encryption':  'AES256'}
+            crypto_headers = {'x-amz-server-side-encryption': 'AES256'}
 
         self.default_write_headers = copy.copy(self.default_headers)
         self.default_write_headers.update(crypto_headers)
@@ -291,7 +293,7 @@ class YAS3FS(LoggingMixIn, Operations):
             self.s3_bucket = self.s3.get_bucket(
                 self.s3_bucket_name, headers=self.default_headers, validate=False)
 
-            # If an endpoint was not specified, make sure we're talking to S3 in the correct region.
+            # If no was endpoint specified, make sure we're talking to S3 in the correct region.
             if not options.s3_endpoint:
                 region_name = self.s3_bucket.get_location()
                 if not region_name:
@@ -319,7 +321,7 @@ class YAS3FS(LoggingMixIn, Operations):
             utils.error_and_exit("S3 bucket not found:" + str(e))
 
         # Alphanumeric characters only, to be used for pattern.sub('', s)
-        pattern = re.compile('[\W_]+')
+        pattern = re.compile('[\\W_]+')
 
         unique_id_list = []
         if options.id:
@@ -336,15 +338,13 @@ class YAS3FS(LoggingMixIn, Operations):
             if not self.sns:
                 utils.error_and_exit("no SNS connection")
             try:
-                topic_attributes = self.sns.get_topic_attributes(
-                    self.sns_topic_arn)
+                self.sns.get_topic_attributes(self.sns_topic_arn)
             except boto.exception.BotoServerError:
                 utils.error_and_exit(
                     "SNS topic ARN not found in region '%s' " % self.aws_region)
             if not self.sqs_queue_name and not self.new_queue:
                 if not (self.hostname and self.sns_http_port):
-                    utils.error_and_exit(
-                        "With and SNS topic either the SQS queue name or the hostname and port to listen to SNS HTTP notifications must be provided")
+                    utils.error_and_exit("With and SNS topic either the SQS queue name or the hostname and port to listen to SNS HTTP notifications must be provided")
 
         if self.sqs_queue_name or self.new_queue:
             self.queue = None
@@ -359,7 +359,7 @@ class YAS3FS(LoggingMixIn, Operations):
             if not self.sqs:
                 utils.error_and_exit("no SQS connection")
             if self.new_queue:
-                hostname_array = []
+                # hostname_array = []
                 hostname = ''
                 if self.new_queue_with_hostname:
                     import socket
@@ -368,7 +368,7 @@ class YAS3FS(LoggingMixIn, Operations):
                     hostname = re.sub(r'[^A-Za-z0-9\-].*', '', hostname)
                     # removes dashes and other chars
                     hostname = re.sub(r'[^A-Za-z0-9]', '', hostname)
-                    hostname_array = [hostname]
+                    # hostname_array = [hostname]
 
                 self.sqs_queue_name = '-'.join(['yas3fs',
                                                 pattern.sub(
@@ -395,28 +395,27 @@ class YAS3FS(LoggingMixIn, Operations):
             # There is a bug with the default Message class in boto
             self.queue.set_message_class(boto.sqs.message.RawMessage)
 
-            self.current_user_aws_principalId = None
+            self.current_user_principalId = None
             try:
                 iam = boto.connect_iam()
-                self.current_user_principalId = 'AWS:' + \
-                    iam.get_user()[
-                        'get_user_response']['get_user_result']['user']['user_id']
-                logger.info("Current user principalId: " +
-                            self.current_user_principalId)
+                self.current_user_principalId = 'AWS:'+iam.get_user()['get_user_response']['get_user_result']['user']['user_id']
+                logger.info("Current user principalId: "+self.current_user_principalId)
             except Exception as e:
-                logger.warn(
-                    "Failed to get current user principalId: " + str(e))
+                try:
+                    sts = boto3.client('sts')
+                    self.current_user_principalId = 'AWS:'+sts.get_caller_identity()['UserId']
+                    logger.info("Current user principalId: "+self.current_user_principalId)
+                except Exception as e:
+                    logger.warn("Failed to get current user principalId: "+str(e))
 
         if self.hostname or self.sns_http_port:
             if not self.sns_topic_arn:
-                utils.error_and_exit(
-                    "The SNS topic must be provided when the hostname/port to listen to SNS HTTP notifications is given")
+                utils.error_and_exit("The SNS topic must be provided when the hostname/port to listen to SNS HTTP notifications is given")
 
         if self.sns_http_port:
             if not self.hostname:
-                utils.error_and_exit(
-                    "The hostname must be provided with the port to listen to SNS HTTP notifications")
-            # self.http_listen_path = '/sns/' + base64.urlsafe_b64encode(os.urandom(self.http_listen_path_length))
+                utils.error_and_exit("The hostname must be provided with the port to listen to SNS HTTP notifications")
+            #  self.http_listen_path = '/sns/' + base64.urlsafe_b64encode(os.urandom(self.http_listen_path_length))
             self.http_listen_path = '/sns'
             self.http_listen_url = "http://%s:%i%s" % (
                 self.hostname, self.sns_http_port, self.http_listen_path)
@@ -452,7 +451,7 @@ class YAS3FS(LoggingMixIn, Operations):
             try:
                 handlerFn = getattr(self.plugin, fn.__name__)
                 return handlerFn(fn).__call__(*arg, **karg)
-            except:
+            except Exception:
                 return fn(*arg, **karg)
         return fn_wrapper
 
@@ -466,15 +465,15 @@ class YAS3FS(LoggingMixIn, Operations):
 
         for i in range(self.s3_num):
             if utils.thread_is_not_alive(self.s3_threads[i]):
-                logger.debug("%s S3 thread # %i" % (display, i))
+                logger.debug("%s S3 thread #%i" % (display, i))
                 self.s3_threads[i] = TracebackLoggingThread(
-                    target=self.get_to_do_on_s3, args=(i,), name=("S3Thread-%04d" % i))
+                    target=self.get_to_do_on_s3, args=(i, ), name=("S3Thread-%04d" % i))
                 self.s3_threads[i].deamon = False
                 self.s3_threads[i].start()
 
         for i in range(self.download_num):
             if utils.thread_is_not_alive(self.download_threads[i]):
-                logger.debug("%s download thread # %i" % (display, i))
+                logger.debug("%s download thread #%i" % (display, i))
                 self.download_threads[i] = TracebackLoggingThread(
                     target=self.download, name=("Download-%04d" % i))
                 self.download_threads[i].deamon = True
@@ -482,9 +481,9 @@ class YAS3FS(LoggingMixIn, Operations):
 
         for i in range(self.prefetch_num):
             if utils.thread_is_not_alive(self.prefetch_threads[i]):
-                logger.debug("%s prefetch thread # %i" % (display, i))
+                logger.debug("%s prefetch thread #%i" % (display, i))
                 self.prefetch_threads[i] = TracebackLoggingThread(
-                    target=self.download, args=(True,), name=("Prefetch-%04d" % i))
+                    target=self.download, args=(True, ), name=("Prefetch-%04d" % i))
                 self.prefetch_threads[i].deamon = True
                 self.prefetch_threads[i].start()
 
@@ -617,6 +616,8 @@ class YAS3FS(LoggingMixIn, Operations):
             self.cache_entries = 0  # To stop memory thread
             logger.info("waiting for check cache thread to shutdown...")
             self.check_cache_thread.join(self.cache_check_interval + 1.0)
+            logger.info("deleting cache_path %s ..." % self.cache_path)
+            rmtree(self.cache_path)
         logger.info('File system unmounted.')
 
     def listen_for_messages_over_http(self):
@@ -649,8 +650,8 @@ class YAS3FS(LoggingMixIn, Operations):
                         for event in content['Records']:
                             self.process_native_s3_event(event)
                     else:
-                        # eg: "Service":"Amazon S3","Event":"s3:TestEvent"...
-                        logger.warn("Unknown SQS message: " + repr(content))
+                        # eg: "Service":"Amazon S3", "Event":"s3:TestEvent"...
+                        logger.warn("Unknown SQS message: "+repr(content))
                     m.delete()
 
             else:
@@ -711,8 +712,8 @@ class YAS3FS(LoggingMixIn, Operations):
                     self.invalidate_cache(path)
         elif c[1] == 'md':
             if c[2]:
-                self.cache.delete(c[3], 'key')
-                self.cache.delete(c[3], c[2])
+                self.delete_cache(c[2])
+                self.delete_cache(c[3])
         elif c[1] == 'reset':
             if len(c) <= 2 or not c[2] or c[2] == '/':
                 with self.cache.lock:
@@ -774,7 +775,7 @@ class YAS3FS(LoggingMixIn, Operations):
     def process_native_s3_event(self, event):
         event_kind = event['eventName']
         # want '/abc/folder' while on s3 it's 'abc/folder/'
-        path = '/' + event['s3']['object']['key'].strip('/')
+        path = '/'+event['s3']['object']['key'].strip('/')
         user_id = event['userIdentity']['principalId']
 
         if user_id == self.current_user_principalId:
@@ -875,30 +876,32 @@ class YAS3FS(LoggingMixIn, Operations):
                 # Need to purge something
                 path = self.cache.lru.popleft()  # Take a path on top of the LRU (least used)
                 with self.cache.get_lock(path):
-                    # Path may be deleted before I acquire the lock
-                    if self.cache.has(path):
+                    if self.cache.has(path):  # Path may be deleted before I acquire the lock
                         logger.debug(
                             "check_cache_size purge: '%s' '%s' ?" % (store, path))
                         data = self.cache.get(path, 'data')
                         full_delete = False
-                        if (not data) or (data and (store == '' or data.store == store) and (not data.has('open')) and (not data.has('change'))):
+                        if (not data) or (data and (store == '' or data.store == store) and
+                                          (not data.has('open')) and (not data.has('change'))):
                             if store == '':
                                 logger.debug(
                                     "check_cache_size purge: '%s' '%s' OK full" % (store, path))
-                                # Remove completely from cache
-                                self.cache.delete(path)
+                                self.cache.delete(path)  # Remove completely from cache
                                 full_delete = True
                             elif data:
                                 logger.debug(
                                     "check_cache_size purge: '%s' '%s' OK data" % (store, path))
-                                # Just remove data
-                                self.cache.delete(path, 'data')
+                                self.cache.delete(path, 'data')  # Just remove data
                             else:
                                 logger.debug(
                                     "check_cache_size purge: '%s' '%s' KO no data" % (store, path))
                         else:
                             logger.debug("check_cache_size purge: '%s' '%s' KO data? %s open? %s change? %s"
-                                         % (store, path, data is not None, data and data.has('open'), data and data.has('change')))
+                                         % (store,
+                                            path,
+                                            data is not None,
+                                            data and data.has('open'),
+                                            data and data.has('change')))
                         if not full_delete:
                             # The entry is still there, let's append it again at the end of the RLU list
                             self.cache.lru.append(path)
@@ -949,7 +952,7 @@ class YAS3FS(LoggingMixIn, Operations):
             if dirs is not None:
                 try:
                     dirs.remove(dir)
-                except:
+                except Exception:
                     # not in cache, no worries.
                     pass
 
@@ -1019,18 +1022,18 @@ class YAS3FS(LoggingMixIn, Operations):
                 if not self.recheck_s3:
                     look_on_S3 = False
         if look_on_S3:
-            logger.debug("get_key from S3 # 1 '%s'" % (path))
+            logger.debug("get_key from S3 #1 '%s'" % (path))
             # encoding for https://github.com/danilop/yas3fs/issues/56
             key = self.s3_bucket.get_key(self.join_prefix(
                 path).encode('utf-8'), headers=self.default_headers)
 
             if not key and path != '/':
                 full_path = path + '/'
-                logger.debug("get_key from S3 # 2 '%s' '%s'" %
+                logger.debug("get_key from S3 #2 '%s' '%s'" %
                              (path, full_path))
                 # encoding for https://github.com/danilop/yas3fs/issues/56
-                key = self.s3_bucket.get_key(self.join_prefix(
-                    full_path).encode('utf-8'), headers=self.default_headers)
+                key = self.s3_bucket.get_key(self.join_prefix(full_path).encode('utf-8'),
+                                             headers=self.default_headers)
             if key:
                 key = UTF8DecodingKey(key)
                 key.name = key.name.decode('utf-8')
@@ -1048,8 +1051,7 @@ class YAS3FS(LoggingMixIn, Operations):
         return key
 
     def get_metadata(self, path, metadata_name, key=None):
-        logger.debug("get_metadata -> '%s' '%s' '%r'" %
-                     (path, metadata_name, key))
+        logger.debug("get_metadata -> '%s' '%s' '%r'" % (path, metadata_name, key))
         # To avoid consistency issues, e.g. with a concurrent purge
         with self.cache.get_lock(path):
             metadata_values = None
@@ -1067,8 +1069,7 @@ class YAS3FS(LoggingMixIn, Operations):
                         return self.cache.get(path, metadata_name)
                     else:
                         if not self.folder_has_contents(path):
-                            # It is empty to cache further checks
-                            self.cache.add(path)
+                            self.cache.add(path)  # It is empty to cache further checks
                             logger.debug("get_metadata '%s' '%s' no S3 return None"
                                          % (path, metadata_name))
                             return None
@@ -1102,18 +1103,14 @@ class YAS3FS(LoggingMixIn, Operations):
                         metadata_values['st_uid'] = uid
                         metadata_values['st_gid'] = gid
                         if key is None:
-                            #  # no key, default to dir
-                            metadata_values['st_mode'] = (
-                                stat.S_IFDIR | 0o0755)
+                            # no key, default to dir
+                            metadata_values['st_mode'] = (stat.S_IFDIR | 0o0755)
                         elif key and key.name != '' and key.name[-1] != '/':
-                            metadata_values['st_mode'] = (
-                                stat.S_IFREG | 0o0755)
+                            metadata_values['st_mode'] = (stat.S_IFREG | 0o0755)
                         else:
-                            metadata_values['st_mode'] = (
-                                stat.S_IFDIR | 0o0755)
+                            metadata_values['st_mode'] = (stat.S_IFDIR | 0o0755)
                         if key and key.last_modified:
-                            now = time.mktime(time.strptime(
-                                key.last_modified, "%a, %d %b %Y %H:%M:%S %Z"))
+                            now = time.mktime(time.strptime(key.last_modified, "%a, %d %b %Y %H:%M:%S %Z"))
                         else:
                             now = utils.get_current_time()
                         metadata_values['st_mtime'] = now
@@ -1126,8 +1123,7 @@ class YAS3FS(LoggingMixIn, Operations):
             return metadata_values
 
     def set_metadata(self, path, metadata_name=None, metadata_values=None, key=None):
-        logger.debug("set_metadata '%s' '%s' '%r'" %
-                     (path, metadata_name, key))
+        logger.debug("set_metadata '%s' '%s' '%r'" % (path, metadata_name, key))
         with self.cache.get_lock(path):
             if metadata_values is not None:
                 self.cache.set(path, metadata_name, metadata_values)
@@ -1136,8 +1132,7 @@ class YAS3FS(LoggingMixIn, Operations):
                 # No change in progress, I should write now
                 if not key:
                     key = self.get_key(path)
-                    logger.debug("set_metadata '%s' '%s' '%r' Key" %
-                                 (path, metadata_name, key))
+                    logger.debug("set_metadata '%s' '%s' '%r' Key" % (path, metadata_name, key))
                 new_key = False
                 if not key and self.folder_has_contents(path):
                     if path != '/' or self.write_metadata:
@@ -1157,8 +1152,7 @@ class YAS3FS(LoggingMixIn, Operations):
                                 pass
                         else:
                             try:
-                                key.metadata[metadata_name] = json.dumps(
-                                    values)
+                                key.metadata[metadata_name] = json.dumps(values)
                             except UnicodeDecodeError:
                                 logger.info("set_metadata '%s' '%s' '%r' cannot decode unicode, not written on S3"
                                             % (path, metadata_name, key))
@@ -1167,54 +1161,44 @@ class YAS3FS(LoggingMixIn, Operations):
                         logger.debug("set_metadata '%s' '%r' S3" % (path, key))
                         pub = ['md', metadata_name, path]
                         if new_key:
-                            logger.debug(
-                                "set_metadata '%s' '%r' S3 new key" % (path, key))
-                            # key.set_contents_from_string('', headers={'Content-Type': 'application/x-directory'})
-                            headers = {
-                                'Content-Type': 'application/x-directory'}
+                            logger.debug("set_metadata '%s' '%r' S3 new key" % (path, key))
+                            #  key.set_contents_from_string('', headers={'Content-Type': 'application/x-directory'})
+                            headers = {'Content-Type': 'application/x-directory'}
                             headers.update(self.default_write_headers)
 
-                            cmds = [['set_contents_from_string',
-                                     [''], {'headers': headers}]]
+                            cmds = [['set_contents_from_string', [''], {'headers': headers}]]
                             self.do_on_s3(key, pub, cmds)
                         else:
-                            # key.copy(key.bucket.name, key.name, key.metadata, preserve_acl=False)
+                            #  key.copy(key.bucket.name, key.name, key.metadata, preserve_acl=False)
                             if isinstance(key.name, bytes):
                                 key_name = key.name.decode('utf-8')
                             else:
                                 key_name = key.name
 
                             cmds = [['copy', [key.bucket.name, key_name, key.metadata],
-                                     {'preserve_acl': False, 'encrypt_key': self.aws_managed_encryption}]]
+                                     {'preserve_acl': False,
+                                      'encrypt_key': self.aws_managed_encryption}]]
                             self.do_on_s3(key, pub, cmds)
-                        # self.publish(['md', metadata_name, path])
+                        #  self.publish(['md', metadata_name, path])
 
             # handle a request to set metadata, but we can't right now because the node is currently
             # in the middle of a 'change' https://github.com/danilop/yas3fs/issues/52
             elif self.write_metadata and data and data.has('change'):
                 if metadata_name == 'attr' and metadata_values is None:
-                    logger.debug(
-                        "set_metadata: 'change' already in progress, setting FSData.props[invoke_after_change] lambda for self.set_metadata(" + path + ",attr)")
-                    data.set('invoke_after_change',
-                             (lambda path: self.set_metadata(path, 'attr')))
+                    logger.debug("set_metadata: 'change' already in progress, setting FSData.props[invoke_after_change] lambda for self.set_metadata("+path+", attr)")
+                    data.set('invoke_after_change', (lambda path: self.set_metadata(path, 'attr')))
 
     def getattr(self, path, fh=None):
         logger.debug("getattr -> '%s' '%s'" % (path, fh))
         if self.cache.is_deleting(path):
-            logger.debug(
-                "getattr path '%s' is deleting -- throwing ENOENT" % (path))
+            logger.debug("getattr path '%s' is deleting -- throwing ENOENT" % (path))
             raise FuseOSError(errno.ENOENT)
         # To avoid consistency issues, e.g. with a concurrent purge
         with self.cache.get_lock(path):
-            recheck_s3 = False
             if self.cache.is_empty(path):
-                cache = True
                 logger.debug("getattr <- '%s' '%s' cache ENOENT" % (path, fh))
                 if self.recheck_s3:
-                    cache = False
-                    recheck_s3 = True
-                    logger.debug(
-                        "getattr rechecking on s3 <- '%s' '%s' cache ENOENT" % (path, fh))
+                    logger.debug("getattr rechecking on s3 <- '%s' '%s' cache ENOENT" % (path, fh))
                 else:
                     raise FuseOSError(errno.ENOENT)
             attr = self.get_metadata(path, 'attr')
@@ -1240,8 +1224,7 @@ class YAS3FS(LoggingMixIn, Operations):
         logger.debug("readdir '%s' '%s'" % (path, fh))
 
         if self.cache.is_deleting(path):
-            logger.debug(
-                "readdir path '%s' is deleting -- throwing ENOENT" % (path))
+            logger.debug("readdir path '%s' is deleting -- throwing ENOENT" % (path))
             raise FuseOSError(errno.ENOENT)
 
         with self.cache.get_lock(path):
@@ -1258,28 +1241,27 @@ class YAS3FS(LoggingMixIn, Operations):
                     full_path = ''
                 elif full_path != '' and full_path[-1] != '/':
                     full_path += '/'
-                logger.debug("readdir '%s' '%s' S3 list '%s'" %
-                             (path, fh, full_path))
+                logger.debug("readdir '%s' '%s' S3 list '%s'" % (path, fh, full_path))
                 # encoding for https://github.com/danilop/yas3fs/issues/56
-                key_list = self.s3_bucket.list(full_path.encode(
-                    'utf-8'), '/', headers=self.default_headers, encoding_type='url')
+                key_list = self.s3_bucket.list(full_path.encode('utf-8'), '/',
+                                               headers=self.default_headers,
+                                               encoding_type='url')
 
                 dirs = ['.', '..']
-                logger.debug('key names %s' %
-                             (', '.join([k.name for k in key_list])))
+                logger.debug('key names %s' % (', '.join([k.name for k in key_list])))
                 for k in key_list:
                     # 'unquoting' for https://github.com/danilop/yas3fs/issues/56
-                    if sys.version_info < (3,):
+                    if sys.version_info < (3, ):
                         k.name = unquote_plus(str(k.name)).decode('utf-8')
                     else:
                         k.name = unquote_plus(k.name)
 
-                    logger.debug(
-                        "readdir '%s' '%s' S3 list key '%r'" % (path, fh, k))
+                    logger.debug("readdir '%s' '%s' S3 list key '%r'" % (path, fh, k))
                     d = k.name[len(full_path):]
                     if len(d) > 0:
                         if d == '.':
-                            continue  # I need this for whole S3 buckets mounted without a prefix, I use '.' for '/' metadata
+                            # I need this for whole S3 buckets mounted without a prefix, I use '.' for '/' metadata
+                            continue
                         d_path = k.name[len(self.s3_prefix):]
                         if d[-1] == '/':
                             d = d[:-1]
@@ -1288,7 +1270,7 @@ class YAS3FS(LoggingMixIn, Operations):
                         dirs.append(d)
 
                 # for https://github.com/danilop/yas3fs/issues/56
-                if sys.version_info < (3,):
+                if sys.version_info < (3, ):
                     convertedDirs = []
                     for dir in dirs:
                         convertedDirs.append(unicode(dir))
@@ -1320,7 +1302,7 @@ class YAS3FS(LoggingMixIn, Operations):
                     }
             self.cache.delete(path)
             self.cache.add(path)
-            data = FSData(self.cache, 'mem', path)
+            data = FSData(self.cache_path, self.cache, 'mem', path)
             self.cache.set(path, 'data', data)
             data.set('change', True)
             k = UTF8DecodingKey(self.s3_bucket)
@@ -1329,8 +1311,7 @@ class YAS3FS(LoggingMixIn, Operations):
             self.cache.set(path, 'key', k)
             if path != '/':
                 full_path = path + '/'
-                # the directory is empty
-                self.cache.set(path, 'readdir', ['.', '..'])
+                self.cache.set(path, 'readdir', ['.', '..'])  # the directory is empty
                 self.add_to_parent_readdir(path)
             else:
                 full_path = path  # To manage '/' with an empty s3_prefix
@@ -1338,16 +1319,15 @@ class YAS3FS(LoggingMixIn, Operations):
             if path != '/' or self.write_metadata:
                 k.key = self.join_prefix(full_path)
                 logger.debug("mkdir '%s' '%s' '%r' S3" % (path, mode, k))
-                # k.set_contents_from_string('', headers={'Content-Type': 'application/x-directory'})
+                #  k.set_contents_from_string('', headers={'Content-Type': 'application/x-directory'})
                 pub = ['mkdir', path]
                 headers = {'Content-Type': 'application/x-directory'}
                 headers.update(self.default_write_headers)
-                cmds = [['set_contents_from_string',
-                         [''], {'headers': headers}]]
+                cmds = [['set_contents_from_string', [''], {'headers': headers}]]
                 self.do_on_s3(k, pub, cmds)
             data.delete('change')
-            # if path != '/':  # Do I need this???
-            #    self.publish(['mkdir', path])
+            #  if path != '/':  #  Do I need this???
+            #  self.publish(['mkdir', path])
 
             return 0
 
@@ -1375,9 +1355,9 @@ class YAS3FS(LoggingMixIn, Operations):
             self.cache.add(path)
             if self.cache_on_disk > 0:
                 # New files (almost) always cache in mem - is it ok ???
-                data = FSData(self.cache, 'mem', path)
+                data = FSData(self.cache_path, self.cache, 'mem', path)
             else:
-                data = FSData(self.cache, 'disk', path)
+                data = FSData(self.cache_path, self.cache, 'disk', path)
             self.cache.set(path, 'data', data)
             data.set('change', True)
             k = UTF8DecodingKey(self.s3_bucket)
@@ -1390,21 +1370,29 @@ class YAS3FS(LoggingMixIn, Operations):
             self.cache.set(path, 'key', k)
             self.add_to_parent_readdir(path)
             logger.debug("symlink '%s' '%s' '%r' S3" % (path, link, k))
-            # k.set_contents_from_string(link, headers={'Content-Type': 'application/x-symlink'})
+            #  k.set_contents_from_string(link, headers={'Content-Type': 'application/x-symlink'})
             pub = ['symlink', path]
             headers = {'Content-Type': 'application/x-symlink'}
             headers.update(self.default_write_headers)
             cmds = [['set_contents_from_string', [link], {'headers': headers}]]
             self.do_on_s3(k, pub, cmds)
             data.delete('change')
-            # self.publish(['symlink', path])
+            #  self.publish(['symlink', path])
 
             return 0
 
     def check_data(self, path):
         logger.debug("check_data '%s'" % (path))
         with self.cache.get_lock(path):
+            # jazzl0ver: had to add path checking due to untracable /by me/ cache leaking (workaround for issue #174)
             data = self.cache.get(path, 'data')
+            if data and not os.path.exists(self.cache.get_cache_filename(path)):
+                logger.debug("Cache leak found for '%s', cleaning up..." % (path))
+                self.cache.delete(path)
+                with self.cache.lock and self.cache.new_locks[path]:
+                    del self.cache.new_locks[path]
+                data = None
+                self.getattr(path)
             if not data or data.has('new'):
                 k = self.get_key(path)
                 if not k:
@@ -1412,9 +1400,9 @@ class YAS3FS(LoggingMixIn, Operations):
                     return False
                 if not data:
                     if k.size < self.cache_on_disk:
-                        data = FSData(self.cache, 'mem', path)
+                        data = FSData(self.cache_path, self.cache, 'mem', path)
                     else:
-                        data = FSData(self.cache, 'disk', path)
+                        data = FSData(self.cache_path, self.cache, 'disk', path)
                     self.cache.set(path, 'data', data)
                 new_etag = data.get('new')
                 etag = k.etag[1:-1]
@@ -1422,44 +1410,36 @@ class YAS3FS(LoggingMixIn, Operations):
                     data.delete('new')
                 else:  # I'm not sure I got the latest version
                     logger.debug("check_data '%s' etag is different" % (path))
-                    # Next time get the key from S3
-                    self.cache.delete(path, 'key')
+                    self.cache.delete(path, 'key')  # Next time get the key from S3
                     data.set('new', None)  # Next time don't check the Etag
                 if data.etag == etag:
-                    logger.debug(
-                        "check_data '%s' etag is the same, data is usable" % (path))
+                    logger.debug("check_data '%s' etag is the same, data is usable" % (path))
                     return True
                 data.update_size()
                 if k.size == 0:
-                    logger.debug(
-                        "check_data '%s' nothing to download" % (path))
+                    logger.debug("check_data '%s' nothing to download" % (path))
                     return True  # No need to download anything
                 elif self.buffer_size > 0:  # Use buffers
                     if not data.has('range'):
                         data.set('range', FSRange())
-                    logger.debug(
-                        "check_data '%s' created empty data object" % (path))
+                    logger.debug("check_data '%s' created empty data object" % (path))
                 else:  # Download at once
                     if data.content is None:
                         data.open()
-                    k.get_contents_to_file(
-                        data.content, headers=self.default_headers)
+                    k.get_contents_to_file(data.content, headers=self.default_headers)
                     data.update_size()
                     data.update_etag(k.etag[1:-1])
-                    logger.debug(
-                        "check_data '%s' data downloaded at once" % (path))
+                    logger.debug("check_data '%s' data downloaded at once" % (path))
             else:
                 logger.debug("check_data '%s' data already in place" % (path))
             return True
 
     def enqueue_download_data(self, path, starting_from=0, length=0, prefetch=False):
-        logger.debug("enqueue_download_data '%s' %i %i" %
-                     (path, starting_from, length))
+        logger.debug("enqueue_download_data '%s' %i %i" % (path, starting_from, length))
         start_buffer = int(starting_from / self.buffer_size)
         if length == 0:  # Means to the end of file
             key = self.get_key(path)
-            number_of_buffers = 1 + \
-                int((key.size - 1 - starting_from) / self.buffer_size)
+            number_of_buffers = 1 + int((key.size - 1 - starting_from) / self.buffer_size)
         else:
             end_buffer = int((starting_from + length - 1) / self.buffer_size)
             number_of_buffers = 1 + (end_buffer - start_buffer)
@@ -1476,12 +1456,9 @@ class YAS3FS(LoggingMixIn, Operations):
         while self.running:
             try:
                 if prefetch:
-                    (path, start, end) = self.prefetch_queue.get(
-                        True, 1)  # 1 second time-out
+                    (path, start, end) = self.prefetch_queue.get(True, 1)  # 1 second time-out
                 else:
-
-                    (path, start, end) = self.download_queue.get(
-                        True, 1)  # 1 second time-out
+                    (path, start, end) = self.download_queue.get(True, 1)  # 1 second time-out=
                 self.download_data(path, start, end)
                 if prefetch:
                     self.prefetch_queue.task_done()
@@ -1492,8 +1469,7 @@ class YAS3FS(LoggingMixIn, Operations):
 
     def download_data(self, path, start, end):
         thread_name = threading.current_thread().name
-        logger.debug(
-            "download_data '%s' %i-%i [thread '%s']" % (path, start, end, thread_name))
+        logger.debug("download_data '%s' %i-%i [thread '%s']" % (path, start, end, thread_name))
 
         original_key = self.get_key(path)
         if original_key is None:
@@ -1506,15 +1482,15 @@ class YAS3FS(LoggingMixIn, Operations):
         key = copy.copy(original_key)
 
         if start > (key.size - 1):
-            logger.debug(
-                "download_data EOF '%s' %i-%i [thread '%s']" % (path, start, end, thread_name))
+            logger.debug("download_data EOF '%s' %i-%i [thread '%s']" %
+                         (path, start, end, thread_name))
             return
 
         with self.cache.get_lock(path):
             data = self.cache.get(path, 'data')
             if not data:
-                logger.debug(
-                    "download_data no data (before) '%s' [thread '%s']" % (path, thread_name))
+                logger.debug("download_data no data (before) '%s' [thread '%s']" %
+                             (path, thread_name))
                 return
             data_range = data.get('range')
             if not data_range:
@@ -1522,8 +1498,7 @@ class YAS3FS(LoggingMixIn, Operations):
                              % (path, thread_name))
                 return
             new_interval = [start, min(end, key.size - 1)]
-            # Can be removed ???
-            if data_range.interval.contains(new_interval):
+            if data_range.interval.contains(new_interval):  # Can be removed ???
                 logger.debug("download_data '%s' %i-%i [thread '%s'] already downloaded"
                              % (path, start, end, thread_name))
                 return
@@ -1538,11 +1513,9 @@ class YAS3FS(LoggingMixIn, Operations):
         if new_interval[0] == 0 and new_interval[1] == key.size - 1:
             range_headers = {}
         else:
-            range_headers = {'Range':  'bytes=' +
-                             str(new_interval[0]) + '-' + str(new_interval[1])}
+            range_headers = {'Range': 'bytes=' + str(new_interval[0]) + '-' + str(new_interval[1])}
 
-        # Should I check self.requester_pays first?
-        range_headers.update(self.default_headers)
+        range_headers.update(self.default_headers)  # Should I check self.requester_pays first?
 
         retry = True
         # for https://github.com/danilop/yas3fs/issues/46
@@ -1551,8 +1524,7 @@ class YAS3FS(LoggingMixIn, Operations):
 
             # for https://github.com/danilop/yas3fs/issues/62
             if key is None:
-                logger.warn(
-                    "download_data 'key' is None!.. exiting retry loop")
+                logger.warn("download_data 'key' is None!.. exiting retry loop")
                 break
 
             retriesAttempted += 1
@@ -1561,8 +1533,9 @@ class YAS3FS(LoggingMixIn, Operations):
             if retriesAttempted > self.download_retries_num:
                 retry = False
 
-            logger.debug("download_data range '%s' '%s' [thread '%s'] max: %i sleep: %i retries: %i" % (
-                path, range_headers, thread_name, self.download_retries_num, self.download_retries_sleep, retriesAttempted))
+            logger.debug("download_data range '%s' '%s' [thread '%s'] max: %i sleep: %i retries: %i" %
+                         (path, range_headers, thread_name, self.download_retries_num,
+                          self.download_retries_sleep, retriesAttempted))
             try:
                 if debug:
                     n1 = dt.datetime.now()
@@ -1576,38 +1549,39 @@ class YAS3FS(LoggingMixIn, Operations):
 
             except Exception as e:
                 logger.exception(e)
-                logger.info("download_data error '%s' %i-%i [thread '%s'] -> retrying max: %i sleep: %i retries: %i" % (
-                    path, start, end, thread_name, self.download_retries_num, self.download_retries_sleep, retriesAttempted))
+                logger.info("download_data error '%s' %i-%i [thread '%s'] -> retrying max: %i sleep: %i retries: %i" %
+                            (path, start, end, thread_name, self.download_retries_num,
+                             self.download_retries_sleep, retriesAttempted))
                 # for https://github.com/danilop/yas3fs/issues/46
                 time.sleep(self.download_retries_sleep)
                 # Do I need this to overcome error "caching" ???
                 key = copy.copy(self.get_key(path))
 
         if debug:
-            elapsed = (n2 - n1).microseconds / 1e6
-            logger.debug("download_data done '%s' %i-%i [thread '%s'] elapsed %.6f" % (
-                path, start, end, thread_name, elapsed))
+            elapsed = (n2-n1).microseconds/1e6
+            logger.debug("download_data done '%s' %i-%i [thread '%s'] elapsed %.6f" %
+                         (path, start, end, thread_name, elapsed))
 
         with self.cache.get_lock(path):
             data = self.cache.get(path, 'data')
             if not data:
-                logger.debug(
-                    "download_data no data (after) '%s' [thread '%s']" % (path, thread_name))
+                logger.debug("download_data no data (after) '%s' [thread '%s']" %
+                             (path, thread_name))
                 return
             data_range = data.get('range')
             if not data_range:
-                logger.debug(
-                    "download_data no range (after) '%s' [thread '%s']" % (path, thread_name))
+                logger.debug("download_data no range (after) '%s' [thread '%s']" %
+                             (path, thread_name))
                 return
             del data_range.ongoing_intervals[thread_name]
             if not bytes:
                 length = 0
-                logger.debug(
-                    "download_data no bytes '%s' [thread '%s']" % (path, thread_name))
+                logger.debug("download_data no bytes '%s' [thread '%s']" %
+                             (path, thread_name))
             else:
                 length = len(bytes)
-                logger.debug("download_data %i bytes '%s' [thread '%s']" % (
-                    length, path, thread_name))
+                logger.debug("download_data %i bytes '%s' [thread '%s']" %
+                             (length, path, thread_name))
             if length > 0:
                 with data.get_lock():
                     no_content = False
@@ -1623,8 +1597,8 @@ class YAS3FS(LoggingMixIn, Operations):
                         data.close()
                     data_range.wake()
 
-        logger.debug(
-            "download_data end '%s' %i-%i [thread '%s']" % (path, start, end, thread_name))
+        logger.debug("download_data end '%s' %i-%i [thread '%s']" %
+                     (path, start, end, thread_name))
 
         with self.cache.get_lock(path):
             data = self.cache.get(path, 'data')
@@ -1633,14 +1607,13 @@ class YAS3FS(LoggingMixIn, Operations):
                 if data_range.interval.contains([0, key.size - 1]):  # -1 ???
                     data.delete('range')
                     data.update_etag(key.etag[1:-1])
-                    logger.debug(
-                        "download_data all ended '%s' [thread '%s']" % (path, thread_name))
+                    logger.debug("download_data all ended '%s' [thread '%s']" %
+                                 (path, thread_name))
 
     def get_to_do_on_s3(self, i):
         while self.running:
             try:
-                (key, pub, cmds) = self.s3_queue[i].get(
-                    True, 1)  # 1 second time-out
+                (key, pub, cmds) = self.s3_queue[i].get(True, 1)  # 1 second time-out
                 # MUTABLE PROTECTION
                 # various sections of do_cmd_on_s3_now have the potential
                 #     of mutating pub, this tries to keep the queue clean
@@ -1657,14 +1630,13 @@ class YAS3FS(LoggingMixIn, Operations):
         if self.s3_num == 0:
             return self.do_on_s3_now(key, pub, cmds)
 
-        # To distribute files consistently across threads
-        i = hash(key.name) % self.s3_num
+        i = hash(key.name) % self.s3_num  # To distribute files consistently across threads
         self.s3_queue[i].put((key, pub, cmds))
 
     @withplugin
     def do_cmd_on_s3_now(self, key, pub, action, args, kargs):
-        logger.debug("do_cmd_on_s3_now action '%s' key '%r' args '%s' kargs '%s'" % (
-            action, key, args, kargs))
+        logger.debug("do_cmd_on_s3_now action '%s' key '%r' args '%s' kargs '%s'" %
+                     (action, key, args, kargs))
 
         # fuse/yas3fs is version unaware and all operation should
         # happen to the current version
@@ -1706,21 +1678,17 @@ class YAS3FS(LoggingMixIn, Operations):
 
                 try:
                     # ignore deleting flag, though will fail w/ IOError
-                    key.set_contents_from_file(data.get_content(
-                        wait_until_cleared_proplist=['s3_busy']), **kargs)
+                    key.set_contents_from_file(data.get_content(wait_until_cleared_proplist=['s3_busy']), **kargs)
                 except IOError as e:
-                    logger.error(
-                        "set_contents_from_file IOError on " + str(data))
+                    logger.error("set_contents_from_file IOError on " + str(data))
                     raise e
 
                 etag = key.etag[1:-1]
 
                 # ignore deleting flag
                 with data.get_lock(wait_until_cleared_proplist=['s3_busy']):
-                    data.update_etag(
-                        etag, wait_until_cleared_proplist=['s3_busy'])
-                    data.delete(
-                        'change', wait_until_cleared_proplist=['s3_busy'])
+                    data.update_etag(etag, wait_until_cleared_proplist=['s3_busy'])
+                    data.delete('change', wait_until_cleared_proplist=['s3_busy'])
                 pub.append(etag)
             elif action == 'multipart_upload':
 
@@ -1732,8 +1700,8 @@ class YAS3FS(LoggingMixIn, Operations):
                 full_size = args[2]  # Third argument must be full_size
                 complete = self.multipart_upload(*args)
 
-                uploaded_key = self.s3_bucket.get_key(
-                    key.name.encode('utf-8'), headers=self.default_headers)
+                uploaded_key = self.s3_bucket.get_key(key.name.encode('utf-8'),
+                                                      headers=self.default_headers)
 
                 logger.debug("Multipart-upload Key Sizes '%r' local: %i remote: %i" %
                              (key, full_size, uploaded_key.size))
@@ -1747,10 +1715,8 @@ class YAS3FS(LoggingMixIn, Operations):
 
                 # ignore deleting flag
                 with data.get_lock(wait_until_cleared_proplist=['s3_busy']):
-                    data.update_etag(
-                        etag, wait_until_cleared_proplist=['s3_busy'])
-                    data.delete(
-                        'change', wait_until_cleared_proplist=['s3_busy'])
+                    data.update_etag(etag, wait_until_cleared_proplist=['s3_busy'])
+                    data.delete('change', wait_until_cleared_proplist=['s3_busy'])
                 pub.append(etag)
             else:
                 logger.error("do_cmd_on_s3_now Unknown action '%s'" % action)
@@ -1760,8 +1726,8 @@ class YAS3FS(LoggingMixIn, Operations):
             logger.exception(e)
             raise e
 
-        logger.debug("do_cmd_on_s3_now action '%s' key '%r' args '%s' kargs '%s' done" % (
-            action, key, args, kargs))
+        logger.debug("do_cmd_on_s3_now action '%s' key '%r' args '%s' kargs '%s' done" %
+                     (action, key, args, kargs))
         return pub
 
     @withplugin
@@ -1769,17 +1735,16 @@ class YAS3FS(LoggingMixIn, Operations):
         last_exception = None
         for tries in range(1, retries + 1):
             if tries > 1:
-                # Better wait N seconds before retrying
-                time.sleep(self.s3_retries_sleep)
+                time.sleep(self.s3_retries_sleep)  # Better wait N seconds before retrying
             try:
-                logger.debug("do_cmd_on_s3_now_w_retries try %s action '%s' key '%r' args '%s' kargs '%s'" % (
-                    tries, action, key, args, kargs))
+                logger.debug("do_cmd_on_s3_now_w_retries try %s action '%s' key '%r' args '%s' kargs '%s'" %
+                             (tries, action, key, args, kargs))
                 return self.do_cmd_on_s3_now(key, pub, action, args, kargs)
             except Exception as e:
                 last_exception = e
 
-        logger.error("do_cmd_on_s3_now_w_retries FAILED '%s' key '%r' args '%s' kargs '%s'" % (
-            action, key, args, kargs))
+        logger.error("do_cmd_on_s3_now_w_retries FAILED '%s' key '%r' args '%s' kargs '%s'" %
+                     (action, key, args, kargs))
 
         raise last_exception
 
@@ -1795,8 +1760,7 @@ class YAS3FS(LoggingMixIn, Operations):
             if len(c) > 2:
                 kargs = c[2]
 
-            pub = self.do_cmd_on_s3_now_w_retries(
-                key, pub, action, args, kargs, self.s3_retries)
+            pub = self.do_cmd_on_s3_now_w_retries(key, pub, action, args, kargs, self.s3_retries)
             if pub:
                 self.publish(pub)
 
@@ -1804,8 +1768,7 @@ class YAS3FS(LoggingMixIn, Operations):
         logger.debug("readlink '%s'" % (path))
 
         if self.cache.is_deleting(path):
-            logger.debug(
-                "readlink path '%s' is deleting -- throwing ENOENT" % (path))
+            logger.debug("readlink path '%s' is deleting -- throwing ENOENT" % (path))
             raise FuseOSError(errno.ENOENT)
 
         with self.cache.get_lock(path):
@@ -1843,8 +1806,7 @@ class YAS3FS(LoggingMixIn, Operations):
         logger.debug("rmdir '%s'" % (path))
 
         if self.cache.is_deleting(path):
-            logger.debug(
-                "rmdir path '%s' is deleting -- throwing ENOENT" % (path))
+            logger.debug("rmdir path '%s' is deleting -- throwing ENOENT" % (path))
             raise FuseOSError(errno.ENOENT)
 
         with self.cache.get_lock(path):
@@ -1857,16 +1819,15 @@ class YAS3FS(LoggingMixIn, Operations):
                 raise FuseOSError(errno.ENOENT)
             dirs = self.cache.get(path, 'readdir')
             if dirs is None:
-                # There is something inside the folder
-                if self.folder_has_contents(path, 2):
+                if self.folder_has_contents(path, 2):  # There is something inside the folder
                     logger.debug("rmdir '%s' S3 ENOTEMPTY" % (path))
                     raise FuseOSError(errno.ENOTEMPTY)
             else:
                 if len(dirs) > 2:
                     logger.debug("rmdir '%s' cache ENOTEMPTY" % (path))
                     raise FuseOSError(errno.ENOTEMPTY)
-            # k.delete()
-            # self.publish(['rmdir', path])
+            #  k.delete()
+            #  self.publish(['rmdir', path])
             self.cache.reset(path, with_deleting=bool(k))  # Cache invaliation
             self.remove_from_parent_readdir(path)
             if k:
@@ -1881,8 +1842,7 @@ class YAS3FS(LoggingMixIn, Operations):
         logger.debug("truncate '%s' '%i'" % (path, size))
 
         if self.cache.is_deleting(path):
-            logger.debug(
-                "truncate path '%s' is deleting -- throwing ENOENT" % (path))
+            logger.debug("truncate path '%s' is deleting -- throwing ENOENT" % (path))
             raise FuseOSError(errno.ENOENT)
 
         with self.cache.get_lock(path):
@@ -1896,10 +1856,8 @@ class YAS3FS(LoggingMixIn, Operations):
             while True:
                 data = self.cache.get(path, 'data')
                 if not data:
-                    logger.error("truncate '%s' '%i' no data ENOENT" %
-                                 (path, size))
-                    # ??? That should not happen
-                    raise FuseOSError(errno.ENOENT)
+                    logger.error("truncate '%s' '%i' no data ENOENT" % (path, size))
+                    raise FuseOSError(errno.ENOENT)  # ??? That should not happen
                 data_range = data.get('range')
                 if not data_range:
                     break
@@ -1922,30 +1880,27 @@ class YAS3FS(LoggingMixIn, Operations):
             attr['st_atime'] = now
             return 0
 
-    # Should work for files in cache but not flushed to S3...
+    #  Should work for files in cache but not flushed to S3...
     def rename(self, path, new_path):
         logger.debug("rename '%s' '%s'" % (path, new_path))
 
         if self.cache.is_deleting(path):
-            logger.debug(
-                "rename path '%s' is deleting -- throwing ENOENT" % (path))
+            logger.debug("rename path '%s' is deleting -- throwing ENOENT" % (path))
             raise FuseOSError(errno.ENOENT)
 
         with self.cache.get_lock(path):
             if self.cache.is_empty(path):
-                logger.debug("rename '%s' '%s' ENOENT no '%s' from cache" % (
-                    path, new_path, path))
+                logger.debug("rename '%s' '%s' ENOENT no '%s' from cache" % (path, new_path, path))
                 raise FuseOSError(errno.ENOENT)
             key = self.get_key(path)
             if not key and not self.cache.has(path):
-                logger.debug("rename '%s' '%s' ENOENT no '%s'" %
-                             (path, new_path, path))
+                logger.debug("rename '%s' '%s' ENOENT no '%s'" % (path, new_path, path))
                 raise FuseOSError(errno.ENOENT)
             new_parent_path = os.path.dirname(new_path)
             new_parent_key = self.get_key(new_parent_path)
             if not new_parent_key and not self.folder_has_contents(new_parent_path):
-                logger.debug("rename '%s' '%s' ENOENT no parent path '%s'" % (
-                    path, new_path, new_parent_path))
+                logger.debug("rename '%s' '%s' ENOENT no parent path '%s'" %
+                             (path, new_path, new_parent_path))
                 raise FuseOSError(errno.ENOENT)
         attr = self.getattr(path)
         if stat.S_ISDIR(attr['st_mode']):
@@ -1984,7 +1939,7 @@ class YAS3FS(LoggingMixIn, Operations):
                      (key, source_path, target_path, dir))
         # Otherwise we loose the Content-Type with S3 Copy
         key.metadata['Content-Type'] = key.content_type
-        # key.copy(key.bucket.name, target, key.metadata, preserve_acl=False)
+        #  key.copy(key.bucket.name, target, key.metadata, preserve_acl=False)
         target = self.join_prefix(target_path)
         if dir:
             target += '/'
@@ -1996,23 +1951,21 @@ class YAS3FS(LoggingMixIn, Operations):
             target_for_cmd = target
 
         cmds = [['copy', [key.bucket.name, target_for_cmd, key.metadata],
-                 {'preserve_acl': False, 'encrypt_key': self.aws_managed_encryption}],
+                {'preserve_acl': False, 'encrypt_key': self.aws_managed_encryption}],
                 ['delete', [], {'headers': self.default_headers}]]
         self.do_on_s3(key, pub, cmds)
-        # key.delete()
-        # self.publish(['rename', source_path, target_path])
+        #  key.delete()
+        #  self.publish(['rename', source_path, target_path])
 
     def mknod(self, path, mode, dev=None):
         logger.debug("mknod '%s' '%i' '%s'" % (path, mode, dev))
         with self.cache.get_lock(path):
             if self.cache.is_not_empty(path):
-                logger.debug("mknod '%s' '%i' '%s' cache EEXIST" %
-                             (path, mode, dev))
+                logger.debug("mknod '%s' '%i' '%s' cache EEXIST" % (path, mode, dev))
                 raise FuseOSError(errno.EEXIST)
             k = self.get_key(path)
             if k:
-                logger.debug("mknod '%s' '%i' '%s' key EEXIST" %
-                             (path, mode, dev))
+                logger.debug("mknod '%s' '%i' '%s' key EEXIST" % (path, mode, dev))
                 raise FuseOSError(errno.EEXIST)
             self.cache.add(path)
             now = utils.get_current_time()
@@ -2027,9 +1980,9 @@ class YAS3FS(LoggingMixIn, Operations):
             attr['st_size'] = 0  # New file
             if self.cache_on_disk > 0:
                 # New files (almost) always cache in mem - is it ok ???
-                data = FSData(self.cache, 'mem', path)
+                data = FSData(self.cache_path, self.cache, 'mem', path)
             else:
-                data = FSData(self.cache, 'disk', path)
+                data = FSData(self.cache_path, self.cache, 'disk', path)
             self.cache.set(path, 'data', data)
             data.set('change', True)
             self.set_metadata(path, 'attr', attr)
@@ -2042,8 +1995,7 @@ class YAS3FS(LoggingMixIn, Operations):
         logger.debug("unlink '%s'" % (path))
 
         if self.cache.is_deleting(path):
-            logger.debug(
-                "unlink path '%s' is deleting -- throwing ENOENT" % (path))
+            logger.debug("unlink path '%s' is deleting -- throwing ENOENT" % (path))
             raise FuseOSError(errno.ENOENT)
 
         with self.cache.get_lock(path):
@@ -2058,8 +2010,8 @@ class YAS3FS(LoggingMixIn, Operations):
             self.remove_from_parent_readdir(path)
             if k:
                 logger.debug("unlink '%s' '%s' S3" % (path, k))
-                # k.delete()
-                # self.publish(['unlink', path])
+                #  k.delete()
+                #  self.publish(['unlink', path])
                 pub = ['unlink', path]
                 cmds = [['delete', [], {'headers': self.default_headers}]]
                 self.do_on_s3(k, pub, cmds)
@@ -2086,8 +2038,7 @@ class YAS3FS(LoggingMixIn, Operations):
         logger.debug("release '%s' '%i'" % (path, flags))
 
         if self.cache.is_deleting(path):
-            logger.debug(
-                "release path '%s' is deleting -- throwing ENOENT" % (path))
+            logger.debug("release path '%s' is deleting -- throwing ENOENT" % (path))
             raise FuseOSError(errno.ENOENT)
 
         with self.cache.get_lock(path):
@@ -2099,8 +2050,7 @@ class YAS3FS(LoggingMixIn, Operations):
                 if data.has('change') and data.get('open') == 1:  # Last one to release the file
                     self.upload_to_s3(path, data)
                 data.close()  # Close after upload to have data.content populated for disk cache
-                logger.debug("release '%s' '%i' '%s'" %
-                             (path, flags, data.get('open')))
+                logger.debug("release '%s' '%i' '%s'" % (path, flags, data.get('open')))
             else:
                 logger.debug("release '%s' '%i'" % (path, flags))
         return 0
@@ -2109,13 +2059,11 @@ class YAS3FS(LoggingMixIn, Operations):
         logger.debug("read '%s' '%i' '%i' '%s'" % (path, length, offset, fh))
 
         if self.cache.is_deleting(path):
-            logger.debug(
-                "read path '%s' is deleting -- throwing ENOENT" % (path))
+            logger.debug("read path '%s' is deleting -- throwing ENOENT" % (path))
             raise FuseOSError(errno.ENOENT)
 
         if not self.cache.has(path) or self.cache.is_empty(path):
-            logger.debug("read '%s' '%i' '%i' '%s' ENOENT" %
-                         (path, length, offset, fh))
+            logger.debug("read '%s' '%i' '%i' '%s' ENOENT" % (path, length, offset, fh))
             raise FuseOSError(errno.ENOENT)
 
         retry = True
@@ -2126,28 +2074,27 @@ class YAS3FS(LoggingMixIn, Operations):
 
             # for https://github.com/danilop/yas3fs/issues/46
             if retriesAttempted > self.read_retries_num:
-                logger.error("read '%s' '%i' '%i' '%s' max read retries exceeded max: %i sleep: %i retries: %i, raising FuseOSError(errno.EIO) ''" % (
-                    path, length, offset, fh, self.read_retries_num, self.read_retries_sleep, retriesAttempted))
+                logger.error("read '%s' '%i' '%i' '%s' max read retries exceeded max: %i sleep: %i retries: %i, raising FuseOSError(errno.EIO) ''" %
+                             (path, length, offset, fh, self.read_retries_num,
+                              self.read_retries_sleep, retriesAttempted))
                 retry = False
                 self.invalidate_cache(path)
                 raise FuseOSError(errno.EIO)
 
             data = self.cache.get(path, 'data')
             if not data:
-                logger.debug("read '%s' '%i' '%i' '%s' no data" %
-                             (path, length, offset, fh))
+                logger.debug("read '%s' '%i' '%i' '%s' no data" % (path, length, offset, fh))
                 return ''  # Something better ???
             data_range = data.get('range')
             if data_range is None:
-                logger.debug("read '%s' '%i' '%i' '%s' no range" %
-                             (path, length, offset, fh))
+                logger.debug("read '%s' '%i' '%i' '%s' no range" % (path, length, offset, fh))
                 break
             attr = self.get_metadata(path, 'attr')
             file_size = attr['st_size']
             end_interval = min(offset + length, file_size) - 1
             if offset > end_interval:
-                logger.debug("read '%s' '%i' '%i' '%s' offset=%i > end_interval=%i" % (
-                    (path, length, offset, fh, offset, end_interval)))
+                logger.debug("read '%s' '%i' '%i' '%s' offset=%i > end_interval=%i" %
+                             ((path, length, offset, fh, offset, end_interval)))
                 return ''  # Is this ok ???
             read_interval = [offset, end_interval]
             if data_range.interval.contains(read_interval):
@@ -2156,53 +2103,44 @@ class YAS3FS(LoggingMixIn, Operations):
                     prefetch_length = self.buffer_size * self.buffer_prefetch
                     logger.debug("download prefetch '%s' '%i' '%i'" %
                                  (path, prefetch_start, prefetch_length))
-                    prefetch_end_interval = min(
-                        prefetch_start + prefetch_length, file_size) - 1
+                    prefetch_end_interval = min(prefetch_start + prefetch_length, file_size) - 1
                     if prefetch_start < prefetch_end_interval:
-                        prefetch_interval = [
-                            prefetch_start, prefetch_end_interval]
+                        prefetch_interval = [prefetch_start, prefetch_end_interval]
                         if not data_range.interval.contains(prefetch_interval):
-                            self.enqueue_download_data(
-                                path, prefetch_start, prefetch_length, prefetch=True)
-                logger.debug("read '%s' '%i' '%i' '%s' in range" %
-                             (path, length, offset, fh))
+                            self.enqueue_download_data(path, prefetch_start,
+                                                       prefetch_length, prefetch=True)
+                logger.debug("read '%s' '%i' '%i' '%s' in range" % (path, length, offset, fh))
                 break
             else:
                 if retriesAttempted > 1:
                     logger.debug('%d retries' % (retriesAttempted))
                     time.sleep(self.read_retries_sleep)
 
-                # Note added max retries as this can go on forever... for https://github.com/danilop/yas3fs/issues/46
-                logger.debug("read '%s' '%i' '%i' '%s' out of range" %
-                             (path, length, offset, fh))
+                # Note added max retries as this can go on forever...
+                # per https://github.com/danilop/yas3fs/issues/46
+                logger.debug("read '%s' '%i' '%i' '%s' out of range" % (path, length, offset, fh))
                 self.enqueue_download_data(path, offset, length)
 
-            logger.debug("read wait '%s' '%i' '%i' '%s'" %
-                         (path, length, offset, fh))
+            logger.debug("read wait '%s' '%i' '%i' '%s'" % (path, length, offset, fh))
             data_range.wait()
-            logger.debug("read awake '%s' '%i' '%i' '%s'" %
-                         (path, length, offset, fh))
+            logger.debug("read awake '%s' '%i' '%i' '%s'" % (path, length, offset, fh))
             # update atime just in the cache ???
         with data.get_lock():
             if not data.content:
-                logger.debug("read '%s' '%i' '%i' '%s' no content" %
-                             (path, length, offset, fh))
+                logger.debug("read '%s' '%i' '%i' '%s' no content" % (path, length, offset, fh))
                 return ''  # Something better ???
             data.content.seek(offset)
             return data.content.read(length)
 
     def write(self, path, new_data, offset, fh=None):
-        logger.debug("write '%s' '%i' '%i' '%s'" %
-                     (path, len(new_data), offset, fh))
+        logger.debug("write '%s' '%i' '%i' '%s'" % (path, len(new_data), offset, fh))
 
         if self.cache.is_deleting(path):
-            logger.debug(
-                "write path '%s' is deleting -- throwing ENOENT" % (path))
+            logger.debug("write path '%s' is deleting -- throwing ENOENT" % (path))
             raise FuseOSError(errno.ENOENT)
 
         if not self.cache.has(path) or self.cache.is_empty(path):
-            logger.debug("write '%s' '%i' '%i' '%s' ENOENT" %
-                         (path, len(new_data), offset, fh))
+            logger.debug("write '%s' '%i' '%i' '%s' ENOENT" % (path, len(new_data), offset, fh))
             raise FuseOSError(errno.ENOENT)
 
         if sys.version_info < (3, ):
@@ -2221,11 +2159,9 @@ class YAS3FS(LoggingMixIn, Operations):
         if data_range:
             self.enqueue_download_data(path)
             while data_range:
-                logger.debug("write wait '%s' '%i' '%i' '%s'" %
-                             (path, len(new_data), offset, fh))
+                logger.debug("write wait '%s' '%i' '%i' '%s'" % (path, len(new_data), offset, fh))
                 data_range.wait()
-                logger.debug("write awake '%s' '%i' '%i' '%s'" %
-                             (path, len(new_data), offset, fh))
+                logger.debug("write awake '%s' '%i' '%i' '%s'" % (path, len(new_data), offset, fh))
                 data_range = data.get('range')
 
         with data.get_lock():
@@ -2266,15 +2202,13 @@ class YAS3FS(LoggingMixIn, Operations):
         attr = self.get_metadata(path, 'attr', k)
         attr['st_atime'] = now
         attr['st_mtime'] = now
-        # To update key metadata before upload to S3
-        self.set_metadata(path, 'attr', None, k)
-        # To update key metadata before upload to S3
-        self.set_metadata(path, 'xattr', None, k)
+        self.set_metadata(path, 'attr', None, k)  # To update key metadata before upload to S3
+        self.set_metadata(path, 'xattr', None, k)  # To update key metadata before upload to S3
         mimetype = mimetypes.guess_type(path)[0] or 'application/octet-stream'
-        if k.size is None:
-            old_size = 0
-        else:
-            old_size = k.size
+        # if k.size is None:
+        #     old_size = 0
+        # else:
+        #     old_size = k.size
 
         written = False
         pub = ['upload', path]  # Add Etag before publish
@@ -2286,31 +2220,24 @@ class YAS3FS(LoggingMixIn, Operations):
         if self.multipart_num > 0:
             full_size = attr['st_size']
             if full_size > self.multipart_size:
-                logger.debug("upload_to_s3 '%s' '%s' '%s' S3 multipart" %
-                             (path, k, mimetype))
-                cmds = [['multipart_upload', [
-                    k.name, data, full_size, headers, k.metadata]]]
+                logger.debug("upload_to_s3 '%s' '%s' '%s' S3 multipart" % (path, k, mimetype))
+                cmds = [['multipart_upload', [k.name, data, full_size, headers, k.metadata]]]
                 written = True
         if not written:
-            logger.debug("upload_to_s3 '%s' '%s' '%s' S3" %
-                         (path, k, mimetype))
-            # k.set_contents_from_file(data.content, headers=headers)
+            logger.debug("upload_to_s3 '%s' '%s' '%s' S3" % (path, k, mimetype))
+            #  k.set_contents_from_file(data.content, headers=headers)
             cmds = [['set_contents_from_file', [data], {'headers': headers}]]
         self.do_on_s3(k, pub, cmds)
-        # self.publish(['upload', path, etag])
+        #  self.publish(['upload', path, etag])
         logger.debug("upload_to_s3 '%s' done" % path)
 
     def multipart_upload(self, key_path, data, full_size, headers, metadata):
-
-        logger.debug("multipart_upload '%s' '%s' '%s' '%s'" %
-                     (key_path, data, full_size, headers))
+        logger.debug("multipart_upload '%s' '%s' '%s' '%s'" % (key_path, data, full_size, headers))
         part_num = 0
         part_pos = 0
         part_queue = Queue()
-        # No more than 100 parts...
-        multipart_size = max(self.multipart_size, full_size / 100)
-        logger.debug("multipart_upload '%s' multipart_size '%s'" %
-                     (key_path, multipart_size))
+        multipart_size = max(self.multipart_size, full_size / 100)  # No more than 100 parts...
+        logger.debug("multipart_upload '%s' multipart_size '%s'" % (key_path, multipart_size))
         while part_pos < full_size:
             bytes_left = full_size - part_pos
             if bytes_left > self.multipart_size:
@@ -2321,37 +2248,36 @@ class YAS3FS(LoggingMixIn, Operations):
             part_queue.put([part_num, PartOfFSData(data, part_pos, part_size)])
             part_pos += part_size
             logger.debug("part from %i for %i" % (part_pos, part_size))
-        logger.debug("initiate_multipart_upload '%s' '%s'" %
-                     (key_path, headers))
+        logger.debug("initiate_multipart_upload '%s' '%s'" % (key_path, headers))
         num_threads = min(part_num, self.multipart_num)
-        logger.debug("multipart_upload '%s' num_threads '%s'" %
-                     (key_path, num_threads))
+        logger.debug("multipart_upload '%s' num_threads '%s'" % (key_path, num_threads))
 
         # encoding for https://github.com/danilop/yas3fs/issues/56
-        mpu = self.s3_bucket.initiate_multipart_upload(
-            key_path.encode('utf-8'), headers=headers, metadata=metadata)
+        mpu = self.s3_bucket.initiate_multipart_upload(key_path.encode('utf-8'),
+                                                       headers=headers,
+                                                       metadata=metadata)
 
         self.multipart_uploads_in_progress += 1
 
         for i in range(num_threads):
-            t = TracebackLoggingThread(target=self.part_upload, args=(
-                mpu, part_queue), name=("PartUpload-%04d" % i))
+            t = TracebackLoggingThread(target=self.part_upload,
+                                       args=(mpu, part_queue),
+                                       name=("PartUpload-%04d" % i))
             t.demon = True
             t.start()
             logger.debug("multipart_upload thread '%i' started" % i)
-        logger.debug("multipart_upload all threads started '%s' '%s' '%s'" % (
-            key_path, data, headers))
+        logger.debug("multipart_upload all threads started '%s' '%s' '%s'" %
+                     (key_path, data, headers))
         part_queue.join()
-        logger.debug("multipart_upload all threads joined '%s' '%s' '%s'" % (
-            key_path, data, headers))
+        logger.debug("multipart_upload all threads joined '%s' '%s' '%s'" %
+                     (key_path, data, headers))
         if len(mpu.get_all_parts()) == part_num:
-            logger.debug("multipart_upload ok '%s' '%s' '%s'" %
-                         (key_path, data, headers))
+            logger.debug("multipart_upload ok '%s' '%s' '%s'" % (key_path, data, headers))
             new_key = mpu.complete_upload()
             self.multipart_uploads_in_progress -= 1
         else:
-            logger.debug("multipart_upload cancel '%s' '%s' '%s' '%i' != '%i'" % (
-                key_path, data, headers, len(mpu.get_all_parts()), part_num))
+            logger.debug("multipart_upload cancel '%s' '%s' '%s' '%i' != '%i'" %
+                         (key_path, data, headers, len(mpu.get_all_parts()), part_num))
             mpu.cancel_upload()
             new_key = None
             self.multipart_uploads_in_progress -= 1
@@ -2364,8 +2290,8 @@ class YAS3FS(LoggingMixIn, Operations):
                 logger.debug("trying to get a part from the queue")
                 [num, part] = part_queue.get(False)
                 for retry in range(self.multipart_retries):
-                    logger.debug("begin upload of part %i retry %i part__ %s" % (
-                        num, retry, str(part.__dict__)))
+                    logger.debug("begin upload of part %i retry %i part__ %s" %
+                                 (num, retry, str(part.__dict__)))
                     try:
                         mpu.upload_part_from_file(fp=part, part_num=num)
                         break
@@ -2380,8 +2306,7 @@ class YAS3FS(LoggingMixIn, Operations):
                         logger.exception(e)
                         logger.info("error during multipart upload part %i retry %i part__ %s : %s"
                                     % (num, retry, str(part.__dict__), sys.exc_info()[0]))
-                        # Better wait N seconds before retrying
-                        time.sleep(self.s3_retries_sleep)
+                        time.sleep(self.s3_retries_sleep)  # Better wait N seconds before retrying
                 logger.debug("end upload of part %i retry %i part__ %s" %
                              (num, retry, str(part.__dict__)))
                 part_queue.task_done()
@@ -2392,8 +2317,7 @@ class YAS3FS(LoggingMixIn, Operations):
         logger.debug("chmod '%s' '%i'" % (path, mode))
 
         if self.cache.is_deleting(path):
-            logger.debug(
-                "chmod path '%s' is deleting -- throwing ENOENT" % (path))
+            logger.debug("chmod path '%s' is deleting -- throwing ENOENT" % (path))
             raise FuseOSError(errno.ENOENT)
 
         with self.cache.get_lock(path):
@@ -2412,8 +2336,7 @@ class YAS3FS(LoggingMixIn, Operations):
         logger.debug("chown '%s' '%i' '%i'" % (path, uid, gid))
 
         if self.cache.is_deleting(path):
-            logger.debug(
-                "chown path '%s' is deleting -- throwing ENOENT" % (path))
+            logger.debug("chown path '%s' is deleting -- throwing ENOENT" % (path))
             raise FuseOSError(errno.ENOENT)
 
         with self.cache.get_lock(path):
@@ -2438,8 +2361,7 @@ class YAS3FS(LoggingMixIn, Operations):
         logger.debug("utimens '%s' '%s'" % (path, times))
 
         if self.cache.is_deleting(path):
-            logger.debug(
-                "utimens path '%s' is deleting -- throwing ENOENT" % (path))
+            logger.debug("utimens path '%s' is deleting -- throwing ENOENT" % (path))
             raise FuseOSError(errno.ENOENT)
 
         with self.cache.get_lock(path):
@@ -2464,13 +2386,11 @@ class YAS3FS(LoggingMixIn, Operations):
             return self.s3_bucket_name
 
         if self.cache.is_deleting(path):
-            logger.debug(
-                "getxattr path '%s' is deleting -- throwing ENOENT" % (path))
+            logger.debug("getxattr path '%s' is deleting -- throwing ENOENT" % (path))
             raise FuseOSError(errno.ENOENT)
 
         if self.cache.is_empty(path):
-            logger.debug("getxattr '%s' '%s' '%i' ENOENT" %
-                         (path, name, position))
+            logger.debug("getxattr '%s' '%s' '%i' ENOENT" % (path, name, position))
             raise FuseOSError(errno.ENOENT)
 
         key = self.get_key(path)
@@ -2487,12 +2407,13 @@ class YAS3FS(LoggingMixIn, Operations):
             tmp_key = copy.copy(key)
             tmp_key.metadata = {}  # To remove unnecessary metadata headers
             tmp_key.version_id = None
-            return tmp_key.generate_url(expires_in=0, headers=self.default_headers, query_auth=False)
+            return tmp_key.generate_url(expires_in=0,
+                                        headers=self.default_headers,
+                                        query_auth=False)
 
         xattr = self.get_metadata(path, 'xattr')
         if xattr is None:
-            logger.debug("getxattr <- '%s' '%s' '%i' ENOENT" %
-                         (path, name, position))
+            logger.debug("getxattr <- '%s' '%s' '%i' ENOENT" % (path, name, position))
             raise FuseOSError(errno.ENOENT)
 
         if name in ['yas3fs.signedURL', 'user.yas3fs.signedURL']:
@@ -2521,8 +2442,7 @@ class YAS3FS(LoggingMixIn, Operations):
         logger.debug("listxattr '%s'" % (path))
 
         if self.cache.is_deleting(path):
-            logger.debug(
-                "listxattr path '%s' is deleting -- throwing ENOENT" % (path))
+            logger.debug("listxattr path '%s' is deleting -- throwing ENOENT" % (path))
             raise FuseOSError(errno.ENOENT)
 
         if self.cache.is_empty(path):
@@ -2538,8 +2458,7 @@ class YAS3FS(LoggingMixIn, Operations):
         logger.debug("removexattr '%s''%s'" % (path, name))
 
         if self.cache.is_deleting(path):
-            logger.debug(
-                "removexattr path '%s' is deleting -- throwing ENOENT" % (path))
+            logger.debug("removexattr path '%s' is deleting -- throwing ENOENT" % (path))
             raise FuseOSError(errno.ENOENT)
 
         with self.cache.get_lock(path):
@@ -2556,11 +2475,9 @@ class YAS3FS(LoggingMixIn, Operations):
                 self.set_metadata(path, 'xattr')
             except KeyError:
                 if name not in self.yas3fs_xattrs:
-                    logger.debug(
-                        "removexattr '%s' '%s' should ENOATTR" % (path, name))
+                    logger.debug("removexattr '%s' '%s' should ENOATTR" % (path, name))
                     if self.darwin:
-                        # Should return ENOATTR
-                        raise FuseOSError(errno.ENOENT)
+                        raise FuseOSError(errno.ENOENT)  # Should return ENOATTR
                     else:
                         return ''  # Should return ENOATTR
             return 0
@@ -2569,8 +2486,7 @@ class YAS3FS(LoggingMixIn, Operations):
         logger.debug("setxattr '%s' '%s'" % (path, name))
 
         if self.cache.is_deleting(path):
-            logger.debug(
-                "setxattr path '%s' is deleting -- throwing ENOENT" % (path))
+            logger.debug("setxattr path '%s' is deleting -- throwing ENOENT" % (path))
             raise FuseOSError(errno.ENOENT)
 
         with self.cache.get_lock(path):
@@ -2595,15 +2511,15 @@ class YAS3FS(LoggingMixIn, Operations):
            On Mac OS X f_bsize and f_frsize must be a power of 2
            (minimum 512)."""
         return {
-            "f_bsize":  1024 * 1024,
+            "f_bsize": 1024 * 1024,
             "f_frsize": 1024 * 1024 * 1024,
-            "f_blocks":  1024 * 1024 * 1024,
-            "f_bfree":  1024 * 1024 * 1024,
-            "f_bavail":  1024 * 1024 * 1024,
-            "f_files":  1024 * 1024 * 1024,
-            "f_ffree":  1024 * 1024 * 1024,
-            "f_favail":  1024 * 1024 * 1024,
+            "f_blocks": 1024 * 1024 * 1024,
+            "f_bfree": 1024 * 1024 * 1024,
+            "f_bavail": 1024 * 1024 * 1024,
+            "f_files": 1024 * 1024 * 1024,
+            "f_ffree": 1024 * 1024 * 1024,
+            "f_favail": 1024 * 1024 * 1024,
             # "f_fsid": 512,
-            # "f_flag":  4096,
-            "f_namemax":  512
-        }
+            # "f_flag" : 4096,
+            "f_namemax": 512
+            }

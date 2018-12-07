@@ -123,15 +123,18 @@ class FSCache():
             cleared = False
             for check_count in range(0, max_retries):
                 if check_count:
-                    self.logger.debug("wait_until_cleared %s found something for %s. (%i) " % (prop, path, check_count))
+                    self.logger.debug("wait_until_cleared %s found something for %s. (%i) " %
+                                      (prop, path, check_count))
                 # the cache/key disappeared
                 if not self.has(path, prop):
-                    self.logger.debug("wait_until_cleared %s did not find %s anymore." % (prop, path))
+                    self.logger.debug("wait_until_cleared %s did not find %s anymore." %
+                                      (prop, path))
                     cleared = True
                     break
                 # the cache got a '.dec()' from do_on_s3_now...
                 if self.get(path, prop) == 0:
-                    self.logger.debug("wait_until_cleared %s got all dec for %s anymore." % (prop, path))
+                    self.logger.debug("wait_until_cleared %s got all dec for %s anymore." %
+                                      (prop, path))
                     cleared = True
                     break
                 time.sleep(wait_time)
@@ -142,7 +145,8 @@ class FSCache():
                 # self.logger.critical("WAIT_UNTIL_CLEARED stack: '%s'"% pp.pformat(inspect_stack))
 
                 self.logger.error("wait_until_cleared %s could not clear '%s'" % (prop, path))
-                raise Exception("Path has not yet been cleared but operation wants to happen on it '%s' '%s'" % (prop, path))
+                raise Exception("Path has not yet been cleared but operation wants to happen on it '%s' '%s'" %
+                                (prop, path))
         return True
 
     def get_lock(self, path, skip_is_ready=False, wait_until_cleared_proplist=None):

@@ -49,12 +49,12 @@ class FSRange():
         self.event = threading.Event()
         self.lock = threading.RLock()
 
-        def wait(self):
-            self.event.wait(self.io_wait)
+    def wait(self):
+        self.event.wait(self.io_wait)
 
-            def wake(self, again=True):
-                with self.lock:
-                    e = self.event
-                    if again:
-                        self.event = threading.Event()
-                        e.set()
+    def wake(self, again=True):
+        with self.lock:
+            e = self.event
+            if again:
+                self.event = threading.Event()
+            e.set()

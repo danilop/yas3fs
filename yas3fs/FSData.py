@@ -9,7 +9,8 @@ class FSData():
     stores = ['mem', 'disk']
     unknown_store = "Unknown store"
 
-    def __init__(self, cache, store, path):
+    def __init__(self, cache_path, cache, store, path):
+        self.cache_path = cache_path
         self.cache = cache
         self.store = store
         self.path = path
@@ -156,13 +157,13 @@ class FSData():
                         if os.path.isfile(filename):
                             self.logger.debug("unlink cache file '%s'" % filename)
                             os.unlink(filename)
-                            utils.remove_empty_dirs_for_file(filename)
+                            utils.remove_empty_dirs_for_file(self.cache_path, filename)
                     etag_filename = self.cache.get_cache_etags_filename(self.path)
                     with self.cache.disk_lock:
                         if os.path.isfile(etag_filename):
                             self.logger.debug("unlink cache etag file '%s'" % etag_filename)
                             os.unlink(etag_filename)
-                            utils.remove_empty_dirs_for_file(etag_filename)
+                            utils.remove_empty_dirs_for_file(self.cache_path, etag_filename)
                 self.content = None  # If not
                 self.update_size(True)
                 for p in list(self.props.keys()):
@@ -195,13 +196,13 @@ class FSData():
                     utils.create_dirs_for_file(new_filename)
                     os.rename(filename, new_filename)
                 with self.cache.disk_lock:
-                    utils.remove_empty_dirs_for_file(filename)
+                    utils.remove_empty_dirs_for_file(self.cache_path, filename)
                 if os.path.isfile(etag_filename):
                     with self.cache.disk_lock:
                         utils.create_dirs_for_file(new_etag_filename)
                         os.rename(etag_filename, new_etag_filename)
                     with self.cache.disk_lock:
-                        utils.remove_empty_dirs_for_file(etag_filename)
+                        utils.remove_empty_dirs_for_file(self.cache_path, etag_filename)
                 if self.content:
                     self.content = open(new_filename, mode='rb+')
             self.path = new_path

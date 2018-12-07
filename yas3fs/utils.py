@@ -35,24 +35,31 @@ def create_dirs(dirname):
         raise
 
 
-def remove_empty_dirs(dirname):
+def remove_empty_dirs(cache_path, dirname):
     logger.debug("remove_empty_dirs '%s'" % (dirname))
 
     try:
-        if not isinstance(dirname, bytes):
-            dirname = dirname.encode('utf-8')
+        if not isinstance(dirname, str):
+            # dirname must be a string for replace
+            dirname = dirname.decode('utf-8')
 
+        # fix for https://github.com/danilop/yas3fs/issues/150
+        # remove cache_path part from dirname to avoid accidental removal of /tmp (if empty)
+        os.chdir(cache_path)
+        dirname = dirname.replace(cache_path + '/', '')
+
+        dirname = dirname.encode('utf-8')
         os.removedirs(dirname)
-        logger.debug("remove_empty_dirs '%s' done" % (dirname))
+        logger.debug("remove_empty_dirs '%s' done", dirname)
     except OSError as exc:  # Python >2.5
         if exc.errno == errno.ENOTEMPTY:
-            logger.debug("remove_empty_dirs '%s' not empty" % (dirname))
+            logger.debug("remove_empty_dirs '%s' not empty", dirname)
             pass
         else:
             raise
     except Exception as e:
         logger.exception(e)
-        logger.error("remove_empty_dirs exception: " + dirname)
+        logger.error("remove_empty_dirs exception: %s", dirname)
         raise e
 
 
@@ -65,13 +72,13 @@ def create_dirs_for_file(filename):
     create_dirs(dirname)
 
 
-def remove_empty_dirs_for_file(filename):
+def remove_empty_dirs_for_file(cache_path, filename):
     logger.debug("remove_empty_dirs_for_file '%s'" % filename)
     if not isinstance(filename, bytes):
         filename = filename.encode('utf-8')
 
     dirname = os.path.dirname(filename)
-    remove_empty_dirs(dirname)
+    remove_empty_dirs(cache_path, dirname)
 
 
 def get_current_time():

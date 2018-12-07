@@ -94,7 +94,8 @@ class RecoverYas3fsPlugin(YAS3FSPlugin):
 
         shutil.copyfile(cache_file, recovery_file)
 
-        self.logger.info("PLUGIN copying file from '%s' to '%s' done" % (cache_file, recovery_file))
+        self.logger.info("PLUGIN copying file from '%s' to '%s' done" %
+                         (cache_file, recovery_file))
 
         return True
 
@@ -108,7 +109,8 @@ class RecoverYas3fsPlugin(YAS3FSPlugin):
                 selfless_args = None
                 if args[1]:
                     selfless_args = args[1:]
-                self.logger.error("PLUGIN do_cmd_on_s3_now_w_retries FAILED" + " " + str(selfless_args))
+                self.logger.error("PLUGIN do_cmd_on_s3_now_w_retries FAILED " +
+                                  str(selfless_args))
 
                 s = args[0]
                 key = args[1]
@@ -147,7 +149,8 @@ class RecoverYas3fsPlugin(YAS3FSPlugin):
                             "s3key": dict(filter(self.s3key_json_filter, iter(key.__dict__.items())))
                         }
 
-                        self.logger.error("RecoverYAS3FS PLUGIN UPLOAD FAILED " + json.dumps(json_recover))
+                        self.logger.error("RecoverYAS3FS PLUGIN UPLOAD FAILED " +
+                                          json.dumps(json_recover))
 
                         self.make_recovery_copy(cache_file)
 
