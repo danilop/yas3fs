@@ -59,7 +59,7 @@ class CompressedRotatingFileHandler(logging.handlers.RotatingFileHandler):
                 f_in = open(self.baseFilename, 'rb')
                 f_out = gzip.open(dfn, 'wb')
                 f_out.writelines(f_in)
-            except:
+            except Exception:
                 if not os.path.exists(dfn):
                     if os.path.exists(self.baseFilename):
                         os.rename(self.baseFilename, dfn)
@@ -302,7 +302,7 @@ def main():
     else:
         mount_options['big_writes'] = True  # Not working on OSX
 
-    fuse = FUSE(YAS3FS(options), **mount_options)
+    FUSE(YAS3FS(options), **mount_options)
 
 
 if __name__ == '__main__':

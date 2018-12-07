@@ -141,10 +141,18 @@ Install FUSE for OS X from <http://osxfuse.github.com>.
 
     # Put contrib/mount.yas3fs to /usr/local/sbin and make the symlink
     chmod +x /usr/local/sbin/mount.yas3fs
-    cd /sbin; sudo ln -s /usr/local/sbin/mount.yas3fs
+    cd /sbin; sudo ln -s /usr/local/sbin/mount.yas3fs.centos6 # replace centos6 to amzn1 for Amazon Linux installation
     # Add the contents of contrib/fstab.snippet to /etc/fstab and modify accordingly
     # Try to mount
     mount /mnt/mybucket
+
+**Workaround to unmount yas3fs correctly during host shutdown or reboot**
+
+    sudo cp contrib/unmount-yas3fs.init.d /etc/init.d/unmount-yas3fs
+    sudo chmod +x /etc/init.d/unmount-yas3fs
+    sudo chkconfig --add unmount-yas3fs
+    sudo chkconfig unmount-yas3fs on
+    sudo /etc/init.d/unmount-yas3fs start
 
 To listen to SNS HTTP notifications (I usually suggest to use SQS instead) with a Mac
 you need to install the Python [M2Crypto](http://chandlerproject.org/Projects/MeTooCrypto) module,
@@ -251,7 +259,7 @@ rsync's option *--inplace* has to be used to avoid S3 busy events
       --cache-mem-size N   max size of the memory cache in MB (default is 128 MB)
       --cache-disk-size N  max size of the disk cache in MB (default is 1024 MB)
       --cache-path PATH    local path to use for disk cache (default is
-                           /tmp/yas3fs/BUCKET/PATH)
+                           /tmp/yas3fs-BUCKET-PATH-random)
       --recheck-s3         Cache ENOENT results in forced recheck of S3 for new file/directory
       --cache-on-disk N    use disk (instead of memory) cache for files greater
                            than the given size in bytes (default is 0 bytes)

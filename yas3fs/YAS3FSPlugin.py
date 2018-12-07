@@ -66,7 +66,7 @@ class YAS3FSPlugin (object):
                 selfless_args = None
                 if args[1]:
                     selfless_args = args[1:]
-                self.logger.info("PLUGIN do_cmd_on_s3_now_w_retries FAILED" + " " + str(selfless_args))
+                self.logger.info("PLUGIN do_cmd_on_s3_now_w_retries FAILED"+" "+str(selfless_args))
 
             return args[2]  # ????
         return wrapper
