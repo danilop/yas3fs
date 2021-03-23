@@ -24,6 +24,7 @@ from signal import signal, SIGINT, SIG_DFL
 from stat import S_IFDIR
 from traceback import print_exc
 
+import os
 import logging
 
 try:
@@ -58,12 +59,14 @@ class c_stat(Structure):
 _system = system()
 _machine = machine()
 
-if _system == 'Darwin':
-    _libiconv = CDLL(find_library('iconv'), RTLD_GLOBAL) # libfuse dependency
-    _libfuse_path = (find_library('fuse4x') or find_library('osxfuse') or
-                     find_library('fuse'))
-else:
-    _libfuse_path = find_library('fuse')
+_libfuse_path = os.environ.get('FUSE_LIBRARY_PATH')
+if not _libfuse_path:
+    if _system == 'Darwin':
+        _libiconv = CDLL(find_library('iconv'), RTLD_GLOBAL) # libfuse dependency
+        _libfuse_path = (find_library('fuse4x') or find_library('osxfuse') or
+                         find_library('fuse'))
+    else:
+        _libfuse_path = find_library('fuse')
 
 if not _libfuse_path:
     raise EnvironmentError('Unable to find libfuse')
