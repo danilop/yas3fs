@@ -67,6 +67,8 @@ within an [Auto Scaling](http://aws.amazon.com/autoscaling/) group.
 
 ### Quick Installation
 
+#### WARNING: PIP installation is no longer supported. Use "git clone" instead.
+
 Requires [Python](http://www.python.org/download/) 2.6 or higher.
 Install using [pip](http://www.pip-installer.org/en/latest/).
 
